@@ -26,6 +26,9 @@ BLACKLISTED_PATTERNS=(
   "dd if="
   "curl "
   "wget "
+  "|.*bash"
+  "|.*sh"
+  "|.*python"
 )
 
 # NOTE: curl|bash and wget|sh are checked via pipe pattern separately
@@ -154,16 +157,11 @@ fi
 # --- Security: Check blacklisted patterns ---
 BLOCKED=""
 for pattern in "${BLACKLISTED_PATTERNS[@]}"; do
-  if echo "$COMMAND" | grep -qF "$pattern"; then
+  if echo "$COMMAND" | grep -qE "$pattern"; then
     BLOCKED="$pattern"
     break
   fi
 done
-
-# Check pipe-to-shell patterns
-if echo "$COMMAND" | grep -qE '\| *(ba)?sh'; then
-  BLOCKED="pipe to shell (curl|bash pattern)"
-fi
 
 if [[ -n "$BLOCKED" ]]; then
   echo "BLOCKED=true"
