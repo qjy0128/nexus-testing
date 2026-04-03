@@ -18,6 +18,7 @@
 任务：
 - 基础检查：Skill 源码路径存在性、SKILL.md 可读性、YAML frontmatter 完整性
 - **依赖环境检测**：扫描 SKILL.md 和 Skill 源码，识别并验证所需的运行时依赖（npm/Python/其他 OpenClaw 插件/系统命令），详见 `SKILL.md` 阶段零「Flow A 依赖环境检测」
+- **沙箱能力检测**：检查 `scripts/sandbox-create.sh` 是否存在，探测 Node.js / Python 运行时可用性，详见 `SKILL.md` 阶段零「Flow A 沙箱能力检测」
 - 通用检查：输出目录可写性、渠道配置
 
 > **注意**：OpenClaw 环境本身假定已就绪，不作为检测项。仅检测被测 Skill 额外依赖的运行时环境。
@@ -65,6 +66,19 @@
 - `roles/security-tester.md`（安全与 Token 测试）
 
 > **说明**：Flow A 不设独立 performance-tester，运行时性能测试（Token 消耗、响应延迟、Token 爆炸检测）已集成在 skill-tester 中。
+
+#### Step 5.0: 沙箱准备（按需）
+
+当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师必须：
+
+1. **sandbox-create**：创建隔离 session，探测运行时
+2. **sandbox-provision**：安装测试所需依赖（npm install / pip install）
+3. **sandbox-fixture**：将 FX-NN 夹具文件写入 `workspace/fixtures/`
+4. **sandbox-exec**：执行测试命令，捕获 stdout/stderr/exit-code
+5. **sandbox-collect**：收集 `outputs/` 和 `logs/` 中的结果
+6. **sandbox-cleanup**：测试完成后删除沙箱目录
+
+沙箱执行的命令和日志构成执行证明，格式遵循 `reference-sandbox-spec.md` 第六节。
 
 #### Step 5.1：Skill 核心功能测试
 **执行角色**：`roles/skill-tester.md`

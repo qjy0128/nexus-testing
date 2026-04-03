@@ -10,7 +10,11 @@
       "mcp__zread__read_file",
       "mcp__web-search-prime__web_search_prime",
       "mcp__web-reader__webReader",
-      "mcp__zread__search_doc"
+      "mcp__zread__search_doc",
+      "Bash(bash scripts/sandbox-create.sh --runtime both)",
+      "Bash(bash scripts/sandbox-exec.sh --session-id 20260403-201520-0060cd --command \"node -e \\\\\"console.log\\('hello from sandbox'\\)\\\\\" --tag TC-TEST-01)",
+      "Bash(bash -n scripts/sandbox-create.sh)",
+      "Bash(bash scripts/sandbox-exec.sh --session-id 20260403-201707-001c85 --command 'node -e \"console.log\\(JSON.stringify\\({hello: \\\\\"sandbox\\\\\"}\\)\\)\"')"
     ]
   }
 }

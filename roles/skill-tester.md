@@ -217,7 +217,9 @@ TC-XX：（用例名称）
   ↓
 尝试 1：在当前环境直接执行 → 成功 → 记录结果
   ↓ 失败
-尝试 2：沙箱/Dry Run 模式 → 成功 → 记录结果
+尝试 2：沙箱执行 → sandbox-create → sandbox-exec → sandbox-collect
+  → 脚本可用：记录真实输出（非降级，等同真实执行）
+  → 脚本不可用：继续尝试 3
   ↓ 失败
 尝试 3：手动构造模拟输入/输出 → 成功 → 记录「模拟执行」+ 实际输出
   ↓ 失败
@@ -318,6 +320,120 @@ SKILL.md 中的条件逻辑：
 | 多语言输入兼容性 | 中文、韩文、阿拉伯文 | 显示正常，无乱码 | 实际输出：xxx |
 | 超长输入 | 10000+ 字符 | 友好截断或拒绝，无崩溃 | 实际输出：xxx |
 | 特殊路径输入 | 含空格路径、`~`、环境变量 | 正确处理 | 实际输出：xxx |
+
+### 10. 元测试（Meta-Testing）能力
+
+> **核心能力**：当被测 Skill 的功能是**测试/验证/分析其他 Skill 或产品**时（如 nexus-testing 本身），skill-tester 必须动态创建测试用 Skill 来验证被测产品的完整行为。
+
+#### 执行要求（强制）
+
+1. **读取 TEST-DESIGN.md 中的夹具规格**（FX-01, FX-02, ...）
+2. **按规格实际创建测试用 Skill 文件**（不是模拟，是真实写入文件系统）
+3. **通过被测 Skill 的正常使用方式执行测试**（如：用被测框架测试这个测试 Skill）
+4. **记录被测 Skill 对测试夹具的完整响应**（不是「预期会怎样」）
+5. **验证响应与夹具的预期行为一致**（合格夹具→通过；缺陷夹具→检出）
+6. **清理所有测试夹具**
+
+#### 测试 Skill 创建规范
+
+**合格测试 Skill（M1 基础通过）**：
+- 完整的 SKILL.md，含正确的 YAML frontmatter（name + description）
+- 至少一个明确的触发条件和对应的正确响应行为
+- 无安全隐患、无路径遍历、无注入内容
+- 引用的外部文件路径都有效（或无外部引用）
+- **创建后必须验证**：检查文件确实存在且内容与规格一致
+
+**缺陷测试 Skill（M2 缺陷检出）**：
+- 根据 TEST-DESIGN.md 中的 FX 编号创建
+- **每个缺陷 Skill 只植入一类缺陷**（便于验证框架的缺陷定位精度）
+- 缺陷类型示例：
+  - YAML 语法错误（缩进错误、未闭合引号）
+  - 缺少 name 或 description 字段
+  - 路径遍历（`../../etc/passwd`）
+  - 提示词注入（description 含 `ignore previous instructions`）
+  - 触发词与已有 Skill 冲突
+  - 声明不存在的工具
+  - 超长 description（>10000 字符）
+  - 循环引用（A→B→A）
+- **创建后必须验证**：确认缺陷确实被植入（如确认 YAML 确实有语法错误）
+
+**极端测试 Skill（M3 健壮性）**：
+- 空 SKILL.md（0 字节）
+- 只有 frontmatter 无正文
+- 只有正文无 frontmatter
+- 嵌套层级极深的 markdown
+- 全部是特殊字符的内容
+- 二进制内容伪装为 .md
+
+**端到端测试 Skill（M4 完整流程）**：
+- 标准、完整、无缺陷的 Skill
+- 足够复杂以触发被测框架的所有阶段（零→七）
+- 包含多种测试维度（功能+安全+性能）
+- **验证**：被测框架走完全部阶段，每个阶段的交付物都存在且内容合理
+
+#### 执行证明格式（元测试专用）
+
+```
+#### META-TC-XX：（元测试用例名称）
+• 测试层次：{M1/M2/M3/M4}
+• 夹具 ID：{FX-XX}
+• 夹具创建动作：{实际执行了什么命令来创建夹具}
+• 夹具验证：✅ 文件已创建，内容符合规格 / ❌ 创建失败
+• 被测产品执行动作：{通过被测产品的什么方式执行测试}
+• 被测产品实际输出：{被测产品对夹具的真实响应，粘贴原文}
+• 预期 vs 实际：{对比分析}
+• 判定：✅ 通过 / ❌ 失败（原因：xxx）
+• 清理状态：✅ 夹具已删除 / ❌ 清理失败
+```
+
+### 11. 沙箱执行模式
+
+> **参考**：完整沙箱规格见 `reference-sandbox-spec.md`。
+
+当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，使用沙箱执行模式。
+
+**前提条件**：
+- 阶段零沙箱能力检测已通过（`scripts/sandbox-create.sh` 存在）
+- 被测产品需要真实命令执行（CLI 工具、脚本、运行时验证等）
+
+**执行步骤**：
+
+```
+1. bash scripts/sandbox-create.sh --runtime {runtime}
+   → 获得 SESSION_ID 和 SANDBOX_ROOT
+    ↓
+2. 按需安装依赖
+   bash scripts/sandbox-exec.sh --session-id {ID} --command "npm install --prefix runtime"
+    ↓
+3. 创建测试夹具
+   bash scripts/sandbox-exec.sh --session-id {ID} --command "echo '{content}' > workspace/fixtures/FX-NN.ext"
+    ↓
+4. 执行测试命令（每个 TC 单独执行）
+   bash scripts/sandbox-exec.sh --session-id {ID} --command "..." --tag TC-XX --timeout 30
+    ↓
+5. 收集结果
+   读取 .nexus-sandbox/{SESSION_ID}/logs/ 下的日志文件
+   读取 .nexus-sandbox/{SESSION_ID}/workspace/outputs/ 下的输出文件
+    ↓
+6. 清理
+   bash scripts/sandbox-cleanup.sh --session-id {ID} --force
+```
+
+**执行证明**：沙箱执行的用例，日志文件自动构成执行证明。格式：
+
+```
+TC-XX：（用例名称）
+  执行动作：sandbox-exec --session-id {ID} --command "..." --tag TC-XX
+  实际输入：{传入的命令和参数}
+  实际输出：（粘贴 logs/{file}.stdout.log 的完整内容）
+  判定：✅ 通过 / ❌ 失败
+  沙箱证据：exit-codes.json seq={N}, exit_code={N}, duration={ms}ms
+```
+
+**沙箱日志作为执行证明的合规说明**：
+- `logs/*.stdout.log` 和 `logs/*.stderr.log` 是真实命令输出，等同于真实执行
+- `logs/exit-codes.json` 提供每条命令的退出码和耗时
+- evidence-collector 审计时，沙箱日志证据视为合规的执行证明
 
 ## 输出格式
 

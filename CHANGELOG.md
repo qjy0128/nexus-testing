@@ -24,6 +24,34 @@
 
 ## 重大版本变更
 
+### v0.9.9（2026-04-03）
+
+**沙箱执行环境 + 外部 Case 获取**：
+
+**新增能力**：
+- 新增：`reference-sandbox-spec.md`（沙箱执行环境规格参考）— 目录结构/5 阶段生命周期/安全边界/命令参考/集成点
+- 新增：`scripts/sandbox-create.sh`（沙箱创建脚本）— 自动创建隔离 session、探测运行时、生成 META.json
+- 新增：`scripts/sandbox-exec.sh`（沙箱执行脚本）— 命令安全校验/超时执行/日志捕获/exit code 记录
+- 新增：`scripts/sandbox-cleanup.sh`（沙箱清理脚本）— 路径遍历防护/安全删除/清理验证
+- 新增：`reference-external-case-sourcing.md`（外部测试用例获取规范）— 搜索策略/评估评分卡/集成流程/来源追溯
+
+**框架集成**：
+- 新增：DEFINITIONS.md 第十四节「沙箱执行环境」— 沙箱根路径/Session ID 格式/能力级别/超时配置
+- 新增：DEFINITIONS.md 第十五节「外部测试用例获取」— EXT-TC-NN 编号/来源追溯/评估最低分
+- 新增：SKILL.md 参考文档索引 — 引用 `reference-sandbox-spec.md` 和 `reference-external-case-sourcing.md`
+- 新增：SKILL.md 阶段零「Flow A 沙箱能力检测」— 4 项沙箱能力检测表
+- 新增：flows/skill-testing.md 阶段零沙箱能力检测 + Step 5.0 沙箱准备步骤
+- 新增：roles/test-designer.md 方法 4「沙箱执行」+ 外部 Case 集成子节
+- 新增：roles/skill-tester.md 第 11 节「沙箱执行模式」— 6 步执行流程 + 执行证明合规说明
+- 新增：roles/evidence-collector.md 审计检查项「沙箱日志证据」
+
+**修复**：
+- 修复：降级阶梯第 2 级「沙箱执行」从空口号变为可操作（有实际脚本支撑）
+- 修复：skill-tester 降级路径中「尝试 2」细化为沙箱脚本可用/不可用两条分支
+- 修复：test-designer 环境模拟方法库新增方法 4（沙箱执行），补充方法 1-3 的能力上限
+
+---
+
 ### v0.9.8（2026-04-03）
 
 **Flow A 阶段零依赖环境检测**：
