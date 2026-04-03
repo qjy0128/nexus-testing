@@ -2,7 +2,11 @@
 
 基于 OpenClaw 平台的多类型 AI 测试编排框架。自动识别测试类型，调度 8 阶段标准化测试流程，通过并行 subagent 执行测试，产出结构化报告并提供 Go/No-Go 判定。
 
+> 设计思路参考了 [agency-agents](https://github.com/msitarzewski/agency-agents) 项目。
+
 ## 支持的测试类型
+
+> **注意**：Flow A（Skill 测试）已完善可正常使用。Flow B（网页+接口测试）、Flow C（安卓测试）、Flow D（MCP 测试）尚在开发中，流程和角色定义还未完善。
 
 | 测试类型 | Flow | 关键词 | 阶段五并行角色数 |
 |---------|------|--------|----------------|
