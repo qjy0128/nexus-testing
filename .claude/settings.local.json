@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xxd \"c:/Users/qjy01/Desktop/nexus-testing-v0.9.5/SKILL.md\")",
+      "Bash(python -c ':*)",
+      "Bash(grep -n \"阶段六\\\\|阶段七\" \"c:/Users/qjy01/Desktop/nexus-testing-v0.9.5/flows/\"*.md)",
+      "Bash(grep -n \"第十节\" \"c:/Users/qjy01/Desktop/nexus-testing-v0.9.5/flows/\"*.md)",
+      "mcp__zread__get_repo_structure",
+      "WebSearch",
+      "mcp__zread__read_file",
+      "mcp__web-search-prime__web_search_prime",
+      "mcp__web-reader__webReader",
+      "mcp__zread__search_doc"
+    ]
+  }
+}
