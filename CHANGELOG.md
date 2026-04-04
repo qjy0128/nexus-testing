@@ -24,6 +24,97 @@
 
 ## 重大版本变更
 
+### v0.9.13（2026-04-04）
+
+**深度一致性修复 + 验证体系增强**：
+
+**P0 框架断裂修复（2 项）**：
+- 修复：flows/web-api-testing.md A 模式缺失阶段零（环境就绪检查），直接跳到阶段一，违反标准 8 阶段定义
+- 修复：DEFINITIONS.md 和 README.md B 模式阶段数错误（「总计 10 个阶段」→「总计 11 个阶段 B-阶段零~十」），表中列出 11 行但描述写 10
+
+**P1 信息不一致修复（2 项）**：
+- 修复：flows/web-api-testing.md playwright 工具表中 Step 7.4/7.5 引用过时（上轮重编号后遗留），改为明确标注 A/B 模式对应 Step
+- 修复：roles/skill-tester.md 和 roles/test-designer.md 缺失 DEFINITIONS.md 统一引用声明（20 个角色中仅此 2 个未引用）
+
+**工程化增强（2 项）**：
+- 增强：scripts/validate-framework.py 新增 `role definitions ref` 校验，确保所有活跃角色文件都引用 DEFINITIONS.md
+- 当前验证项从 9 项增至 10 项
+
+---
+
+### v0.9.12（2026-04-04）
+
+**跨文档一致性修复 + 验证增强**：
+
+**P0 框架断裂修复（3 项）**：
+- 修复：flows/web-api-testing.md A 模式阶段编号错误（「阶段五后：缺陷分析」→「阶段六：缺陷分析」，「阶段六：报告整合」→「阶段七：报告整合」），v0.9.10 CHANGELOG 标注已修复但未实际应用
+- 修复：flows/web-api-testing.md A 模式缺失证据收集步骤（阶段五后 evidence-collector），补齐完整并行角色清单
+- 修复：flows/web-api-testing.md B 模式缺失 B-阶段零（环境就绪检查）和 B-阶段七（用例评估，需批准），直接跳过用例评审进入并行测试
+
+**P1 信息不一致修复（3 项）**：
+- 修复：flows/web-api-testing.md B 模式未使用 B-阶段 前缀（「阶段三」→「B-阶段三」等），与 DEFINITIONS.md 第四节约定不一致
+- 修复：DEFINITIONS.md 目录树中 `android-results.md` 为幽灵条目（无角色产出），已移除
+- 修复：DEFINITIONS.md 目录树 `compatibility-results.md` 标注「Flow B/C/D 必出」但 Flow D 无 compatibility-tester，改为「Flow B/C 必出」
+
+**P2 补充修复（2 项）**：
+- 修复：SKILL.md subagent I/O 表 compatibility-tester 标注「Flow B/C/D 专用」→「Flow B/C 专用，Flow A/D 不使用」
+- 修复：flows/web-api-testing.md 流程对比表过时，重写为与 DEFINITIONS.md 第四节对齐的 11 阶段对比
+
+**工程化增强（2 项）**：
+- 增强：scripts/validate-framework.py 新增 7 个缺失的 reference 文件到必检清单
+- 增强：scripts/validate-framework.py 新增 role reference 校验（检查 flow 文件引用的角色是否存在）
+- 增强：.gitignore 补充 node_modules、.env、IDE 配置等常见忽略模式
+
+---
+
+### v0.9.11（2026-04-04）
+
+**工程化与可维护性优化**：
+
+- 新增：`.gitignore`，忽略 `memory/nexus-reports/`、`.nexus-sandbox/`、`.nexus-hmac-salt` 等运行期产物
+- 新增：`.gitattributes` 和 `.editorconfig`，统一 Markdown / Shell / Python / JSON 的编码与换行约定
+- 新增：`scripts/validate-framework.py`，自动校验核心文件、Markdown 链接、frontmatter、README 版本同步、Flow 单一事实源声明和角色版本漂移
+- 新增：`.github/workflows/validate-framework.yml`，在 CI 中执行仓库校验和 `bash -n` 语法检查
+- 修复：`README.md` 当前状态、仓库结构说明、自检说明和版本号落后于实际项目状态
+- 修复：`roles/defect-analyst.md` 与 `roles/report-integrator.md` 的内联版本号漂移问题，避免后续继续失真
+
+---
+
+### v0.9.10（2026-04-04）
+
+**全项目审计修复（30 个问题）**：
+
+**P0 框架断裂修复（4 项）**：
+- 修复：SKILL.md 多选提示「六阶段」→「八阶段（阶段零~七）」（过时文案）
+- 修复：flows/android-testing.md 缺失阶段零（环境就绪检查），已补充
+- 修复：flows/mcp-testing.md 缺失阶段零（环境就绪检查），已补充
+- 修复：DEFINITIONS.md 目录树 `evidence-collection.md` 从 `TEST-EXECUTION/` 移至 `DEFECTS/`
+
+**P1 信息不一致修复（6 项）**：
+- 修复：flows/web-api-testing.md A 模式阶段编号偏移（「阶段五后」→「阶段六」，「阶段六」→「阶段七」）
+- 修复：DEFINITIONS.md Section 6 五个角色输入定义与实际角色文件不一致（performance-tester / reality-checker / security-tester / compatibility-tester / accessibility-auditor）
+- 修复：SKILL.md 自动推进阶段列表缺失阶段零
+- 修复：DEFINITIONS.md Section 3 缺失 `functional-results.md`、`accessibility-results.md`、`reality-results.md` 三个输出文件
+- 修复：DEFINITIONS.md Section 6 security-tester Flow 列不完整（`A/D` → `A/B/C/D`）
+- 修复：DEFINITIONS.md `performance-results.md` 注释只标 `Flow D` → `Flow B/C/D`
+
+**P2 功能缺口修复（5 项）**：
+- 新增：flows/android-testing.md 阶段五添加沙箱执行引用
+- 新增：flows/mcp-testing.md 阶段五添加沙箱执行引用
+- 新增：roles/test-designer.md 引用 `reference-agent-evaluation-methodology.md` 和 `reference-test-case-templates.md`
+- 修复：flows/mcp-testing.md 阶段七输出错误包含 `DEFECT-REPORT.md`（属于阶段六）
+- 修复：roles/defect-analyst.md 硬编码「3 次」拒绝上限，补充引用 `DEFINITIONS.md` 第九节
+
+**P3 孤立/低优修复（6 项）**：
+- 修复：roles/tool-evaluator.md 标记为辅助角色并补充 DEFINITIONS.md 引用
+- 修复：roles/workflow-optimizer.md 标记为辅助角色并补充 DEFINITIONS.md 引用
+- 修复：DEFINITIONS.md 「Flow B B 模式」双 B 连写歧义 → 「Flow B（B 模式）」
+- 修复：roles/requirement-analyst.md 补充 DEFINITIONS.md 引用
+- 修复：roles/report-integrator.md 补充 DEFINITIONS.md 和 reference-report-format.md 引用
+- 保留：roles/compatibility-tester-skill.md 保留但标注废弃（格式参考模板）
+
+---
+
 ### v0.9.9（2026-04-03）
 
 **沙箱执行环境 + 外部 Case 获取**：
@@ -49,6 +140,11 @@
 - 修复：降级阶梯第 2 级「沙箱执行」从空口号变为可操作（有实际脚本支撑）
 - 修复：skill-tester 降级路径中「尝试 2」细化为沙箱脚本可用/不可用两条分支
 - 修复：test-designer 环境模拟方法库新增方法 4（沙箱执行），补充方法 1-3 的能力上限
+
+**新增能力（AI 测试资料包整合）**：
+- 新增：`reference-agent-evaluation-methodology.md`（Agent 智能体评测方法论）— 整合华为五维评测模型、支付宝行业智能体评测维度、字节 Agent 单元测试评分体系，提炼分层评测架构、种子集+扰动生成、Judge 辅助判定、鲁棒性测试等模式
+- 新增：`reference-test-case-templates.md`（测试用例模板与反模式参考）— 整合 qa-test-planner 8 种用例模板（标准/功能/UI/集成/安全/性能/回归/元测试）+ 5 类测试反模式清单（测试 Mock 行为/生产代码测试污染/不理解就 Mock/不完整 Mock/事后补充）+ 回归套件三层架构（Smoke/定向/全量）
+- 新增：Flow B 推荐测试工具 — playwright-cli（首选，多浏览器自动化/网络 Mock/截图/视频/无障碍树）+ chrome-cdp（辅助，SPA 动态扫描/真实浏览器连接），含工具选择决策树
 
 ---
 

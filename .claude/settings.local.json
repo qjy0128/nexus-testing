@@ -14,7 +14,20 @@
       "Bash(bash scripts/sandbox-create.sh --runtime both)",
       "Bash(bash scripts/sandbox-exec.sh --session-id 20260403-201520-0060cd --command \"node -e \\\\\"console.log\\('hello from sandbox'\\)\\\\\" --tag TC-TEST-01)",
       "Bash(bash -n scripts/sandbox-create.sh)",
-      "Bash(bash scripts/sandbox-exec.sh --session-id 20260403-201707-001c85 --command 'node -e \"console.log\\(JSON.stringify\\({hello: \\\\\"sandbox\\\\\"}\\)\\)\"')"
+      "Bash(bash scripts/sandbox-exec.sh --session-id 20260403-201707-001c85 --command 'node -e \"console.log\\(JSON.stringify\\({hello: \\\\\"sandbox\\\\\"}\\)\\)\"')",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -m pip list)",
+      "Bash(python -m pip list)",
+      "Bash(pip list:*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -c \"import fitz; print\\(fitz.__version__\\)\")",
+      "Bash(python3 -c \"import pymupdf; print\\(pymupdf.__version__\\)\")",
+      "Bash(ls \"d:/GoPlus/AI skill/nexus-testing/reference-agent\"*)",
+      "Bash(ls \"D:/GoPlus/AI skill/nexus-testing/roles/\"*.md)",
+      "Bash(ls \"D:/GoPlus/AI skill/nexus-testing/\"reference-*.md)",
+      "Bash(ls \"D:/GoPlus/AI skill/nexus-testing/flows/\"*.md)",
+      "Bash(python scripts/validate-framework.py)",
+      "Bash(ls \"d:/GoPlus/AI skill/nexus-testing/roles/\"*.md)"
     ]
   }
 }

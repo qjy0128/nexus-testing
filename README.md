@@ -1,143 +1,123 @@
 # Nexus Testing Framework
 
-基于 OpenClaw 平台的多类型 AI 测试编排框架。自动识别测试类型，调度 8 阶段标准化测试流程，通过并行 subagent 执行测试，产出结构化报告并提供 Go/No-Go 判定。
+基于 OpenClaw 的多类型 AI 测试编排框架。系统会识别用户的测试意图，并把任务分流到 Skill、网页+接口、安卓、MCP 四类流程，按阶段零到阶段七产出结构化测试文档和 Go/No-Go 结论。
 
-> 设计思路参考了 [agency-agents](https://github.com/msitarzewski/agency-agents) 项目。
+> 主入口是 [SKILL.md](SKILL.md)。阶段、角色、输出文件、门禁和超时配置以 [DEFINITIONS.md](DEFINITIONS.md) 为单一事实源。
+
+## 当前状态
+
+- Flow A（Skill 测试）已具备完整主流程，可直接作为标准用法。
+- Flow B（网页+接口）、Flow C（安卓）、Flow D（MCP）已补齐流程骨架、角色分工和参考模板，落地质量取决于目标环境、浏览器/设备能力和被测对象可访问性。
+- 仓库已补充自动自检脚本和 CI 校验，避免文档演进后再次出现版本漂移、断链或 frontmatter 缺失。
 
 ## 支持的测试类型
 
-> **注意**：Flow A（Skill 测试）已完善可正常使用。Flow B（网页+接口测试）、Flow C（安卓测试）、Flow D（MCP 测试）尚在开发中，流程和角色定义还未完善。
-
-| 测试类型 | Flow | 关键词 | 阶段五并行角色数 |
+| 测试类型 | Flow | 关键词 | 阶段五并行角色 |
 |---------|------|--------|----------------|
-| Skill 测试 | Flow A | Skill / skill | 2（skill-tester + security-tester） |
-| 网页+接口测试 | Flow B | 网页 / 页面 / web / 接口 / API | 5（functional + compatibility + security + performance + accessibility） |
-| 安卓测试 | Flow C | APK / 安卓 / android | 5（functional + compatibility + security + performance + reality-checker） |
-| MCP 测试 | Flow D | MCP / mcp | 4（mcp-tester + security + performance + reality-checker） |
+| Skill 测试 | Flow A | `Skill` / `skill` | 2 个：`skill-tester` + `security-tester` |
+| 网页+接口测试 | Flow B | `网页` / `页面` / `web` / `接口` / `API` | 5 个：`functional` + `compatibility` + `security` + `performance` + `accessibility` |
+| 安卓测试 | Flow C | `APK` / `安卓` / `android` | 5 个：`functional` + `compatibility` + `security` + `performance` + `reality-checker` |
+| MCP 测试 | Flow D | `MCP` / `mcp` | 4 个：`mcp-tester` + `security` + `performance` + `reality-checker` |
 
-系统根据用户输入的关键词自动识别测试类型并路由到对应 Flow。支持同时请求多种测试类型时选择串行或并行执行。
+系统支持在识别到多种测试类型时让用户选择串行、并行或只测其中一种。
 
 ## 工作模式
 
-**生成模式（默认）**：从零创建测试计划、设计用例、执行测试、输出报告。
+- 生成模式：从需求解析开始，完整执行阶段零到阶段七。
+- 评审模式：只审查已有测试报告或文档，不触发标准测试流程。
 
-**评审模式**：对已有的测试报告或文档进行符合性检查，输出评审报告（含必改项 / 建议项 / 可选项）。
+## 标准执行流程
 
-## 8 阶段执行流程
-
-```
-阶段零：环境就绪检查 → 强制执行，等待用户确认
-阶段一：需求解析 → 生成 SPEC.md
-阶段二：质量评估 → 生成 PRODUCT-QUALITY-REVIEW.md → 需用户批准
-阶段三：测试设计 → 生成 TEST-DESIGN.md
-阶段四：用例评估 → 生成 TEST-CASE-REVIEW.md → 需用户批准
-阶段五：并行测试执行 → 各测试工程师 subagent 并行执行
-       ↓
-阶段五后：证据收集 → evidence-collector（所有 subagent 完成后执行）
-       ↓
-阶段六：缺陷分析 → DEFECTS/DEFECT-REPORT.md（支持打回，最多 3 轮）
-阶段七：报告整合 → FINAL-TEST-REPORT.md（含 Go/No-Go 判定）
+```text
+阶段零：环境就绪检查 -> 等待用户确认
+阶段一：需求解析 -> SPEC.md
+阶段二：质量评估 -> PRODUCT-QUALITY-REVIEW.md -> 等待用户批准
+阶段三：测试设计 -> TEST-DESIGN.md
+阶段四：用例评估 -> TEST-CASE-REVIEW.md -> 等待用户批准
+阶段五：并行测试执行 -> TEST-EXECUTION/*.md
+阶段五后：证据收集 -> DEFECTS/evidence-collection.md
+阶段六：缺陷分析 -> DEFECTS/DEFECT-REPORT.md
+阶段七：报告整合 -> FINAL-TEST-REPORT.md
 ```
 
-### Flow B 双模式
+Flow B 支持双模式：
+- A 模式：文档完整时走标准 8 阶段。
+- B 模式：文档不全或需要深度体验时，插入双边体验、交叉核对、争议复检三个扩展阶段，总计 11 个阶段（B-阶段零~十）。
 
-Flow B 支持 A 模式（文档完整，标准 8 阶段）和 B 模式（文档不全，10 阶段）。B 模式在标准阶段间插入双边深度体验、交叉核对、争议复检三个独有阶段，由 experience-tester-a 和 experience-tester-b 独立探索后交叉验证。
+## 快速开始
+
+1. 把这个仓库作为 OpenClaw Skill 项目打开，入口文件为 [SKILL.md](SKILL.md)。
+2. 按被测对象类型准备输入：
+   - Skill：源码路径或 `SKILL.md`
+   - Web/API：URL、接口文档、页面截图
+   - Android：`.apk` 路径
+   - MCP：Server 地址、连接方式、JSON-RPC 信息
+3. 让主 agent 先执行阶段零环境就绪检查，确认输出目录、依赖环境和工具能力可用。
+4. 按阶段门禁推进。阶段二和阶段四必须等待用户显式批准。
+
+## 仓库自检
+
+运行：
+
+```bash
+python scripts/validate-framework.py
+```
+
+当前会校验：
+- 核心文件、Flow 文件、沙箱脚本和治理文件是否齐全
+- 所有 Markdown 本地链接是否有效
+- `SKILL.md` 和 `roles/*.md` 的 frontmatter 是否完整
+- `README.md` 的当前版本是否与 `CHANGELOG.md` 最新版本一致
+- `.gitignore` 是否覆盖运行期产物
+- Flow 文件是否保留对 `DEFINITIONS.md` 的单一事实源声明
+- 活跃角色文档中是否混入易漂移的内联版本号
+
+CI 也会在 GitHub Actions 中自动执行该校验，并对三个沙箱脚本做 `bash -n` 语法检查。
 
 ## 项目结构
 
-```
+```text
 nexus-testing/
-├── SKILL.md                            # 主入口，测试编排器
-├── DEFINITIONS.md                      # 单一事实源（阶段/角色/超时/Token 等统一定义）
-├── CHANGELOG.md                        # 版本变更记录
-├── flows/                              # 测试流程定义
-│   ├── skill-testing.md                # Flow A：Skill 测试
-│   ├── web-api-testing.md              # Flow B：网页+接口测试
-│   ├── android-testing.md              # Flow C：安卓 APK 测试
-│   └── mcp-testing.md                  # Flow D：MCP Server 测试
-├── roles/                              # 角色定义（19 个）
-│   ├── requirement-analyst.md          # 需求解析师
-│   ├── quality-assessor.md             # 质量评估师
-│   ├── test-designer.md                # 测试设计师
-│   ├── test-case-evaluator.md          # 用例评估师
-│   ├── defect-analyst.md               # 缺陷分析师
-│   ├── report-integrator.md            # 报告整合师
-│   ├── skill-tester.md                 # Skill 测试工程师（Flow A）
-│   ├── security-tester.md              # 安全测试工程师（Flow A/B/C/D）
-│   ├── functional-tester.md            # 功能测试工程师（Flow B/C）
-│   ├── compatibility-tester.md         # 兼容性测试工程师（Flow B/C/D）
-│   ├── performance-tester.md           # 性能测试工程师（Flow B/C/D）
-│   ├── accessibility-auditor.md        # 无障碍审计工程师（Flow B）
-│   ├── mcp-tester.md                   # MCP 测试工程师（Flow D）
-│   ├── reality-checker.md              # 真实场景测试工程师（Flow C/D）
-│   ├── experience-tester-a.md          # 体验工程师 A（Flow B 模式）
-│   ├── experience-tester-b.md          # 体验工程师 B（Flow B 模式）
-│   ├── evidence-collector.md           # 证据收集工程师
-│   ├── tool-evaluator.md               # 工具评估（按需触发）
-│   └── workflow-optimizer.md           # 流程优化（按需触发）
-├── reference-approval-mechanism.md     # 批准机制完整规范
-├── reference-flow-skill.md             # Flow A 用例模板
-├── reference-flow-web-api.md           # Flow B 用例模板
-├── reference-flow-android.md           # Flow C 用例模板
-├── reference-flow-mcp.md              # Flow D 用例模板
-├── reference-report-format.md          # 报告格式与占位符规范
-├── reference-security-blacklist.md     # XSS 注入字符黑名单
-└── reference-security-scan.md          # 六阶段安全扫描规范
+├── SKILL.md
+├── DEFINITIONS.md
+├── CHANGELOG.md
+├── flows/
+├── roles/
+├── scripts/
+├── .github/workflows/validate-framework.yml
+├── reference-*.md
+└── memory/nexus-reports/{date}-{test-type}-{flow}/
 ```
+
+角色目录当前包含：
+- 19 个活跃角色文件
+- 1 个废弃兼容模板：[roles/compatibility-tester-skill.md](roles/compatibility-tester-skill.md)
 
 ## 报告输出
 
-所有测试报告输出到 `memory/nexus-reports/{date}-{test-type}-{flow}/`：
+所有测试报告输出到 `memory/nexus-reports/{date}-{test-type}-{flow}/`，其中核心交付物包括：
 
-```
-{date}-{test-type}-{flow}/
-├── SPEC.md                          # 阶段一：需求规格
-├── PRODUCT-QUALITY-REVIEW.md        # 阶段二：质量评估
-├── TEST-DESIGN.md                   # 阶段三：测试设计
-├── TEST-CASE-REVIEW.md              # 阶段四：用例评估
-├── TEST-EXECUTION/                  # 阶段五：各角色测试结果
-│   ├── skill-results.md
-│   ├── security-results.md
-│   └── ...
-├── DEFECTS/                         # 阶段六：缺陷报告
-│   ├── DEFECT-REPORT.md
-│   └── evidence/
-├── FINAL-TEST-REPORT.md             # 阶段七：最终报告
-└── archive/                         # 复测归档
-```
+- `SPEC.md`
+- `PRODUCT-QUALITY-REVIEW.md`
+- `TEST-DESIGN.md`
+- `TEST-CASE-REVIEW.md`
+- `TEST-EXECUTION/*.md`
+- `DEFECTS/DEFECT-REPORT.md`
+- `FINAL-TEST-REPORT.md`
 
-## 关键特性
+更完整的目录结构和文件职责见 [DEFINITIONS.md](DEFINITIONS.md) 第三节。
 
-### 真实执行原则（反偷懒机制）
+## 维护约定
 
-每个测试用例必须包含执行证明：具体执行动作、真实输入参数、真实输出结果、判定结论。读文档不等于测试，静态分析不等于验证。环境不足时按 5 级降级阶梯执行（真实执行 → 沙箱 → 模拟 → 部分 → 静态分析），禁止直接跳过。
+- 统一定义只写在 [DEFINITIONS.md](DEFINITIONS.md)，`SKILL.md`、`flows/`、`roles/` 只做引用和场景化补充。
+- 运行期文件写入 `memory/nexus-reports/`、`.nexus-sandbox/`、`.nexus-hmac-salt`，不要把这些产物提交回仓库。
+- 任何修改入口、流程、角色或参考文档后，都应先跑一次 `python scripts/validate-framework.py`。
+- Shell 脚本默认按 LF 换行维护，避免在 Git Bash / Linux 环境中出现执行异常。
 
-执行率要求：≥90% 正常通过，70%-89% 标注覆盖不足，50%-69% 强制打回，<50% 直接 No-Go。
+## 支持渠道
 
-### 阶段门禁
-
-阶段二和阶段四必须等待用户显式批准后才可推进。每阶段最多拒绝 3 次，第 3 次自动 No-Go。拒绝计数通过 HMAC-SHA256 签名防篡改。每次阶段转换写入审计日志。
-
-### 并行执行
-
-阶段五的所有测试工程师 subagent 同时启动、独立计时（单次上限 15 分钟），互不等待。evidence-collector 在所有 subagent 完成后独立执行。
-
-### 六阶段安全扫描
-
-覆盖提示词注入、恶意代码、凭证泄露、结构命令、供应链、权限审计六个维度，产出 SAFE / REVIEW / BLOCKED 三级判定。
-
-### 缺陷打回闭环
-
-阶段六发现缺陷后可打回阶段五重新测试，最多 3 轮。修复后支持增量复测：P0 全量重跑、P1 关联模块复测、P2/P3 单用例复测。
-
-### 回归套件
-
-自动从测试结果中提取四级回归套件：Smoke（15-30min，核心路径）、Sanity（10-15min，热修复验证）、Targeted（30-60min，变更影响范围）、Full（2-4h，全量）。
-
-## 支持的渠道
-
-Telegram、飞书、QQ、微信。微信和 QQ 采用"先文字后文件"的降级发送策略。
+Telegram、飞书、QQ、微信。微信和 QQ 使用“先文字后文件”的降级发送策略。
 
 ## 当前版本
 
-v0.9.8 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.13 — 详见 [CHANGELOG.md](CHANGELOG.md)

@@ -1,0 +1,32 @@
+# Generated test artifacts
+/memory/nexus-reports/
+
+# Local sandbox state
+/.nexus-sandbox/
+/.nexus-hmac-salt
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node.js (may be present if tested skills use npm)
+node_modules/
+package-lock.json
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
+Desktop.ini

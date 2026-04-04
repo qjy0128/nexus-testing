@@ -1,5 +1,7 @@
 # 流程 D：MCP Server 测试
 
+> **所有阶段、角色、输出文件、超时配置均以 `DEFINITIONS.md` 为单一事实源。**
+
 ## 触发条件
 用户请求测试 MCP Server（包含 "MCP"、"mcp" 关键词）
 
@@ -7,6 +9,20 @@
 验证 MCP Server 的协议合规性、工具列表完整性、JSON-RPC 调用、错误码处理、并发稳定性
 
 ## 执行步骤
+
+### 阶段零：环境就绪检查
+**执行角色**：主 agent
+
+输入：MCP Server 地址 / 源码
+输出：环境就绪报告（内存中）
+任务：
+- 基础检查：MCP Server 地址是否可连接、JSON-RPC 端口是否开放
+- 依赖环境检测：扫描 Server 实现文档或源码，识别所需的运行时依赖（Node.js / Python / Docker 等）
+- 通用检查：输出目录可写性、渠道配置
+
+> **注意**：阶段零检测项详见 `SKILL.md` 阶段零「Flow D MCP Server 可连接性检测」。
+
+**需用户确认后才能进入阶段一**
 
 ### 阶段一：需求解析
 **执行角色**：`roles/requirement-analyst.md`
@@ -88,7 +104,10 @@
 - 断连重连测试
 - 超时处理
 
+
+> **沙箱执行**：当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师可使用沙箱隔离执行 MCP Server 启动、JSON-RPC 调用、协议测试等操作。沙箱规格详见 `reference-sandbox-spec.md`。
 **证据收集**（独立角色，非并行）：
+
 `roles/evidence-collector.md` 在阶段五所有 subagent 完成后执行一次性验证，收集证据并输出到 `DEFECTS/evidence-collection.md`
 
 **文件发送要求**：每个角色的交付物必须单独发送，并附带内容摘要和下一步说明。
@@ -106,6 +125,5 @@
 
 输入：所有测试结果
 输出：
-- `DEFECTS/DEFECT-REPORT.md`（缺陷分析师）
 - `FINAL-TEST-REPORT.md`（报告整合师）
 任务：缺陷定级、汇总所有问题、输出 Go/No-Go 建议

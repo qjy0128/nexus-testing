@@ -51,13 +51,15 @@
 │   ├── progress-{角色}.txt         # 进度文件（动态生成）
 │   ├── skill-results.md             # Flow A 必出
 │   ├── security-results.md           # Flow A/D 必出
-│   ├── compatibility-results.md      # Flow B/C/D 必出
-│   ├── performance-results.md        # Flow D 必出
+│   ├── compatibility-results.md      # Flow B/C 必出
+│   ├── performance-results.md        # Flow B/C/D 必出
 │   ├── mcp-results.md               # Flow D 必出
-│   ├── android-results.md            # Flow C 必出
-│   └── evidence-collection.md       # 证据收集（阶段五后执行）
+│   ├── functional-results.md          # Flow B/C 必出
+│   ├── accessibility-results.md       # Flow B 必出
+│   ├── reality-results.md             # Flow C/D 必出
 ├── DEFECTS/
 │   ├── DEFECT-REPORT.md             # 阶段六
+│   ├── evidence-collection.md       # 证据收集（阶段五后执行）
 │   ├── evidence/                    # 缺陷证据截图/日志
 │   └── rejection-records.md          # 拒绝记录
 ├── FINAL-TEST-REPORT.md             # 阶段七
@@ -69,7 +71,7 @@
 - `{date}`、`{test-type}`、`{flow}` 三者缺一不可
 - Flow/Role 文档引用报告路径时，必须保留完整模板，禁止省略 `{flow}`
 
-**Flow B B 模式扩展文件**（双边体验流程特有）：
+**Flow B（B 模式）扩展文件**（双边体验流程特有）：
 ```
 {date}-{test-type}-{flow}/
 ├── EXPERIENCE/
@@ -96,7 +98,7 @@
 
 ### Flow B 双模式阶段定义（B 模式扩展）
 
-Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）。**A 模式严格遵循标准 8 阶段（阶段零~七）**。B 模式在标准阶段之间插入 3 个独有阶段，总计 10 个阶段：
+Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）。**A 模式严格遵循标准 8 阶段（阶段零~七）**。B 模式在标准阶段之间插入 3 个独有阶段，总计 11 个阶段（B-阶段零~十）：
 
 | B 模式阶段编号 | 对应主框架阶段 | 内容 | 执行者 | 需批准 |
 |--------------|-------------|------|--------|--------|
@@ -145,13 +147,13 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 | 角色 | 读取文件 | 输出文件 | Flow |
 |------|---------|---------|------|
 | skill-tester | `SPEC.md`、`TEST-DESIGN.md`、Skill 源码 | `TEST-EXECUTION/skill-results.md` | A |
-| security-tester | `SPEC.md`、Skill 源码、测试日志 | `TEST-EXECUTION/security-results.md` | A/D |
+| security-tester | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/security-results.md` | A/B/C/D |
 | functional-tester | `SPEC.md`、`TEST-DESIGN.md` | `TEST-EXECUTION/functional-results.md` | B/C |
-| compatibility-tester | `SPEC.md`、框架输出样本 | `TEST-EXECUTION/compatibility-results.md` | B/C |
-| performance-tester | `SPEC.md`、执行日志 | `TEST-EXECUTION/performance-results.md` | B/C/D |
-| accessibility-auditor | `SPEC.md`、界面截图 | `TEST-EXECUTION/accessibility-results.md` | B |
+| compatibility-tester | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/compatibility-results.md` | B/C |
+| performance-tester | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/performance-results.md` | B/C/D |
+| accessibility-auditor | `SPEC.md`、`TEST-DESIGN.md`、目标 URL / 页面截图 | `TEST-EXECUTION/accessibility-results.md` | B |
 | mcp-tester | `SPEC.md`、MCP Server | `TEST-EXECUTION/mcp-results.md` | D |
-| reality-checker | `SPEC.md`、执行结果 | `TEST-EXECUTION/reality-results.md` | C/D |
+| reality-checker | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/reality-results.md` | C/D |
 | evidence-collector | 监听 `TEST-EXECUTION/` 目录 | `DEFECTS/evidence-collection.md` | 全部 |
 
 ---

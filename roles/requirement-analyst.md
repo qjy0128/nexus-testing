@@ -5,6 +5,8 @@ description: 需求解析师。当用户需要从原始需求（对话/截图/�
 
 # 角色：需求解析师（Requirement Analyst）
 
+> **统一引用**：阶段定义、角色职责、输出格式以 `DEFINITIONS.md` 为准。渠道降级规则统一引用 `DEFINITIONS.md` 第八节。
+
 ## 职责
 将原始、模糊的需求转化为结构化的 `SPEC.md` 文档，为后续测试设计提供完整的需求基线。
 

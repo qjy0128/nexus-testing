@@ -38,7 +38,7 @@ description: Nexus AI 测试体系入口。按测试类型自动分流，支持 
 • ...
 
 请选择测试方式：
-1.【串行】逐个完成六阶段，再进入下一个（适合时间紧张）
+1.【串行】逐个完成八阶段（阶段零~七），再进入下一个（适合时间紧张）
 2.【并行】同时启动多个测试流程（适合时间充裕）
 3.【只测】我只测其中一个（请指定类型）
 ```
@@ -337,7 +337,7 @@ evidence-collector 执行（独立步骤，不参与并行）
 | skill-tester | `SPEC.md`、`TEST-DESIGN.md`、Skill 源码 | `TEST-EXECUTION/skill-results.md` | 含渠道适配检测 |
 | security-tester | `SPEC.md`、Skill 源码 | `TEST-EXECUTION/security-results.md` | 含工具调用安全检测 |
 | evidence-collector | 监听所有测试输出 | `DEFECTS/evidence-collection.md` | 阶段五所有 subagent 完成后执行 |
-| compatibility-tester | `SPEC.md`、框架输出样本 | `TEST-EXECUTION/compatibility-results.md` | **Flow B/C/D 专用，Flow A 不使用** |
+| compatibility-tester | `SPEC.md`、框架输出样本 | `TEST-EXECUTION/compatibility-results.md` | **Flow B/C 专用，Flow A/D 不使用** |
 
 ### 上下文传递（文件系统）
 
@@ -531,7 +531,7 @@ evidence-collector 执行（独立步骤，不参与并行）
 3. 批准请求 **只发一次**，禁止重复发送
 4. 收到批准后，**才开始** 执行下一阶段并生成其交付物
 5. 禁止将两个阶段的输出合并在同一条消息中发送
-6. **自动推进阶段（阶段一、三、五、六）同样必须独立发送交付物**：即使不需要显式批准，也必须先单独发送阶段 N 的交付物，再执行阶段 N+1。自动推进 = 不需要批准 ≠ 可以合并执行
+6. **自动推进阶段（阶段零、一、三、五、六）同样必须独立发送交付物**：即使不需要显式批准，也必须先单独发送阶段 N 的交付物，再执行阶段 N+1。自动推进 = 不需要批准 ≠ 可以合并执行
 
 **❌ 禁止的错误模式（阶段三→四最常见，必须避免）**：
 ```
@@ -572,6 +572,8 @@ evidence-collector 执行（独立步骤，不参与并行）
 | `reference-security-scan.md` | 六阶段安全扫描（提示词注入/恶意代码/凭证泄露/结构命令/供应链/权限审计）+ BLOCKED/REVIEW/SAFE 判定体系 + 外部工具集成 | Skill 安装前安全门禁、安全测试时 |
 | `reference-sandbox-spec.md` | 沙箱执行环境规格（目录结构/生命周期/安全边界/集成点） | 阶段零环境检测、阶段五沙箱执行时 |
 | `reference-external-case-sourcing.md` | 外部测试用例获取规范（搜索策略/评估标准/集成流程） | 阶段三测试设计时 |
+| `reference-agent-evaluation-methodology.md` | Agent 智能体评测方法论（华为/支付宝/字节实践经验提炼） | 被测产品为 AI Agent/Skill 时 |
+| `reference-test-case-templates.md` | 测试用例模板（8 种类型）+ 测试反模式清单（5 类）+ 回归套件架构 | 阶段三设计用例、阶段五审计执行证明时 |
 | `reference-approval-mechanism.md` | 批准/拒绝/HMAC/打回/No-Go 完整规范 | 阶段二/四批准时 |
 | `reference-flow-skill.md` | Flow A（Skill 测试）详细用例模板 | 执行 Skill 测试时 |
 | `reference-flow-web-api.md` | Flow B（网页+接口）详细用例模板 | 执行网页/接口测试时 |

@@ -1,0 +1,32 @@
+name: Validate Framework
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate repository structure
+        run: python scripts/validate-framework.py
+
+      - name: Check sandbox-create syntax
+        run: bash -n scripts/sandbox-create.sh
+
+      - name: Check sandbox-exec syntax
+        run: bash -n scripts/sandbox-exec.sh
+
+      - name: Check sandbox-cleanup syntax
+        run: bash -n scripts/sandbox-cleanup.sh

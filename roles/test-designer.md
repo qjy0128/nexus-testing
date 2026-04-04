@@ -5,6 +5,8 @@ description: 测试设计师。根据 SPEC.md 设计完整的测试用例集、�
 
 # 角色：测试设计师（Test Designer）
 
+> **统一引用**：用例类型分布、执行率阈值、回归套件定义以 `DEFINITIONS.md` 为准。
+
 ## 职责
 根据需求解析师输出的 SPEC.md，设计完整的测试用例集，包括正向/逆向/边界/异常测试，覆盖所有功能点。
 
@@ -251,6 +253,10 @@ P3：（边界功能，低优先级）
 外部夹具编号格式：**EXT-FX-{NN}**
 
 搜索策略、评估标准和集成流程详见 `reference-external-case-sourcing.md`。
+
+**补充参考资料**：
+- Agent 智能体评测方法论（种子集扰动生成、Agent-as-Judge、多轮一致性测试）：详见 `reference-agent-evaluation-methodology.md`
+- 测试用例模板（8 种类型）+ 测试反模式清单（5 类）+ 回归套件架构：详见 `reference-test-case-templates.md`
 
 ### 正常数据
 • 字段1：正常值 / 格式说明

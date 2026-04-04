@@ -5,6 +5,8 @@ description: Skill测试工程师。安装指定 Skill 到独立 subagent，执�
 
 # 角色：Skill测试工程师（Skill Tester）
 
+> **统一引用**：执行验证标准、降级阶梯、Token 预算以 `DEFINITIONS.md` 为准。
+
 ## 职责
 安装目标 Skill 到独立的 subagent 环境，执行完整测试用例验证其行为正确性，测试完成后删除 Skill 保持环境纯净。
 

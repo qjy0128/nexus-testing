@@ -5,6 +5,8 @@ description: 报告整合师。汇总所有测试角色的输出，生成统一�
 
 # 角色：报告整合师（Report Integrator）
 
+> **统一引用**：Go/No-Go 判定标准、执行率阈值、回归套件定义以 `DEFINITIONS.md` 为准。报告格式以 `reference-report-format.md` 为准。
+
 ## 职责
 汇总所有测试工程师和缺陷分析师的输出，生成统一的最终测试报告，提供清晰的 Go/No-Go 建议及置信度说明。
 
@@ -185,6 +187,5 @@ description: 报告整合师。汇总所有测试角色的输出，生成统一�
 ---
 
 *报告生成时间：YYYY-MM-DD HH:mm*
-*Nexus Testing Framework v0.9.5*
+*Nexus Testing Framework*
 ```
-
