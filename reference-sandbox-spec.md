@@ -338,3 +338,299 @@ TC-XX：（用例名称）
 - 沙箱 workspace 是标准文件系统目录，OpenClaw 的 Read/Write/Glob/Grep 工具可直接操作
 - 沙箱脚本通过 Bash 工具调用，无需额外权限
 - 多次测试的沙箱 session 互相隔离，不会冲突
+
+---
+
+## 九、Skill 调用模拟（sandbox-skill-invoke）
+
+> **定位**：降级阶梯第 1-2 级的核心实现。让测试工程师能像用户一样"调用" Skill，而非仅读文档。
+
+### 解决什么问题
+
+当前沙箱只能执行 shell 命令。但 Skill 测试需要：
+- 将 Skill 安装到隔离环境
+- 模拟用户发送触发消息
+- 追踪 Skill 的决策树和工具调用链
+- 捕获每个工具的参数和返回值
+- 验证最终输出是否符合预期
+
+### 三种模式
+
+| 模式 | 说明 | 降级阶梯 | 需要 OpenClaw CLI |
+|------|------|---------|------------------|
+| `live` | 通过 OpenClaw CLI 真实调用 Skill | 第 1 级（真实调用） | ✅ 是 |
+| `trace` | 解析 SKILL.md，追踪决策树，记录"会调用什么工具" | 第 2 级（追踪调用） | ❌ 否 |
+| `dry-run` | 仅安装 Skill 并验证结构，不调用 | 安装验证 | ❌ 否 |
+
+### 命令参考
+
+```bash
+bash scripts/sandbox-skill-invoke.sh \
+  --session-id ID \
+  --skill-path /path/to/skill \
+  --message "用户消息" \
+  --channel telegram|feishu|qq|wechat \
+  --mode live|dry-run|trace \
+  --timeout 60
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--session-id` | 必填 | 沙箱 session ID |
+| `--skill-path` | 必填 | Skill 目录或 SKILL.md 路径 |
+| `--message` | 必填（非 dry-run） | 模拟的用户消息 |
+| `--channel` | `telegram` | 模拟的渠道 |
+| `--mode` | `trace` | 执行模式 |
+| `--timeout` | `60` | 超时秒数 |
+
+### 输出
+
+```
+INVOKE_STATUS=success|failure|timeout|trace-complete|dry-run-complete
+TRIGGER_MATCHED=true|false|unknown
+TOOLS_CALLED=tool1,tool2,tool3
+TOOL_TRACE_FILE=logs/{timestamp}-invoke-trace.json
+OUTPUT_FILE=workspace/outputs/{timestamp}-response.md
+CHANNEL_RENDER_FILE=workspace/outputs/{timestamp}-channel-{channel}.md
+```
+
+### 调用追踪日志格式（invoke-trace.json）
+
+```json
+{
+  "mode": "trace",
+  "timestamp": "2026-04-05T10:30:00",
+  "skillName": "my-skill",
+  "skillPath": ".nexus-sandbox/{session}/workspace/skills/my-skill",
+  "message": "用户消息",
+  "channel": "telegram",
+  "triggerMatched": true,
+  "triggerAnalysis": "Found 3 trigger conditions: [...]",
+  "toolsCalled": ["Read", "web_fetch", "Write"],
+  "traceSteps": [
+    {"step": 1, "action": "trigger_match", "detail": "Message matched trigger: ...", "tools": []},
+    {"step": 2, "action": "tool_call_trace", "detail": "Would call tool: Read", "tools": ["Read"]},
+    {"step": 3, "action": "tool_call_trace", "detail": "Would call tool: web_fetch", "tools": ["web_fetch"]}
+  ],
+  "expectedOutput": "...",
+  "channelAdaptation": "Markdown rendering supported, max 4096 chars",
+  "status": "trace-complete"
+}
+```
+
+### 执行证明格式（调用测试专用）
+
+```
+TC-XX：（用例名称）
+  能力：CAP-XX
+  调用：sandbox-skill-invoke --session-id {ID} --message "..." --channel telegram --mode trace
+  触发匹配：true/false
+  工具调用链：[tool1(param=val), tool2(param=val)]
+  调用追踪：（粘贴 invoke-trace.json 关键内容）
+  实际输出：（粘贴 response.md 内容）
+  预期输出：（来自 TEST-DESIGN.md）
+  Token 消耗：XXX（live 模式可测量，trace 模式标注"追踪模式不可测"）
+  判定：✅ 通过 / ❌ 失败（原因：xxx）
+```
+
+### 降级行为
+
+| 场景 | 处理 |
+|------|------|
+| live 模式但 OpenClaw CLI 不可用 | 自动降级为 trace 模式，记录降级原因 |
+| trace 模式但 Python 不可用 | 降级为最小追踪（仅记录工具声明列表） |
+| Skill 安装失败 | 记录失败原因，该用例标记为"安装失败" |
+| 触发匹配无法判定 | 标记为 `unknown`，由测试工程师人工判断 |
+
+---
+
+## 十、多轮对话模拟（sandbox-multi-turn）
+
+> **定位**：ST-4（交互对话型）Skill 的专用测试工具。验证多轮对话中的上下文保持、话题切换、上下文溢出。
+
+### 命令参考
+
+```bash
+bash scripts/sandbox-multi-turn.sh \
+  --session-id ID \
+  --skill-path /path/to/skill \
+  --conversation-file workspace/fixtures/conversation-script.json \
+  --channel telegram \
+  --timeout-per-turn 60
+```
+
+### 对话脚本格式（conversation-script.json）
+
+```json
+{
+  "description": "测试上下文保持：5轮对话，第3轮引用第1轮内容",
+  "turns": [
+    {
+      "role": "user",
+      "message": "帮我查一下北京今天的天气",
+      "expect_trigger": true,
+      "expect_tools": ["web_fetch"]
+    },
+    {
+      "role": "user",
+      "message": "那明天呢？",
+      "expect_trigger": true,
+      "expect_context_from_turn": 1
+    },
+    {
+      "role": "user",
+      "message": "上海的呢？",
+      "expect_trigger": true
+    },
+    {
+      "role": "user",
+      "message": "刚才北京今天几度来着？",
+      "expect_trigger": true,
+      "expect_context_from_turn": 1
+    },
+    {
+      "role": "user",
+      "message": "完全不相关的话题：推荐一首歌",
+      "expect_trigger": false
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `role` | 固定为 `user` |
+| `message` | 用户发送的消息 |
+| `expect_trigger` | 是否期望 Skill 被触发 |
+| `expect_tools` | 期望调用的工具列表（可选） |
+| `expect_context_from_turn` | 期望响应引用第 N 轮的上下文（可选） |
+
+### 输出
+
+```
+MULTI_TURN_STATUS=all-passed|partial-pass|all-failed
+TOTAL_TURNS=5
+PASSED_TURNS=4
+FAILED_TURNS=1
+CONTEXT_PRESERVATION=verified|partial|failed|not-tested
+LOG_FILE=logs/{timestamp}-multi-turn.json
+SUMMARY_FILE=workspace/outputs/{timestamp}-multi-turn-summary.md
+```
+
+### 与降级阶梯的关系
+
+多轮对话模拟底层调用 `sandbox-skill-invoke.sh`（trace 模式），因此：
+- 当 trace 模式可用时，多轮模拟等同于降级阶梯第 2 级
+- 当 Python 不可用时，多轮模拟不可执行，降级为手动构造多轮输入/输出
+
+---
+
+## 十一、外部服务 Mock（sandbox-mock-service）
+
+> **定位**：ST-2（数据获取型）Skill 依赖外部 API 时的测试支撑。创建可预期的 mock 响应文件，覆盖成功/超时/错误/空数据等场景。
+
+### 设计说明
+
+本脚本**不启动真实的 HTTP 服务器**（避免端口冲突和权限问题），而是：
+1. 根据配置文件在沙箱中创建 mock 响应文件
+2. 测试工程师在构造 Skill 调用参数时，引用这些 mock 文件作为模拟数据
+3. 通过对比 Skill 对不同 mock 响应的处理行为，验证错误处理和降级能力
+
+### 命令参考
+
+```bash
+# 启动 mock（创建响应文件）
+bash scripts/sandbox-mock-service.sh \
+  --session-id ID \
+  --mock-config workspace/fixtures/mock-services.json \
+  --action start
+
+# 查看状态
+bash scripts/sandbox-mock-service.sh --session-id ID --action status
+
+# 停止（标记为停用）
+bash scripts/sandbox-mock-service.sh --session-id ID --action stop
+```
+
+### Mock 配置格式（mock-services.json）
+
+```json
+{
+  "services": [
+    {
+      "name": "weather-api",
+      "scenarios": [
+        {
+          "name": "success",
+          "status": 200,
+          "headers": {"Content-Type": "application/json"},
+          "body": {"city": "Beijing", "temp": 25, "condition": "sunny"}
+        },
+        {
+          "name": "timeout",
+          "status": 0,
+          "error": "connection_timeout",
+          "delay_ms": 30000
+        },
+        {
+          "name": "server-error",
+          "status": 500,
+          "body": {"error": "internal server error"}
+        },
+        {
+          "name": "empty-response",
+          "status": 200,
+          "body": {}
+        },
+        {
+          "name": "rate-limited",
+          "status": 429,
+          "headers": {"Retry-After": "60"},
+          "body": {"error": "rate limit exceeded"}
+        },
+        {
+          "name": "malformed-json",
+          "status": 200,
+          "raw_body": "not valid json {{"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 目录结构
+
+```
+workspace/mocks/
+├── registry.json                    # Mock 服务注册表
+├── weather-api/
+│   ├── success.json                # 成功响应
+│   ├── timeout.json                # 超时场景
+│   ├── server-error.json           # 服务端错误
+│   ├── empty-response.json         # 空数据
+│   ├── rate-limited.json           # 限流
+│   └── malformed-json.json         # 畸形响应
+└── {other-service}/
+    └── ...
+```
+
+### 测试工程师使用方式
+
+在测试用例中：
+1. 启动 mock（`--action start`）
+2. 读取 mock 文件内容作为模拟的 API 响应
+3. 将 mock 数据作为 Skill 的输入或环境变量
+4. 观察 Skill 对不同场景的处理行为
+5. 停止 mock（`--action stop`）
+
+**执行证明格式**：
+```
+TC-XX：（外部服务降级测试）
+  Mock 场景：weather-api/timeout
+  Mock 数据：（粘贴 timeout.json 内容）
+  Skill 输入：（传入的触发消息）
+  Skill 实际行为：（Skill 如何处理超时——重试/降级/报错）
+  预期行为：友好提示"数据源暂不可用"
+  判定：✅ / ❌
+```
