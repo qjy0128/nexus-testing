@@ -16,9 +16,9 @@ from pathlib import Path
 from sandbox_skill_invoke.core import (
     PROJECT_DIR,
     bool_text,
-    compute_source_fingerprint,
     detect_command,
     extract_skill_name,
+    install_skill_source,
     kv,
     parse_int_list,
     read_declared_tools,
@@ -29,6 +29,7 @@ from sandbox_skill_invoke.core import (
     sanitize_name,
     session_relative,
     shell_quote_path,
+    snapshot_skill_source,
     write_text,
 )
 from sandbox_skill_invoke.adapter import detect_adapter
@@ -93,7 +94,11 @@ def main() -> int:
     skill_dir, skill_md = resolve_skill_path(args.skill_path)
     skill_name = extract_skill_name(skill_md)
     skill_name_safe = sanitize_name(skill_name)
-    source_fingerprint = compute_source_fingerprint(skill_dir)
+    try:
+        source_snapshot = snapshot_skill_source(skill_dir)
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: {exc}")
+    source_fingerprint = source_snapshot.fingerprint
     verifier_manifest = load_verifier_manifest(args.verification_manifest, skill_dir)
     if args.verification_manifest and not verifier_manifest.get("available"):
         raise SystemExit(f"ERROR: {verifier_manifest.get('error', 'invalid verification manifest')}")
@@ -101,7 +106,7 @@ def main() -> int:
     if not (skill_target / "SKILL.md").exists():
         if skill_target.exists():
             shutil.rmtree(skill_target)
-        shutil.copytree(skill_dir, skill_target)
+        install_skill_source(source_snapshot, skill_target)
         install_status = "installed"
     else:
         install_status = "reused"

@@ -9,9 +9,10 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
+
+from test_helpers import make_temp_root
 
 ROOT = Path(__file__).resolve().parents[1]
 EXEC_SCRIPT = ROOT / "scripts" / "sandbox-exec.sh"
@@ -261,7 +262,7 @@ def main() -> int:
         return 0
 
     bash = find_runnable_bash()
-    temp_root = Path(tempfile.mkdtemp(prefix="nexus-sandbox-exec-"))
+    temp_root = make_temp_root("nexus-sandbox-exec-")
     try:
         sandbox_root = temp_root / "sandbox"
         sandbox_root.mkdir(parents=True, exist_ok=True)

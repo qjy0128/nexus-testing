@@ -3,6 +3,8 @@
 
 # Local sandbox state
 /.nexus-sandbox/
+/.tmp-test-runs/
+/.tmp-validation/
 
 # Python cache
 __pycache__/

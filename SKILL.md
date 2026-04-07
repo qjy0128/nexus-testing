@@ -61,7 +61,7 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 
 ## 三、单一事实源
 
-> 所有阶段、角色、目录、超时、并行角色、门禁和执行率阈值均以 `DEFINITIONS.md` 为单一事实源。
+> 共享阶段、角色、目录、超时、并行角色、门禁和执行率阈值基线以 `DEFINITIONS.md` 为准；Flow/Reference 文件可按已声明的文档优先级补充场景化细化规则。
 
 **文档冲突优先级**：Flow 文件 > Reference 文件 > DEFINITIONS.md > Role 文件 > SKILL.md。详见 `DEFINITIONS.md` 第六节-B。
 

@@ -2,7 +2,7 @@
 
 基于 OpenClaw 的多类型 AI 测试编排框架。系统会识别用户的测试意图，并把任务分流到 Skill、网页+接口、安卓、MCP 四类流程，按阶段零到阶段七产出结构化测试文档和 Go/No-Go 结论。
 
-> 主入口是 [SKILL.md](SKILL.md)。阶段、角色、输出文件、门禁和超时配置以 [DEFINITIONS.md](DEFINITIONS.md) 为单一事实源。
+> 主入口是 [SKILL.md](SKILL.md)。共享阶段、角色、输出文件、门禁和超时基线以 [DEFINITIONS.md](DEFINITIONS.md) 为准；具体 Flow/Reference 的场景化细化按文档优先级覆盖。
 
 ## 当前状态
 

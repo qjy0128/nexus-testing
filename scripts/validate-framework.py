@@ -5,16 +5,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import py_compile
 import re
+import shutil
 import subprocess
 import sys
-import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from shutil import which
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
+VALIDATION_TMP_ROOT = ROOT / ".tmp-validation"
 
 REQUIRED_ROOT_FILES = (
     "SKILL.md",
@@ -69,6 +73,14 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/skill_structure_validator_core.py",
     "scripts/sandbox_skill_invoke.py",
     "scripts/sandbox_multi_turn.py",
+    "scripts/sandbox_skill_invoke/__init__.py",
+    "scripts/sandbox_skill_invoke/adapter.py",
+    "scripts/sandbox_skill_invoke/assertions.py",
+    "scripts/sandbox_skill_invoke/audit.py",
+    "scripts/sandbox_skill_invoke/core.py",
+    "scripts/sandbox_skill_invoke/telemetry.py",
+    "scripts/sandbox_skill_invoke/trace.py",
+    "scripts/sandbox_skill_invoke/verifier.py",
     "scripts/test_flow_a_strict.py",
     "scripts/test_flow_a_live_telemetry.py",
     "scripts/test_sandbox_exec_container.py",
@@ -97,6 +109,12 @@ FRONTMATTER_FILES = ("SKILL.md",)
 GITIGNORE_EXPECTED_ENTRIES = (
     "/memory/nexus-reports/",
     "/.nexus-sandbox/",
+    "/.tmp-test-runs/",
+    "/.tmp-validation/",
+    ".claude/settings.local.json",
+)
+LOCAL_ONLY_TRACKED_PATHS = (
+    ".claude/settings.local.json",
 )
 
 LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -107,6 +125,8 @@ ROLE_REF_PATTERN = re.compile(r"`roles/([^`]+\.md)`")
 MARKDOWN_EXCLUDE_PARTS = {
     ".git",
     ".nexus-sandbox",
+    ".tmp-test-runs",
+    ".tmp-validation",
     "memory/nexus-reports",
     "node_modules",
 }
@@ -187,7 +207,10 @@ def validate_markdown_links(markdown_files: list[Path]) -> list[str]:
     issues: list[str] = []
 
     for file_path in markdown_files:
-        content = read_text(file_path)
+        try:
+            content = read_text(file_path)
+        except FileNotFoundError:
+            continue
         for target in LINK_PATTERN.findall(content):
             if target.startswith(("http://", "https://", "#", "mailto:")):
                 continue
@@ -281,6 +304,28 @@ def validate_gitignore_entries() -> list[str]:
     return issues
 
 
+def validate_local_only_files_not_tracked() -> list[str]:
+    issues: list[str] = []
+    if not which("git"):
+        return issues
+
+    for relative_path in LOCAL_ONLY_TRACKED_PATHS:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", relative_path],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode == 0:
+            issues.append(
+                f"Local-only file is tracked by git and should be removed from the index: {relative_path}"
+            )
+
+    return issues
+
+
 def validate_flow_headers() -> list[str]:
     issues: list[str] = []
     for relative_path in REQUIRED_FLOW_FILES:
@@ -310,13 +355,39 @@ def iter_python_script_paths() -> list[Path]:
     scripts_dir = ROOT / "scripts"
     if not scripts_dir.exists():
         return []
-    return sorted(path for path in scripts_dir.glob("*.py") if path.is_file())
+    python_files: list[Path] = []
+    for path in scripts_dir.rglob("*.py"):
+        if not path.is_file():
+            continue
+        if "__pycache__" in path.parts:
+            continue
+        python_files.append(path)
+    return sorted(python_files)
+
+
+@contextmanager
+def workspace_temp_dir(prefix: str):
+    VALIDATION_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    temp_dir: Path | None = None
+    for attempt in range(20):
+        candidate = VALIDATION_TMP_ROOT / f"{prefix}{os.getpid()}-{time.time_ns()}-{attempt}"
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            temp_dir = candidate
+            break
+        except FileExistsError:
+            continue
+    if temp_dir is None:
+        raise RuntimeError(f"unable to allocate temp directory under {VALIDATION_TMP_ROOT}")
+    try:
+        yield temp_dir
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def validate_python_script_syntax() -> list[str]:
     issues: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="nexus-pycompile-") as temp_dir:
-        temp_root = Path(temp_dir)
+    with workspace_temp_dir("nexus-pycompile-") as temp_root:
         for path in iter_python_script_paths():
             relative_path = rel(path)
             target = temp_root / f"{path.stem}.pyc"
@@ -610,6 +681,7 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("frontmatter", validate_frontmatter()),
         ("version sync", validate_version_sync()),
         ("gitignore entries", validate_gitignore_entries()),
+        ("local-only tracked files", validate_local_only_files_not_tracked()),
         ("flow headers", validate_flow_headers()),
         ("shell scripts", validate_shell_scripts()),
         ("python script syntax", validate_python_script_syntax()),

@@ -10,13 +10,14 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from test_helpers import (
     assert_contains,
     assert_equal,
     create_session,
+    find_runnable_bash,
+    make_temp_root,
     parse_kv_output,
     write_text,
 )
@@ -216,7 +217,11 @@ def run_process(args: list[str], env: dict[str, str] | None = None) -> tuple[sub
 
 
 def main() -> int:
-    temp_root = Path(tempfile.mkdtemp(prefix="nexus-flow-a-strict-"))
+    if not find_runnable_bash():
+        print("Skip: Flow A strict smoke tests require runnable bash")
+        return 0
+
+    temp_root = make_temp_root("nexus-flow-a-strict-")
     try:
         sandbox_root = temp_root / "sandbox"
         sandbox_root.mkdir(parents=True, exist_ok=True)

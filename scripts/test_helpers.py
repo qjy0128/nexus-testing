@@ -8,6 +8,10 @@ import sys
 import time
 from pathlib import Path
 
+from sandbox_skill_invoke.core import find_bash_executable
+
+TEST_TMP_ROOT = Path(__file__).resolve().parents[1] / ".tmp-test-runs"
+
 
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,6 +40,22 @@ def assert_equal(actual: object, expected: object, label: str) -> None:
 def assert_contains(text: str, needle: str, label: str) -> None:
     if needle not in text:
         raise AssertionError(f"{label}: expected to find {needle!r} in {text!r}")
+
+
+def make_temp_root(prefix: str) -> Path:
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    for attempt in range(20):
+        candidate = TEST_TMP_ROOT / f"{prefix}{Path.cwd().name}-{time.time_ns()}-{attempt}"
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            return candidate
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"unable to allocate temp root under {TEST_TMP_ROOT}")
+
+
+def find_runnable_bash() -> str | None:
+    return find_bash_executable()
 
 
 def create_session(

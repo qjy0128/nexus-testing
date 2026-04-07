@@ -8,13 +8,13 @@ Runs in trace/dry-run mode since no OpenClaw CLI is available in CI.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
+
+from test_helpers import find_runnable_bash, make_temp_root
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 FIXTURE_PASS = PROJECT_DIR / "scripts" / "fixtures" / "fixture-pass-skill"
@@ -27,21 +27,6 @@ SECURITY_SCANNER = PROJECT_DIR / "scripts" / "security-scanner.py"
 
 class SkipTest(Exception):
     """Raised by a test to indicate it should be skipped."""
-
-
-def find_bash() -> str | None:
-    for candidate in ("bash",):
-        found = shutil.which(candidate)
-        if found:
-            return found
-    if sys.platform.startswith("win"):
-        for p in (
-            r"C:\Program Files\Git\bin\bash.exe",
-            r"C:\Program Files\Git\usr\bin\bash.exe",
-        ):
-            if Path(p).exists():
-                return p
-    return None
 
 
 def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -73,13 +58,12 @@ def test_security_scanner_defect_skill() -> None:
 
 def test_sandbox_create_cleanup_cycle() -> None:
     """Test sandbox create and cleanup lifecycle."""
-    bash = find_bash()
+    bash = find_runnable_bash()
     if not bash:
-        print("  [SKIP] sandbox_create_cleanup (no bash)")
-        return
+        raise SkipTest("sandbox_create_cleanup (no runnable bash)")
 
     session_id = f"test-{int(time.time())}-abc123"
-    sandbox_root = Path(tempfile.mkdtemp(prefix="nexus-e2e-"))
+    sandbox_root = make_temp_root("nexus-e2e-")
 
     try:
         # Create
@@ -112,17 +96,17 @@ def test_sandbox_create_cleanup_cycle() -> None:
 
 def test_skill_invoke_trace_mode() -> None:
     """Test sandbox-skill-invoke in trace mode with pass fixture."""
-    bash = find_bash()
+    bash = find_runnable_bash()
     if not bash:
-        print("  [SKIP] skill_invoke_trace (no bash)")
-        return
+        raise SkipTest("skill_invoke_trace (no runnable bash)")
 
     session_id = f"test-{int(time.time())}-trace01"
-    sandbox_root = Path(tempfile.mkdtemp(prefix="nexus-e2e-"))
+    sandbox_root = make_temp_root("nexus-e2e-")
 
     try:
         # Create session first
-        run([bash, str(SANDBOX_CREATE), "--session-id", session_id, "--sandbox-root", str(sandbox_root)])
+        create_proc = run([bash, str(SANDBOX_CREATE), "--session-id", session_id, "--sandbox-root", str(sandbox_root)])
+        assert create_proc.returncode == 0, f"sandbox-create failed: {create_proc.stderr}\n{create_proc.stdout}"
 
         # Invoke in trace mode
         proc = run([
@@ -147,16 +131,16 @@ def test_skill_invoke_trace_mode() -> None:
 
 def test_skill_invoke_dry_run_mode() -> None:
     """Test sandbox-skill-invoke in dry-run mode."""
-    bash = find_bash()
+    bash = find_runnable_bash()
     if not bash:
-        print("  [SKIP] skill_invoke_dry_run (no bash)")
-        return
+        raise SkipTest("skill_invoke_dry_run (no runnable bash)")
 
     session_id = f"test-{int(time.time())}-dry01"
-    sandbox_root = Path(tempfile.mkdtemp(prefix="nexus-e2e-"))
+    sandbox_root = make_temp_root("nexus-e2e-")
 
     try:
-        run([bash, str(SANDBOX_CREATE), "--session-id", session_id, "--sandbox-root", str(sandbox_root)])
+        create_proc = run([bash, str(SANDBOX_CREATE), "--session-id", session_id, "--sandbox-root", str(sandbox_root)])
+        assert create_proc.returncode == 0, f"sandbox-create failed: {create_proc.stderr}\n{create_proc.stdout}"
 
         proc = run([
             sys.executable, str(INVOKE_SCRIPT),

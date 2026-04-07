@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +22,27 @@ WINDOWS_GIT_BASH_CANDIDATES = (
     Path(r"C:\Program Files (x86)\Git\bin\bash.exe"),
     Path(r"C:\Program Files (x86)\Git\usr\bin\bash.exe"),
 )
+SKILL_SOURCE_IGNORED_PARTS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".nexus-sandbox",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "coverage",
+}
+FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+
+
+@dataclass(frozen=True)
+class SkillSourceSnapshot:
+    root: Path
+    fingerprint: str
+    directories: tuple[Path, ...]
+    files: tuple[tuple[Path, Path], ...]
 
 
 def kv(key: str, value: object) -> None:
@@ -107,25 +130,88 @@ def session_relative(path: Path | None, session_dir: Path) -> str:
         return str(path)
 
 
-def compute_source_fingerprint(skill_root: Path) -> str:
+def _should_ignore_skill_path(relative_path: Path) -> bool:
+    return any(part in SKILL_SOURCE_IGNORED_PARTS for part in relative_path.parts)
+
+
+def _has_reparse_point(path: Path) -> bool:
+    try:
+        st = path.lstat()
+    except OSError:
+        return False
+    attributes = getattr(st, "st_file_attributes", 0)
+    return bool(FILE_ATTRIBUTE_REPARSE_POINT and attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _assert_safe_skill_entry(skill_root: Path, path: Path) -> None:
+    if not (path.is_symlink() or _has_reparse_point(path)):
+        return
+    relative_path = path.relative_to(skill_root).as_posix()
+    raise ValueError(
+        f"Skill source contains an unsupported link or reparse point: {relative_path}"
+    )
+
+
+def snapshot_skill_source(skill_root: Path) -> SkillSourceSnapshot:
+    root = skill_root.resolve()
     digest = hashlib.sha256()
-    ignored_parts = {
-        ".git", ".hg", ".svn", ".nexus-sandbox", ".venv", "venv",
-        "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache",
-        "dist", "build", "coverage",
-    }
-    for path in sorted(item for item in skill_root.rglob("*") if item.is_file()):
-        relative = path.relative_to(skill_root).as_posix()
-        if any(part in ignored_parts for part in path.relative_to(skill_root).parts):
-            continue
-        digest.update(relative.encode("utf-8"))
-        with path.open("rb") as handle:
-            while True:
-                chunk = handle.read(1024 * 1024)
-                if not chunk:
-                    break
-                digest.update(chunk)
-    return digest.hexdigest()
+    directories: list[Path] = []
+    files: list[tuple[Path, Path]] = []
+
+    for current_root, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+        current_path = Path(current_root)
+        if current_path != root:
+            directories.append(current_path.relative_to(root))
+
+        allowed_dirnames: list[str] = []
+        for dirname in sorted(dirnames):
+            candidate = current_path / dirname
+            relative_path = candidate.relative_to(root)
+            if _should_ignore_skill_path(relative_path):
+                continue
+            _assert_safe_skill_entry(root, candidate)
+            allowed_dirnames.append(dirname)
+        dirnames[:] = allowed_dirnames
+
+        for filename in sorted(filenames):
+            candidate = current_path / filename
+            relative_path = candidate.relative_to(root)
+            if _should_ignore_skill_path(relative_path):
+                continue
+            _assert_safe_skill_entry(root, candidate)
+            if not candidate.is_file():
+                continue
+            files.append((candidate, relative_path))
+            digest.update(relative_path.as_posix().encode("utf-8"))
+            with candidate.open("rb") as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+
+    directories.sort(key=lambda path: path.as_posix())
+    files.sort(key=lambda item: item[1].as_posix())
+    return SkillSourceSnapshot(
+        root=root,
+        fingerprint=digest.hexdigest(),
+        directories=tuple(directories),
+        files=tuple(files),
+    )
+
+
+def install_skill_source(snapshot: SkillSourceSnapshot, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for relative_dir in snapshot.directories:
+        (destination / relative_dir).mkdir(parents=True, exist_ok=True)
+    for source_path, relative_path in snapshot.files:
+        target_path = destination / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+
+
+def compute_source_fingerprint(skill_root: Path) -> str:
+    return snapshot_skill_source(skill_root).fingerprint
 
 
 def run_shell(command: str, cwd: Path, timeout: int, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
