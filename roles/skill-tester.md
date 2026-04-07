@@ -14,6 +14,7 @@ best_for:
 ## 输入来源
 - `SPEC.md`（由 requirement-analyst 产出）
 - `TEST-DESIGN.md`（由 test-designer 产出）
+- `SURFACE-EXECUTION-PLAN.json`（由 test-designer 产出）
 - Skill 源码（用户提供的路径）
 
 ## 下游消费者
@@ -26,12 +27,15 @@ best_for:
 
 ## 职责
 
-在独立测试环境中安装目标 Skill，按照 `SPEC.md` 和 `TEST-DESIGN.md` 执行真实测试，并输出 `skill-results.md`。本角色只负责执行和记录，不直接与用户做批准交互。
+在独立测试环境中安装目标 Skill，按照 `SPEC.md`、`TEST-DESIGN.md` 和 `SURFACE-EXECUTION-PLAN.json` 执行真实测试，并输出 `skill-results.md`。本角色只负责执行和记录，不直接与用户做批准交互。
 
 ## 输入
 
 - `SPEC.md`
 - `TEST-DESIGN.md`
+- `SURFACE-EXECUTION-PLAN.json`
+- `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md`
+- `TEST-EXECUTION/SURFACE-COVERAGE.json`
 - Skill 来源：本地路径、仓库、入口 `SKILL.md` 或可安装包
 
 ## 输出
@@ -81,6 +85,9 @@ best_for:
 - 需要文本或文件比对时，使用 `scripts/sandbox-compare-output.sh`。
 - 渠道适配或格式声明必须有真实输出证据，不能只看文档。
 - 负向触发、上下文保持、渠道送达优先通过 `sandbox-skill-invoke` / `sandbox-multi-turn` 的断言参数自动判定。
+- `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的顺序逐条写出每个 `surface-id` 的执行记录。
+- 推荐直接使用 `scripts/run_flow_a_skill_execution.py` 驱动阶段五执行，避免人工漏掉某个 surface；当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据，并在存在显式 harness 时验证 `openclaw-extension` hook 行为与 `mcp` 协议交互，只有 probe-only 结果时才记为 `incomplete`。
+- 执行结束后必须运行 `scripts/validate_flow_a_skill_results.py`；若缺任何 surface，当前轮执行视为不完整。
 
 ### 6. 特殊场景
 

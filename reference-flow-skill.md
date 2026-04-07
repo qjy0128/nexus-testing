@@ -6,6 +6,34 @@
 
 ## 一、关键用例模板
 
+### 0.1 阶段一事实指纹模板
+
+Flow A 在生成 `SPEC.md` 前，必须先写 `PRODUCT-FINGERPRINT.json`。最少字段：
+
+```json
+{
+  "productType": ["skill", "plugin", "cli"],
+  "runtime": ["node"],
+  "version": {"value": "1.0.14", "source": "package.json#version"},
+  "license": {"value": "MIT", "source": "package.json#license"},
+  "entrySurfaces": [
+    {"kind": "skill", "path": "skills/agentguard/SKILL.md"},
+    {"kind": "plugin", "path": "openclaw.plugin.json"},
+    {"kind": "bin", "name": "agentguard", "source": "package.json#bin.agentguard"}
+  ],
+  "capabilitySurfaces": [
+    {"name": "scan", "source": "skills/agentguard/SKILL.md"},
+    {"name": "action", "source": "skills/agentguard/SKILL.md"}
+  ]
+}
+```
+
+规则：
+
+- 关键字段必须能回溯到仓库事实源
+- 没有证据时写 `unknown`
+- 不得在 `SPEC.md` 引入 `PRODUCT-FINGERPRINT.json` 中不存在的能力面
+
 ### 1.1 触发条件
 
 | 用例 ID | 触发描述 | 最低执行级别 | 预期行为 | 优先级 |
@@ -62,6 +90,7 @@ TC-XX：（用例名称）
 
 - `trace` 不能支撑“功能通过”或“渠道通过”。
 - 当用例标注最低执行级别为 `live` / `shim-live` 且只拿到 `trace` 时，结果必须记为 blocker。
+- 仅有静态分析时，不得给出 `PASS` / `PARTIAL PASS` / 功能覆盖率 / API 覆盖率。
 - `live --strict-real` 必须拿到 OpenClaw CLI 原生回传的 `nexus-live-telemetry/v1`；没有协议或协议字段不完整时不得返回成功。
 - `shim-live --strict-real` 必须提供独立的 `--verification-manifest`，不能只信 Skill 自带 adapter 的自报遥测；manifest 必须位于 Skill 目录外，且在可识别仓库根时不能与 Skill 同仓库。没有 verifier 时不得返回成功。
 - 适配器没有回传 `toolsCalled` 时，不能对工具调用链写“已验证”。
@@ -120,8 +149,13 @@ Flow A 若要在没有 OpenClaw CLI 的情况下完成真实执行，Skill 必�
 ## 四、报告要求
 
 - `TEST-DESIGN.md` 必须给每条关键用例标注最低执行级别。
+- `TEST-DESIGN.md` 必须标注每个用例来自哪个真实入口表面。
+- `SURFACE-EXECUTION-PLAN.json` 必须覆盖所有真实入口表面，并把每个 surface 分配给阶段五执行。
 - `skill-results.md` 必须单独列出执行级别矩阵。
+- 阶段五开始前必须生成 `SKILL-SURFACE-WORKLIST.md`；执行结束后必须用 `validate_flow_a_skill_results.py` 校验所有 surface 是否都出现在 `skill-results.md`。
+- 若使用通用执行链，优先通过 `run_flow_a_skill_execution.py` 驱动 `skill-tester`，而不是手工挑 surface；当前通用执行链应真实覆盖 `skill/bin`，对 `package/plugin-manifest` 产出结构化校验证据，并在存在显式 harness 时验证 `openclaw-extension` hook 行为与 `mcp` 协议交互，只有 probe-only 结果时才保守记为 `incomplete`。
 - `FINAL-TEST-REPORT.md` 必须区分：
   - 真实执行通过
   - 仅 trace 覆盖
   - 因缺少真实入口而阻塞
+  - 仅静态分析，结论无效，待真实执行复核

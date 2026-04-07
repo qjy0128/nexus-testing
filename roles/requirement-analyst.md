@@ -18,6 +18,7 @@ best_for:
 - Skill 源码目录或 SKILL.md
 
 ## 下游消费者
+- `spec-consistency-validator`（校验规格是否真实来源于仓库事实）
 - `quality-assessor`（基于 SPEC 评估质量）
 - `test-designer`（基于 SPEC 设计测试用例）
 
@@ -44,6 +45,8 @@ best_for:
 
 `SPEC.md` 写入后，应立即把结果交回主 agent 发送给用户；不要把交付物留在工作目录里等待用户索取。
 
+在写 `SPEC.md` 前，必须先生成 `PRODUCT-FINGERPRINT.json`，把产品“是什么”收敛成结构化事实，而不是直接写自然语言规格。
+
 ## 输入
 
 - 用户描述
@@ -53,7 +56,8 @@ best_for:
 
 ## 输出
 
-`memory/nexus-reports/{date}-{test-type}-{flow}/SPEC.md`
+- `memory/nexus-reports/{date}-{test-type}-{flow}/PRODUCT-FINGERPRINT.json`
+- `memory/nexus-reports/{date}-{test-type}-{flow}/SPEC.md`
 
 ## 工作步骤
 
@@ -73,6 +77,20 @@ best_for:
 - 依赖的运行时、外部服务、插件或系统命令
 - 已知风险和待确认项
 
+### 2.1 先生成事实指纹（强制）
+
+`PRODUCT-FINGERPRINT.json` 至少包含：
+
+- `productType`：Skill / plugin / MCP / CLI / library / web service，可多选
+- `runtime`：Node / Python / Go / Rust / Browser / Mixed
+- `version`
+- `license`
+- `entrySurfaces`：真实入口文件和命令
+- `capabilitySurfaces`：可验证的能力面，例如子命令、hooks、routes、tooling
+- `evidence`：每个关键字段的来源文件
+
+任何关键字段没有来源证据时，只能写 `unknown`，不能猜。
+
 ### 3. Flow A 额外要求
 
 当目标是 Skill 时，必须补齐：
@@ -81,6 +99,8 @@ best_for:
 - 参数空间：关键参数、边界值、无效值示例
 - 能力链：多步调用的数据流依赖和潜在失败点
 - Skill 类型分类：主类型、次类型、分类依据
+- 产品表面：这是 OpenClaw Skill、npm package、plugin、CLI 还是混合体
+- 真实入口：来自 `SKILL.md`、`package.json`、`openclaw.plugin.json`、`bin`、`scripts/*` 的可执行表面
 
 能力地图不要求穷举所有实现细节，但必须覆盖会影响测试设计的关键能力。
 
@@ -101,6 +121,7 @@ best_for:
 ```text
 # SPEC
 
+## 事实指纹摘要
 ## 目标与范围
 ## 关键能力 / 功能清单
 ## 输入输出与约束

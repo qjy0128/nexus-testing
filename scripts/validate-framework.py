@@ -69,6 +69,12 @@ REQUIRED_SHELL_SCRIPT_FILES = (
 )
 
 REQUIRED_PYTHON_SCRIPT_FILES = (
+    "scripts/diagnose_bash_runtime.py",
+    "scripts/extract_product_fingerprint.py",
+    "scripts/generate_flow_a_stage1.py",
+    "scripts/generate_flow_a_test_design.py",
+    "scripts/generate_flow_a_skill_execution.py",
+    "scripts/run_flow_a_skill_execution.py",
     "scripts/skill-structure-validator.py",
     "scripts/skill_structure_validator_core.py",
     "scripts/sandbox_skill_invoke.py",
@@ -83,10 +89,16 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/sandbox_skill_invoke/verifier.py",
     "scripts/test_flow_a_strict.py",
     "scripts/test_flow_a_live_telemetry.py",
+    "scripts/test_flow_a_stage1.py",
+    "scripts/test_flow_a_skill_execution.py",
+    "scripts/test_flow_a_surface_runner.py",
+    "scripts/test_flow_a_test_design.py",
+    "scripts/test_product_fingerprint.py",
     "scripts/test_sandbox_exec_container.py",
     "scripts/test_flow_a_integration.py",
     "scripts/security-scanner.py",
     "scripts/test_sandbox_lifecycle.py",
+    "scripts/validate_flow_a_skill_results.py",
 )
 
 REQUIRED_FIXTURE_DIRS = (
@@ -96,6 +108,11 @@ REQUIRED_FIXTURE_DIRS = (
 )
 
 RUNTIME_SMOKE_TEST_FILES = (
+    "scripts/test_product_fingerprint.py",
+    "scripts/test_flow_a_stage1.py",
+    "scripts/test_flow_a_skill_execution.py",
+    "scripts/test_flow_a_surface_runner.py",
+    "scripts/test_flow_a_test_design.py",
     "scripts/test_flow_a_strict.py",
     "scripts/test_flow_a_live_telemetry.py",
     "scripts/test_sandbox_exec_container.py",
@@ -286,6 +303,62 @@ def validate_version_sync() -> list[str]:
         issues.append(
             "README.md current version does not match CHANGELOG.md latest version: "
             f"{readme_version} != {latest_version}"
+        )
+
+    return issues
+
+
+def validate_docs_updated_with_core_changes() -> list[str]:
+    issues: list[str] = []
+    if not which("git"):
+        return issues
+
+    tracked_targets = [
+        "SKILL.md",
+        "DEFINITIONS.md",
+        "README.md",
+        "CHANGELOG.md",
+        "scripts/validate-framework.py",
+    ]
+    tracked_targets.extend(str(path.relative_to(ROOT)).replace("\\", "/") for path in sorted((ROOT / "flows").glob("*.md")))
+    tracked_targets.extend(str(path.relative_to(ROOT)).replace("\\", "/") for path in sorted((ROOT / "roles").glob("*.md")))
+    tracked_targets.extend(str(path.relative_to(ROOT)).replace("\\", "/") for path in sorted(ROOT.glob("reference-*.md")))
+
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--", *tracked_targets],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return issues
+
+    changed_paths: set[str] = set()
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:].strip()
+        if path:
+            changed_paths.add(path.replace("\\", "/"))
+
+    if not changed_paths:
+        return issues
+
+    doc_paths = {"README.md", "CHANGELOG.md"}
+    core_prefixes = ("flows/", "roles/", "reference-")
+    core_paths = {"SKILL.md", "DEFINITIONS.md", "scripts/validate-framework.py"}
+    core_changed = any(
+        path in core_paths or path.startswith(core_prefixes)
+        for path in changed_paths
+    )
+
+    if core_changed and not doc_paths.issubset(changed_paths):
+        missing = sorted(path for path in doc_paths if path not in changed_paths)
+        issues.append(
+            "Core framework docs changed without updating required top-level docs: "
+            + ", ".join(missing)
         )
 
     return issues
@@ -510,6 +583,106 @@ def validate_definition_consistency() -> list[str]:
         issues.append(
             "roles/compatibility-tester-skill.md should be archived outside the active roles directory"
         )
+    if "PRODUCT-FINGERPRINT.json" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing PRODUCT-FINGERPRINT.json in the stage outputs")
+    if "SPEC-CONSISTENCY-REVIEW.md" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing SPEC-CONSISTENCY-REVIEW.md in the stage outputs")
+
+    return issues
+
+
+def validate_flow_a_fact_contract() -> list[str]:
+    issues: list[str] = []
+
+    flow_text = read_text(ROOT / "flows" / "skill-testing.md")
+    requirement_text = read_text(ROOT / "roles" / "requirement-analyst.md")
+    designer_text = read_text(ROOT / "roles" / "test-designer.md")
+    evaluator_text = read_text(ROOT / "roles" / "test-case-evaluator.md")
+    reference_text = read_text(ROOT / "reference-flow-skill.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+
+    if "PRODUCT-FINGERPRINT.json" not in flow_text or "SPEC-CONSISTENCY-REVIEW.md" not in flow_text:
+        issues.append("flows/skill-testing.md is missing the stage-one fact contract")
+    if "PRODUCT-FINGERPRINT.json" not in requirement_text:
+        issues.append("roles/requirement-analyst.md is missing PRODUCT-FINGERPRINT.json output requirements")
+    if "真实入口" not in designer_text:
+        issues.append("roles/test-designer.md is missing the real-entry test design rule")
+    if "事实一致性" not in evaluator_text:
+        issues.append("roles/test-case-evaluator.md is missing the fact-consistency review rule")
+    if "阶段一事实指纹模板" not in reference_text:
+        issues.append("reference-flow-skill.md is missing the stage-one fingerprint template")
+    if "静态分析只能作为补充审查" not in skill_text:
+        issues.append("SKILL.md is missing the static-analysis outcome restriction")
+    if not (ROOT / "roles" / "spec-consistency-validator.md").exists():
+        issues.append("roles/spec-consistency-validator.md is missing")
+
+    return issues
+
+
+def validate_flow_a_surface_plan_contract() -> list[str]:
+    issues: list[str] = []
+
+    definitions_text = read_text(ROOT / "DEFINITIONS.md")
+    flow_text = read_text(ROOT / "flows" / "skill-testing.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+    readme_text = read_text(ROOT / "README.md")
+    designer_text = read_text(ROOT / "roles" / "test-designer.md")
+    evaluator_text = read_text(ROOT / "roles" / "test-case-evaluator.md")
+    tester_text = read_text(ROOT / "roles" / "skill-tester.md")
+    reference_text = read_text(ROOT / "reference-flow-skill.md")
+
+    if "SURFACE-EXECUTION-PLAN.json" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing SURFACE-EXECUTION-PLAN.json in the stage outputs")
+    if "SURFACE-EXECUTION-PLAN.json" not in flow_text:
+        issues.append("flows/skill-testing.md is missing the stage-three surface execution plan output")
+    if "SURFACE-EXECUTION-PLAN.json" not in skill_text:
+        issues.append("SKILL.md is missing the stage-three surface execution plan contract")
+    if "SURFACE-EXECUTION-PLAN.json" not in readme_text:
+        issues.append("README.md is missing SURFACE-EXECUTION-PLAN.json in the documented outputs")
+    if "SURFACE-EXECUTION-PLAN.json" not in designer_text:
+        issues.append("roles/test-designer.md is missing SURFACE-EXECUTION-PLAN.json output requirements")
+    if "SURFACE-EXECUTION-PLAN.json" not in evaluator_text:
+        issues.append("roles/test-case-evaluator.md is missing SURFACE-EXECUTION-PLAN.json review requirements")
+    if "SURFACE-EXECUTION-PLAN.json" not in tester_text:
+        issues.append("roles/skill-tester.md is missing SURFACE-EXECUTION-PLAN.json execution requirements")
+    if "真实入口表面" not in reference_text and "真实入口表面" not in flow_text:
+        issues.append("Flow A docs are missing the real-surface wording for stage-three planning")
+
+    return issues
+
+
+def validate_flow_a_surface_execution_contract() -> list[str]:
+    issues: list[str] = []
+
+    definitions_text = read_text(ROOT / "DEFINITIONS.md")
+    flow_text = read_text(ROOT / "flows" / "skill-testing.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+    readme_text = read_text(ROOT / "README.md")
+    tester_text = read_text(ROOT / "roles" / "skill-tester.md")
+    evidence_text = read_text(ROOT / "roles" / "evidence-collector.md")
+    report_text = read_text(ROOT / "roles" / "report-integrator.md")
+    reference_text = read_text(ROOT / "reference-flow-skill.md")
+
+    for token in ("SKILL-SURFACE-WORKLIST.md", "SURFACE-COVERAGE.json"):
+        if token not in definitions_text:
+            issues.append(f"DEFINITIONS.md is missing {token} in the stage-five outputs")
+        if token not in flow_text:
+            issues.append(f"flows/skill-testing.md is missing {token} in the stage-five contract")
+        if token not in readme_text:
+            issues.append(f"README.md is missing {token} in the documented outputs")
+
+    if "validate_flow_a_skill_results.py" not in skill_text:
+        issues.append("SKILL.md is missing validate_flow_a_skill_results.py guidance")
+    if "run_flow_a_skill_execution.py" not in skill_text:
+        issues.append("SKILL.md is missing run_flow_a_skill_execution.py guidance")
+    if "SKILL-SURFACE-WORKLIST.md" not in tester_text or "SURFACE-COVERAGE.json" not in tester_text:
+        issues.append("roles/skill-tester.md is missing stage-five worklist and coverage inputs")
+    if "SURFACE-COVERAGE.json" not in evidence_text:
+        issues.append("roles/evidence-collector.md is missing SURFACE-COVERAGE.json audit input")
+    if "SURFACE-COVERAGE.json" not in report_text:
+        issues.append("roles/report-integrator.md is missing SURFACE-COVERAGE.json residual-risk input")
+    if "validate_flow_a_skill_results.py" not in reference_text:
+        issues.append("reference-flow-skill.md is missing the stage-five surface result validator")
 
     return issues
 
@@ -743,6 +916,7 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("markdown links", validate_markdown_links(markdown_files)),
         ("frontmatter", validate_frontmatter()),
         ("version sync", validate_version_sync()),
+        ("doc update discipline", validate_docs_updated_with_core_changes()),
         ("gitignore entries", validate_gitignore_entries()),
         ("local-only tracked files", validate_local_only_files_not_tracked()),
         ("flow headers", validate_flow_headers()),
@@ -750,6 +924,9 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("python script syntax", validate_python_script_syntax()),
         ("runtime smoke tests", validate_runtime_smoke_tests()),
         ("definitions consistency", validate_definition_consistency()),
+        ("flow a fact contract", validate_flow_a_fact_contract()),
+        ("flow a surface plan contract", validate_flow_a_surface_plan_contract()),
+        ("flow a surface execution contract", validate_flow_a_surface_execution_contract()),
         ("message send contract", validate_message_send_contract()),
         ("role version tags", validate_role_version_tags()),
         ("role references", validate_role_references()),

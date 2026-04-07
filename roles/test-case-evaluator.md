@@ -14,8 +14,11 @@ best_for:
 ---
 
 ## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
 - `SPEC.md`（由 requirement-analyst 产出）
+- `SPEC-CONSISTENCY-REVIEW.md`（由 spec-consistency-validator 产出）
 - `TEST-DESIGN.md`（由 test-designer 产出）
+- `SURFACE-EXECUTION-PLAN.json`（由 test-designer 产出）
 
 ## 下游消费者
 - 主 agent（根据评估结果决定是否批准进入阶段五）
@@ -44,8 +47,10 @@ best_for:
 
 `TEST-CASE-REVIEW.md` 写入后，应立即把结果交回主 agent 发送并发起批准请求；不要等待用户追问文件。
 
+除覆盖率外，还必须评估测试设计是否引用了真实存在的产品表面；引用仓库中不存在的接口或技术栈时，直接判定不通过。
+
 ## 输入
-- `SPEC.md` + `TEST-DESIGN.md`
+- `PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md` + `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json`
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-CASE-REVIEW.md`
@@ -84,6 +89,13 @@ best_for:
 | 网页/API | 必须发 HTTP 请求 |
 
 声明 N 个用例但实际执行 M < N → ❌ 当前评审不通过，由主 agent 重新进入阶段三并生成新的测试设计交付物。
+
+### 4.1 事实一致性（硬性，不通过直接终止当前评审）
+
+- `TEST-DESIGN.md` 中引用的命令、路由、目录、子命令、能力面必须能在 `PRODUCT-FINGERPRINT.json` 找到来源
+- `SURFACE-EXECUTION-PLAN.json` 必须覆盖所有真实入口表面；缺任何 surface 都不能通过
+- 若设计引用了不存在的 API、SDK、HTTP 服务、技术栈或核心模块，直接 ❌ 不通过
+- 若 `SPEC-CONSISTENCY-REVIEW.md` 不是 `passed`，本阶段不得给出“通过”或“有条件通过”
 
 ### 5. 能力覆盖分析（Flow A 强制）
 
@@ -125,6 +137,7 @@ best_for:
 
 ## 3. 测试数据充分性
 ## 4. 用例可执行性
+## 4.1 事实一致性
 ## 5. 能力覆盖矩阵（Flow A）
 ## 6. 缺口分析与改良建议
 

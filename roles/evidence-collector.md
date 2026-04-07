@@ -95,6 +95,11 @@ evidence-collector 在**阶段五所有 subagent 完成后**执行一次性验�
 ## 输出格式
 
 ```
+
+## Flow A Surface Audit
+
+- Flow A evidence audit must read `TEST-EXECUTION/SURFACE-COVERAGE.json`.
+- If `skill-results.md` is missing any surface declared in `SURFACE-COVERAGE.json`, audit must fail.
 ## 执行证明审计结果
 
 ### 审计概览

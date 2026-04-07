@@ -78,6 +78,11 @@ best_for:
 ## 发布建议
 ```
 
+## Flow A Surface Coverage
+
+- Read `TEST-EXECUTION/SURFACE-COVERAGE.json` before final Go/No-Go.
+- If any declared surface is still pending or missing from `skill-results.md`, final conclusions must mark residual risk explicitly.
+
 ## 结论要求
 
 - `Go`：阻断项清零，残余风险可接受

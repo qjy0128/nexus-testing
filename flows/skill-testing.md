@@ -28,15 +28,26 @@
 
 ### 阶段一：需求解析
 
-**执行角色**：`roles/requirement-analyst.md`  
-输出：`SPEC.md`
+**执行角色**：`roles/requirement-analyst.md` + `roles/spec-consistency-validator.md`  
+输出：`PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`
 
-**主 agent 动作**：`SPEC.md` 生成后立即发送文件和摘要，不等待用户索取。
+阶段一必须先抽取事实，再写规格：
+
+- `PRODUCT-FINGERPRINT.json` 必须写出技术栈、版本、许可证、运行时要求、真实入口、能力表面、CLI/子命令/插件表面
+- 推荐直接使用 `scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir>` 生成阶段一三件套，减少手写 `SPEC.md` 时的幻觉空间
+- 每个关键字段都必须附证据来源（文件路径 + 行号或键路径）
+- `SPEC.md` 只能基于 `PRODUCT-FINGERPRINT.json` 已验证字段展开，未知项写“待验证”
+- `SPEC-CONSISTENCY-REVIEW.md` 必须校验版本、许可证、技术栈、入口能力和关键接口是否与仓库事实一致
+- 若一致性校验结论不是 `passed`，不得进入阶段二
+
+**主 agent 动作**：阶段一完成后立即发送 `SPEC.md` 和一致性结论摘要；`PRODUCT-FINGERPRINT.json` 作为阶段事实附件保存在报告目录。
 
 ### 阶段二：质量评估
 
 **执行角色**：`roles/quality-assessor.md`  
 输出：`PRODUCT-QUALITY-REVIEW.md`
+
+输入前提：`SPEC-CONSISTENCY-REVIEW.md` 结论必须为 `passed`。
 
 **主 agent 动作**：`PRODUCT-QUALITY-REVIEW.md` 生成后立即发送文件，并在同一轮明确发起批准请求。
 
@@ -45,9 +56,10 @@
 ### 阶段三：测试设计
 
 **执行角色**：`roles/test-designer.md`  
-输出：`TEST-DESIGN.md`
+输出：`TEST-DESIGN.md`、`SURFACE-EXECUTION-PLAN.json`
 
 **主 agent 动作**：`TEST-DESIGN.md` 生成后立即发送文件和摘要，不等待用户索取。
+`SURFACE-EXECUTION-PLAN.json` 必须按真实入口表面给阶段五分配执行面；`skill-tester` 不得只挑一个入口执行。
 
 设计时必须为每条关键用例标明：
 
@@ -55,6 +67,12 @@
 - 是否要求真实执行
 - 最低执行级别：`live` / `shim-live` / `trace`
 - 是否需要显式断言：`triggerMatched` / `contextReferences` / `deliveryStatus`
+- 引用的产品表面：来自 `PRODUCT-FINGERPRINT.json` 的真实入口（如 `SKILL.md`、CLI、plugin、MCP、hooks）
+
+禁止行为：
+
+- 从行业经验脑补 HTTP API、SDK、Go library、Guard.Scan() 等仓库中不存在的表面
+- 未在 `PRODUCT-FINGERPRINT.json` 中出现的命令、端点、目录、子命令，不得写入 `TEST-DESIGN.md`
 
 ### 阶段四：用例评估
 
@@ -72,6 +90,11 @@
 - `roles/skill-tester.md`
 - `roles/security-tester.md`
 
+阶段五开始前，主 agent 必须先基于 `SURFACE-EXECUTION-PLAN.json` 生成：
+- `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md`
+- `TEST-EXECUTION/SURFACE-COVERAGE.json`
+- 然后由 `skill-tester` 使用 `scripts/run_flow_a_skill_execution.py` 逐 surface 执行；runner 需要真实处理 `skill/bin`，对 `package/plugin-manifest` 输出结构化校验结果，并在存在显式 harness 时验证 `openclaw-extension` hook 行为与 `mcp` 协议交互，只有 probe-only 证据时才保守记为 `incomplete`
+
 #### Skill 执行门禁
 
 - P0/P1 功能用例默认执行：`sandbox-skill-invoke --mode auto --strict-real`
@@ -80,10 +103,14 @@
 - 若走 `live --strict-real`，必须由 OpenClaw CLI 原生回传 `nexus-live-telemetry/v1`；没有协议或协议字段不完整时直接 blocker。
 - 若走 `shim-live --strict-real`，必须提供独立的 `--verification-manifest`；路径必须位于 Skill 目录外，且在可识别仓库根时不能与 Skill 同仓库。没有 verifier 时不得返回成功。
 - 只有 `live` / `shim-live` 可以写“通过”
+- `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的 surface 顺序逐条记录
+- 阶段五结束后必须运行 `scripts/validate_flow_a_skill_results.py`，缺任何 surface 视为执行不完整
 - `trace` 只能写“静态追踪已完成，未完成真实执行”
 - 负向触发必须显式得到 `triggerMatched=false`
 - 上下文保持必须显式得到 `contextReferences`
 - 渠道通过必须显式得到 `deliveryStatus` 和送达证据
+- 若阶段五只完成静态分析，不得给出 `PASS` / `PARTIAL PASS` / 功能覆盖率
+- 静态分析只能产出 `blocked-no-real-exec`、`incomplete-static-review` 或“待真实执行复核”
 
 #### 沙箱准备
 

@@ -17,7 +17,9 @@ best_for:
 > **统一引用**：用例类型分布、执行率阈值、回归套件定义以 `DEFINITIONS.md` 为准。
 
 ## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
 - `SPEC.md`（由 requirement-analyst 产出）
+- `SPEC-CONSISTENCY-REVIEW.md`（由 spec-consistency-validator 产出）
 - `PRODUCT-QUALITY-REVIEW.md`（由 quality-assessor 产出，提供风险和策略建议）
 
 ## 下游消费者
@@ -27,7 +29,9 @@ best_for:
 ## 职责
 根据 SPEC.md 设计完整的测试用例集，包括正向/逆向/边界/异常测试，覆盖所有功能点。
 
-`TEST-DESIGN.md` 写入后，应立即把结果交回主 agent 发送给用户；不要把交付物留在工作目录里等待用户索取。
+`TEST-DESIGN.md` 和 `SURFACE-EXECUTION-PLAN.json` 写入后，应立即把结果交回主 agent 发送给用户；不要把交付物留在工作目录里等待用户索取。
+
+所有用例必须从 `PRODUCT-FINGERPRINT.json` 的真实入口和能力表面反推；未在事实指纹中出现的接口、子命令、HTTP 路由、运行模型不得写入测试设计。
 
 ## 设计原则：边界优先（Edge-Case-First）
 
@@ -49,6 +53,7 @@ best_for:
 - **边界用例**：验证临界值、空输入、超长输入（每有输入的模块 ≥ 2 个）
 
 **禁止**：全部正向用例零逆向/边界 → 视为设计不合格，由主 agent 重新进入测试设计阶段并生成新的交付物。
+**禁止**：为仓库中不存在的 API、SDK、CLI、HTTP 端点设计用例 → 视为设计失真，直接不合格。
 
 ## 逻辑分支覆盖要求（强制）
 
@@ -80,6 +85,7 @@ TEST-DESIGN.md 中必须包含**逻辑分支覆盖矩阵**。
 - 逆向参数（无效类型、越界、null，每参数 ≥ 1）
 - 边界参数（最小/最大/空/max+1，每参数 ≥ 1）
 - 工具链用例（有链路依赖时 ≥ 1）
+- 入口表面引用：每个 CAP-ID 必须标明来源于哪个真实入口（`SKILL.md` / `package.json` / `bin` / `scripts` / `openclaw.plugin.json`）
 
 ### 意图解释测试
 
@@ -133,10 +139,13 @@ TEST-DESIGN.md 末尾必须包含**能力 × 维度覆盖矩阵**。
 | M4 端到端 | 标准 Skill 跑完阶段零→七 | 闭环 | ≥ 1 |
 
 ## 输入
-`memory/nexus-reports/{date}-{test-type}-{flow}/SPEC.md`
+- `memory/nexus-reports/{date}-{test-type}-{flow}/PRODUCT-FINGERPRINT.json`
+- `memory/nexus-reports/{date}-{test-type}-{flow}/SPEC.md`
+- `memory/nexus-reports/{date}-{test-type}-{flow}/SPEC-CONSISTENCY-REVIEW.md`
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-DESIGN.md`
+`memory/nexus-reports/{date}-{test-type}-{flow}/SURFACE-EXECUTION-PLAN.json`
 
 ## 输出格式
 

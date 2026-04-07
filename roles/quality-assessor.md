@@ -13,7 +13,9 @@ best_for:
 ---
 
 ## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
 - `SPEC.md`（由 requirement-analyst 产出）
+- `SPEC-CONSISTENCY-REVIEW.md`（由 spec-consistency-validator 产出）
 - 待测对象入口信息（SKILL.md、URL、APK 等）
 
 ## 下游消费者
@@ -46,7 +48,9 @@ best_for:
 
 ## 输入
 
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
+- `SPEC-CONSISTENCY-REVIEW.md`
 - 待测对象入口信息，例如 `SKILL.md`、URL、接口文档、APK 或 MCP 配置
 
 ## 输出
@@ -55,10 +59,13 @@ best_for:
 
 ## 评估维度
 
+- 事实可信度：`SPEC-CONSISTENCY-REVIEW.md` 是否放行，是否还存在未解决不一致项
 - 规格完整性：目标、输入、输出、边界、依赖是否明确
 - 可测试性：需求能否转成可执行、可判定的测试用例
 - 风险：模糊描述、冲突需求、实现依赖、环境约束、安全敏感点
 - 成本：是否存在明显的 Token、时间或环境爆炸风险
+
+若 `SPEC-CONSISTENCY-REVIEW.md` 不是 `passed`，本阶段不得继续给测试设计建议，必须直接要求回到阶段一修正规格。
 
 ## Flow B 额外职责
 

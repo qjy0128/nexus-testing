@@ -11,11 +11,11 @@
 | 阶段编号 | 阶段名称 | 执行者 | 输出文件 | 需批准 | 可打回 |
 |----------|----------|--------|---------|--------|--------|
 | 阶段零 | 环境就绪检查 | 主 agent | 环境就绪报告（内存中） | ✅ 需确认 | ❌ |
-| 阶段一 | 需求解析 | 主 agent（需求解析师角色） | `SPEC.md` | ❌ | ❌ |
+| 阶段一 | 需求解析 + 规格一致性校验 | 主 agent（需求解析师角色）+ 规格一致性校验师 | `PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md` | ❌ | ❌ |
 | 阶段二 | 质量评估 | 主 agent（质量评估师角色） | `PRODUCT-QUALITY-REVIEW.md` | ✅ 需批准 | ✅ 打回阶段一 |
-| 阶段三 | 测试设计 | 主 agent（测试设计师角色） | `TEST-DESIGN.md` | ❌ | ❌ |
+| 阶段三 | 测试设计 | 主 agent（测试设计师角色） | `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json` | ❌ | ❌ |
 | 阶段四 | 用例评估 | 主 agent（用例评估师角色） | `TEST-CASE-REVIEW.md` | ✅ 需批准 | ✅ 打回阶段三 |
-| 阶段五 | 并行测试执行 | 各 Flow 并行角色 subagent | `TEST-EXECUTION/*.md` | ❌ | ✅ 打回阶段三/五 |
+| 阶段五 | 并行测试执行 | 各 Flow 并行角色 subagent | `TEST-EXECUTION/*.md` + `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md` + `TEST-EXECUTION/SURFACE-COVERAGE.json` | ❌ | ✅ 打回阶段三/五 |
 | 阶段六 | 缺陷分析 | 主 agent（缺陷分析师角色） | `DEFECTS/DEFECT-REPORT.md` | ❌ | ✅ 打回阶段三/五 |
 | 阶段七 | 报告整合 | 主 agent（报告整合师角色） | `FINAL-TEST-REPORT.md` | ❌ | ❌ |
 
@@ -26,11 +26,11 @@
 ## 二、阶段间上下文传递（唯一路径）
 
 ```
-阶段一 → SPEC.md
+阶段一 → PRODUCT-FINGERPRINT.json + SPEC.md + SPEC-CONSISTENCY-REVIEW.md
 阶段二 → PRODUCT-QUALITY-REVIEW.md
-阶段三 → TEST-DESIGN.md
+阶段三 → TEST-DESIGN.md + SURFACE-EXECUTION-PLAN.json
 阶段四 → TEST-CASE-REVIEW.md
-阶段五 → TEST-EXECUTION/*.md（各 subagent 输出各自文件）
+阶段五 → TEST-EXECUTION/*.md + TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md + TEST-EXECUTION/SURFACE-COVERAGE.json
 阶段六 → DEFECTS/DEFECT-REPORT.md（汇总所有缺陷）
 阶段七 → FINAL-TEST-REPORT.md
 ```
@@ -43,14 +43,19 @@
 
 ```
 {date}-{test-type}-{flow}/
-├── SPEC.md                          # 阶段一
+├── PRODUCT-FINGERPRINT.json         # 阶段一事实指纹
+├── SPEC.md                          # 阶段一规格文档
+├── SPEC-CONSISTENCY-REVIEW.md       # 阶段一事实一致性门禁
 ├── PRODUCT-QUALITY-REVIEW.md        # 阶段二
 ├── TEST-DESIGN.md                   # 阶段三
+├── SURFACE-EXECUTION-PLAN.json      # 阶段三多表面执行计划
 ├── TEST-CASE-REVIEW.md              # 阶段四
 ├── approval-records.json            # 阶段二/四批准交互记录（动态生成）
 ├── rejection-count.json              # 拒绝计数持久化（动态生成）
 ├── stage-transition-log.json         # 阶段转换审计日志（动态生成）
 ├── TEST-EXECUTION/
+│   ├── SKILL-SURFACE-WORKLIST.md       # Flow A 阶段五 surface 执行工单
+│   ├── SURFACE-COVERAGE.json           # Flow A 阶段五 surface 覆盖状态
 │   ├── progress-{角色}.txt         # 进度文件（动态生成）
 │   ├── skill-results.md             # Flow A 必出
 │   ├── security-results.md           # Flow A/D 必出
@@ -153,7 +158,7 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 |------|------|---------|------|
 | `orchestrator` | 阶段推进、用户交互、批准请求 | ✅ | requirement-analyst, quality-assessor, report-integrator |
 | `executor` | 接收任务执行，不直接与用户交互 | ❌ | skill-tester, security-tester, functional-tester |
-| `validator` | 审计、评估、覆盖检查 | ❌ | test-case-evaluator, evidence-collector, defect-analyst |
+| `validator` | 审计、评估、覆盖检查 | ❌ | spec-consistency-validator, test-case-evaluator, evidence-collector, defect-analyst |
 
 **调度规则**：
 - `orchestrator` 角色由主 agent 自身扮演，不启动 subagent
@@ -163,10 +168,14 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 ### 角色依赖图
 
 ```
-requirement-analyst ──SPEC.md──→ quality-assessor
-       │                              │
-       │                     PRODUCT-QUALITY-REVIEW.md
-       ↓                              ↓
+requirement-analyst ──PRODUCT-FINGERPRINT.json / SPEC.md──→ spec-consistency-validator
+       │                                                      │
+       │                                           SPEC-CONSISTENCY-REVIEW.md
+       ↓                                                      ↓
+  quality-assessor ←────────────读取──────────── spec-consistency-validator
+       │
+PRODUCT-QUALITY-REVIEW.md
+       ↓
   test-designer ←────参考─────── quality-assessor
        │
    TEST-DESIGN.md
@@ -242,14 +251,15 @@ requirement-analyst ──SPEC.md──→ quality-assessor
 
 | 角色 | 读取文件 | 输出文件 | Flow |
 |------|---------|---------|------|
-| skill-tester | `SPEC.md`、`TEST-DESIGN.md`、Skill 源码 | `TEST-EXECUTION/skill-results.md` | A |
-| security-tester | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/security-results.md` | A/B/C/D |
-| functional-tester | `SPEC.md`、`TEST-DESIGN.md` | `TEST-EXECUTION/functional-results.md` | B/C |
-| compatibility-tester | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/compatibility-results.md` | B/C |
-| performance-tester | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/performance-results.md` | B/C/D |
-| accessibility-auditor | `SPEC.md`、`TEST-DESIGN.md`、目标 URL / 页面截图 | `TEST-EXECUTION/accessibility-results.md` | B |
-| mcp-tester | `SPEC.md`、MCP Server | `TEST-EXECUTION/mcp-results.md` | D |
-| reality-checker | `SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/reality-results.md` | C/D |
+| spec-consistency-validator | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、被测仓库事实源 | `SPEC-CONSISTENCY-REVIEW.md` | A/B/C/D |
+| skill-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、`SURFACE-EXECUTION-PLAN.json`、Skill 源码 | `TEST-EXECUTION/skill-results.md` | A |
+| security-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/security-results.md` | A/B/C/D |
+| functional-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md` | `TEST-EXECUTION/functional-results.md` | B/C |
+| compatibility-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/compatibility-results.md` | B/C |
+| performance-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/performance-results.md` | B/C/D |
+| accessibility-auditor | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、目标 URL / 页面截图 | `TEST-EXECUTION/accessibility-results.md` | B |
+| mcp-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、MCP Server | `TEST-EXECUTION/mcp-results.md` | D |
+| reality-checker | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/reality-results.md` | C/D |
 | evidence-collector | 监听 `TEST-EXECUTION/` 目录 | `DEFECTS/evidence-collection.md` | 全部 |
 
 ---
@@ -402,6 +412,7 @@ requirement-analyst ──SPEC.md──→ quality-assessor
 
 - `live` / `shim-live` 是仅有的真实执行级别。
 - `trace` 不得写成“功能通过”或计入真实执行率。
+- 仅有静态分析或 `trace` 证据时，不得给出 `PASS`、`PARTIAL PASS`、功能覆盖率、API 覆盖率或规则覆盖率。
 - 关键功能用例要求真实执行时，必须使用 `--strict-real`；若只能退到 `trace`，结果应为 blocker。
 - `auto --strict-real` 在存在独立 verifier 时应优先选择 `shim-live`；否则再尝试 `live`，最后才是 `shim-live` / blocker。
 - `live --strict-real` 必须拿到 OpenClaw CLI 原生回传的 runtime telemetry protocol（当前版本：`nexus-live-telemetry/v1`）；没有协议或协议字段不完整时不得返回成功。

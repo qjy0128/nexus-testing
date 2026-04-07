@@ -1,3 +1,18 @@
+### v0.9.35（2026-04-07）
+**Flow A hook / MCP harness hardening**
+
+- 更新：scripts/run_flow_a_skill_execution.py，显式 harness 与 MCP harness 启动失败时不再炸整轮，而是把对应 surface 标记为 locked
+- 更新：scripts/run_flow_a_skill_execution.py，显式 hook harness 若声明验证通过，必须同时提供 egisteredHooks 等结果证据；MCP harness 继续记录 protocol-version、	ools 与 	ool-call
+- 更新：scripts/validate_flow_a_skill_results.py，收紧 openclaw-extension / mcp 通过态门槛，分别要求 egistered-hooks 与 protocol-version/tools 证据 notes
+- 更新：scripts/test_flow_a_surface_runner.py、scripts/test_flow_a_skill_execution.py，补充真实 hook/MCP harness 回归和坏 harness 启动失败回归
+- 更新：SKILL.md、lows/skill-testing.md、oles/skill-tester.md、eference-flow-skill.md、README.md，同步阶段五 runner 的真实执行语义
+### v0.9.34（2026-04-07）
+**Bash 诊断脚本**
+
+- 新增：scripts/diagnose_bash_runtime.py，输出当前环境的 Bash 候选路径、可用性判定和修复建议
+- 更新：scripts/validate-framework.py，将 Bash 诊断脚本纳入必需 Python 脚本
+- 更新：README.md，补充 Bash 诊断命令和使用说明
+
 # Nexus Testing Framework — 变更记录
 
 > 本文件记录所有历史版本中的已废弃名称、矛盾表述和重大变更，供 Review 和调试参考。**agent 执行时不应依赖此文件，所有定义以 DEFINITIONS.md 为准。**
@@ -23,6 +38,80 @@
 ---
 
 ## 重大版本变更
+
+### v0.9.33（2026-04-07）
+**Flow A 保守收口 + 生成器清理**
+
+- 更新：`scripts/run_flow_a_skill_execution.py`，将 `openclaw-extension` 与 `mcp` 的 generic module probe 从 `passed` 收紧为 `incomplete`，避免把“可加载”误判为“功能通过”
+- 更新：`scripts/validate_flow_a_skill_results.py`，新增约束：`openclaw-extension` / `mcp` 若要写成 `passed`，必须显式提供 `behavior-verified=true` / `protocol-verified=true`
+- 更新：`scripts/generate_flow_a_test_design.py`，只在高置信度时把真实 `bin` 绑定到 `mcp` surface，避免多入口仓库误绑
+- 更新：`scripts/generate_flow_a_stage1.py`、`scripts/generate_flow_a_test_design.py`、`scripts/generate_flow_a_skill_execution.py`，清理阶段工件生成器中的乱码文本
+- 更新：`scripts/test_flow_a_stage1.py`、`scripts/test_flow_a_test_design.py`、`scripts/test_flow_a_skill_execution.py`、`scripts/test_flow_a_surface_runner.py`，同步新语义和干净文案
+
+### v0.9.32（2026-04-07）
+**Flow A 阶段五 extension / mcp probe 落地**
+
+- 更新：`scripts/generate_flow_a_test_design.py`，让 `mcp` surface 继承真实 `bin` 入口元数据，而不是退化成只指向 `package.json`
+- 更新：`scripts/run_flow_a_skill_execution.py`，新增通用模块加载探针，支持 `openclaw-extension` 与 `mcp` surface 的真实 runtime load 校验
+- 更新：`scripts/test_flow_a_test_design.py`、`scripts/test_flow_a_surface_runner.py`，把 `mcp` 元数据和 extension/mcp 执行结果纳入 smoke test
+- 更新：`README.md`、`SKILL.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md`，同步 runner 的最新覆盖边界
+
+### v0.9.31（2026-04-07）
+**Flow A 阶段五多表面执行增强**
+
+- 更新：`scripts/run_flow_a_skill_execution.py`，新增 `bin` 真实执行分支，并为 `package`、`plugin-manifest` 提供结构化 trace 校验结果
+- 更新：`scripts/generate_flow_a_test_design.py`、`scripts/generate_flow_a_skill_execution.py`，把 `path/command/name` 等可执行元数据带入 `SURFACE-EXECUTION-PLAN.json` 与 `SURFACE-COVERAGE.json`
+- 更新：`scripts/test_flow_a_surface_runner.py`，不再因为本机缺少 `bash` 整体跳过，而是继续验证 `bin/package/plugin-manifest` surface
+- 更新：`README.md`、`SKILL.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md`，明确当前通用 runner 的内置覆盖边界
+
+### v0.9.30（2026-04-07）
+**Flow A 阶段五 surface runner 落地**
+
+- 新增：`scripts/run_flow_a_skill_execution.py`，让 `skill-tester` 按 `SURFACE-EXECUTION-PLAN.json` 和 `SKILL-SURFACE-WORKLIST.md` 逐 surface 调用 `sandbox_skill_invoke.py`
+- 新增：`scripts/test_flow_a_surface_runner.py`，验证 stage1 -> stage3 -> stage5 -> runner -> validator 的完整闭环
+- 更新：`scripts/validate-framework.py` 将 runner 与 smoke test 纳入必检脚本和 runtime smoke tests
+- 更新：`README.md`、`SKILL.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md`，要求阶段五优先使用统一 surface runner
+
+### v0.9.29（2026-04-07）
+**Flow A 阶段五 surface 执行链落地**
+
+- 新增：`scripts/generate_flow_a_skill_execution.py`，根据 `SURFACE-EXECUTION-PLAN.json` 生成 `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md` 与 `TEST-EXECUTION/SURFACE-COVERAGE.json`
+- 新增：`scripts/validate_flow_a_skill_results.py`，校验 `skill-results.md` 是否覆盖全部 surface，且每个 surface 都带 `execution-level / status / evidence / notes`
+- 新增：`scripts/test_flow_a_skill_execution.py`，串起阶段一、阶段三、阶段五工单与结果校验的 smoke test
+- 更新：`scripts/validate-framework.py`、`DEFINITIONS.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`roles/evidence-collector.md`、`roles/report-integrator.md`、`README.md`、`SKILL.md`、`reference-flow-skill.md`，把阶段五 surface 工单与覆盖校验纳入正式契约
+
+### v0.9.28（2026-04-07）
+**Flow A 多表面测试设计落地**
+
+- 新增：`scripts/generate_flow_a_test_design.py`，根据 `PRODUCT-FINGERPRINT.json` 生成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
+- 新增：`scripts/test_flow_a_test_design.py`，用混合表面 fixture smoke test 验证 `skill/plugin/cli/mcp/package` 会被拆成独立测试面
+- 更新：`scripts/validate-framework.py` 将阶段三生成器、smoke test 和 `SURFACE-EXECUTION-PLAN.json` 契约纳入框架校验
+- 更新：`DEFINITIONS.md`、`flows/skill-testing.md`、`SKILL.md`、`roles/test-designer.md`、`roles/test-case-evaluator.md`、`roles/skill-tester.md`、`reference-flow-skill.md`，要求阶段三显式产出多表面执行计划
+
+### v0.9.27（2026-04-07）
+**Flow A 阶段一生成链落地**
+
+- 新增：`scripts/generate_flow_a_stage1.py`，可从目标仓库或 `SKILL.md` 直接生成 `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`
+- 新增：`scripts/test_flow_a_stage1.py`，用混合表面 fixture smoke test 验证阶段一三件套可稳定生成
+- 更新：`scripts/validate-framework.py` 将阶段一生成器与 smoke test 纳入必检脚本和 runtime smoke tests
+- 更新：`README.md`、`SKILL.md` 补充实际生成命令，Flow A 不再只停留在事实指纹抽取
+
+### v0.9.26（2026-04-07）
+**Flow A 事实门禁 + 文档更新纪律收紧**
+
+**Flow A 产品事实门禁（6 项）**
+- 新增：阶段一强制产出 `PRODUCT-FINGERPRINT.json`，要求先抽取技术栈、版本、许可证、真实入口和能力表面，再允许生成 `SPEC.md`
+- 新增：`roles/spec-consistency-validator.md`，输出 `SPEC-CONSISTENCY-REVIEW.md`，在阶段二前阻断技术栈、版本、许可证、接口和能力面的幻觉性描述
+- 更新：`flows/skill-testing.md`、`roles/requirement-analyst.md`、`roles/quality-assessor.md`、`roles/test-designer.md`、`roles/test-case-evaluator.md`、`reference-flow-skill.md` 全面切换为“先事实指纹、后规格、再设计”的 Flow A 设计
+- 更新：`DEFINITIONS.md`、`SKILL.md`、`README.md` 明确静态分析或 `trace` 证据不得产出 `PASS` / `PARTIAL PASS` 或覆盖率指标
+- 新增：`scripts/extract_product_fingerprint.py`，把 Flow A 的产品指纹抽取从文档要求落成可执行脚本
+- 新增：`scripts/test_product_fingerprint.py`，用混合表面 fixture smoke test 验证指纹提取结果
+
+**维护纪律（2 项）**
+- 更新：`README.md`、`SKILL.md` 明确要求凡是修改入口、流程、角色、参考文档、校验器或执行语义，都必须同步更新 `README.md` 和 `CHANGELOG.md`
+- 新增：`scripts/validate-framework.py` 检查核心框架文件变更时是否同步修改 `README.md` 和 `CHANGELOG.md`
+
+---
 
 ### v0.9.24（2026-04-06）
 **sandbox-exec 容器后端落地 + 审计增强**
@@ -565,3 +654,10 @@
 | subagent 无法自我终止 | Token 100% 时 subagent 无法主动停止，需 Gateway 层实现 | Token 上限无法真正强制 |
 | OpenClaw 平台约束 | argument-hint、allowed-tools 等由平台控制，非 Skill 可配置 | 部分安全规则受平台限制 |
 
+
+
+- 更新：`scripts/run_flow_a_skill_execution.py`，显式 harness 与 MCP harness 启动失败时不再炸整轮，而是把对应 surface 标记为 `blocked`
+- 更新：`scripts/run_flow_a_skill_execution.py`，显式 hook harness 若声明验证通过，必须同时提供 `registeredHooks` 等结果证据；MCP harness 继续记录 `protocol-version`、`tools` 与 `tool-call`
+- 更新：`scripts/validate_flow_a_skill_results.py`，收紧 `openclaw-extension` / `mcp` 通过态门槛，分别要求 `registered-hooks` 与 `protocol-version/tools` 证据 notes
+- 更新：`scripts/test_flow_a_surface_runner.py`、`scripts/test_flow_a_skill_execution.py`，补充真实 hook/MCP harness 回归和坏 harness 启动失败回归
+- 更新：`SKILL.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md`、`README.md`，同步阶段五 runner 的真实执行语义

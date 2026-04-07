@@ -76,11 +76,11 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 
 ```text
 阶段零：环境就绪检查 -> 等待用户确认
-阶段一：需求解析 -> SPEC.md
+阶段一：需求解析 + 事实校验 -> PRODUCT-FINGERPRINT.json / SPEC.md / SPEC-CONSISTENCY-REVIEW.md
 阶段二：质量评估 -> PRODUCT-QUALITY-REVIEW.md -> 等待批准
-阶段三：测试设计 -> TEST-DESIGN.md
+阶段三：测试设计 -> TEST-DESIGN.md / SURFACE-EXECUTION-PLAN.json
 阶段四：用例评估 -> TEST-CASE-REVIEW.md -> 等待批准
-阶段五：并行测试执行 -> TEST-EXECUTION/*.md
+阶段五：并行测试执行 -> TEST-EXECUTION/*.md / SKILL-SURFACE-WORKLIST.md / SURFACE-COVERAGE.json
 阶段五后：证据收集 -> DEFECTS/evidence-collection.md
 阶段六：缺陷分析 -> DEFECTS/DEFECT-REPORT.md
 阶段七：报告整合 -> FINAL-TEST-REPORT.md
@@ -102,7 +102,14 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 Flow A 额外要求：
 
 - 识别 Node / npm、Python、外部插件、系统命令依赖
+- 使用 `scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir>` 优先生成阶段一三件套；其内部先调用 `scripts/extract_product_fingerprint.py` 抽取事实指纹，再写规格
+- 使用 `scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir>` 生成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
+- 使用 `scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir>` 生成阶段五 `SKILL-SURFACE-WORKLIST.md` 与 `SURFACE-COVERAGE.json`
+- 使用 `scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir>` 让 `skill-tester` 按 surface 顺序执行；当前 `skill/bin` 可给真实执行结论，`package/plugin-manifest` 为结构化校验，`openclaw-extension` 可通过 `testing.json` 显式 hook harness 验证行为，`mcp` 可通过 stdio JSON-RPC harness 验证协议交互，只有 probe 证据时才记为 `incomplete`
+- 阶段五完成后，用 `scripts/validate_flow_a_skill_results.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-results <TEST-EXECUTION/skill-results.md>` 校验 surface 覆盖是否完整
 - 判断是否需要 `sandbox-create.sh`、`sandbox-exec.sh` 等沙箱脚本
+- 阶段一先生成 `PRODUCT-FINGERPRINT.json`，再生成 `SPEC.md`
+- 阶段一必须完成 `SPEC-CONSISTENCY-REVIEW.md`；未通过不得进入阶段二
 - OpenClaw 自身可用性默认由运行时保证，不作为本 Skill 的检测项
 
 ## 六、阶段五执行模型
@@ -171,6 +178,12 @@ message(action: "send", filePath: "memory/nexus-reports/{date}-{test-type}-{flow
 - 实际输出
 - 判定
 
+静态分析只能作为补充审查：
+
+- 不得输出 `PASS` / `PARTIAL PASS`
+- 不得输出功能覆盖率、API 覆盖率、规则覆盖率
+- 只能输出 `blocked` / `incomplete` / `待真实执行复核`
+
 环境不足时使用降级阶梯：
 
 ```text
@@ -213,3 +226,7 @@ message(action: "send", filePath: "memory/nexus-reports/{date}-{test-type}-{flow
 | `reference-flow-mcp.md` | Flow D 详细模板 |
 | `reference-production-readiness.md` | 测试完成后的生产就绪检查项 |
 | `reference-recovery.md` | 测试中断后的恢复与续跑机制 |
+
+维护约束：
+
+- 任何修改入口、流程、角色、参考文档、校验器或执行语义时，必须同步更新 `README.md` 和 `CHANGELOG.md`
