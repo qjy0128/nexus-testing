@@ -65,7 +65,6 @@ REQUIRED_SHELL_SCRIPT_FILES = (
 )
 
 REQUIRED_PYTHON_SCRIPT_FILES = (
-    "scripts/validate-framework.py",
     "scripts/skill-structure-validator.py",
     "scripts/skill_structure_validator_core.py",
     "scripts/sandbox_skill_invoke.py",

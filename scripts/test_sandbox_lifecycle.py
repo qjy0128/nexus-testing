@@ -25,6 +25,10 @@ INVOKE_SCRIPT = PROJECT_DIR / "scripts" / "sandbox_skill_invoke.py"
 SECURITY_SCANNER = PROJECT_DIR / "scripts" / "security-scanner.py"
 
 
+class SkipTest(Exception):
+    """Raised by a test to indicate it should be skipped."""
+
+
 def find_bash() -> str | None:
     for candidate in ("bash",):
         found = shutil.which(candidate)
@@ -228,6 +232,9 @@ def main() -> int:
         except AssertionError as exc:
             print(f"  [FAIL] {test.__name__}: {exc}")
             failed += 1
+        except SkipTest as exc:
+            print(f"  [SKIP] {test.__name__}: {exc}")
+            skipped += 1
         except Exception as exc:
             print(f"  [ERROR] {test.__name__}: {type(exc).__name__}: {exc}")
             failed += 1
