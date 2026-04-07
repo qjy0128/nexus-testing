@@ -1,6 +1,13 @@
 ﻿---
 name: nexus-workflow-optimizer
+type: validator
 description: "[辅助角色] 工作流优化师。系统检测到流程有优化空间时触发，非标准流程角色。分析测试流程瓶颈，提出并行化机会，推动持续改进。"
+triggers:
+  - "优化流程"
+  - "流程瓶颈"
+  - "workflow optimization"
+best_for:
+  - "分析测试流程瓶颈和并行化机会"
 ---
 
 # 角色：工作流优化师（Workflow Optimizer）

@@ -24,6 +24,217 @@
 
 ## 重大版本变更
 
+### v0.9.24（2026-04-06）
+**sandbox-exec 容器后端落地 + 审计增强**
+
+**执行后端（4 项）**
+- 新增：`sandbox-exec.sh` 支持 `--backend host-logged|container`，其中 `container` 可通过 `docker` / `podman` 运行容器化命令。
+- 新增：容器后端支持 `--container-runtime`、`--container-image`、`--container-workdir`、`--allow-network`，默认挂载当前 session 的 `workspace/` 到容器内并关闭网络。
+- 调整：`--ack-unsafe-exec` 只对 `host-logged` 后端强制；`container` 后端不再要求这类“口头确认”替代技术隔离。
+- 增强：`sandbox-exec` 输出和 `exit-codes.json` 现在会记录 `backend`、`isolationLevel`、`containerRuntime`、`containerImage`、`networkAccess`。
+
+**回归与规格（3 项）**
+- 新增：`scripts/test_sandbox_exec_container.py`，覆盖 `host-logged` 无确认失败、`container` probe、默认断网、显式放开网络等 smoke case。
+- 更新：`validate-framework.py` 与 GitHub Actions 将 `test_sandbox_exec_container.py` 纳入 Python 编译和 runtime smoke tests。
+- 更新：`DEFINITIONS.md`、`reference-sandbox-spec.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-output-verification-examples.md` 统一到新的 host/container 双后端口径。
+
+---
+
+### v0.9.23（2026-04-06）
+**Flow A 自动模式收紧 + 本地回归补齐 + sandbox-exec 显式确认**
+
+**Flow A 执行链修复（4 项）**
+- 更新：`sandbox-skill-invoke` 在 `auto --strict-real` 且存在独立 verifier 时优先选择 `shim-live`，避免旧版 OpenClaw CLI 因缺少 live telemetry 协议把本可严格验证的用例误判为 blocker。
+- 修复：`live` 模式不再用原始 stdout 覆盖 `NEXUS_OUTPUT_FILE`；现在会优先保留 `assistantMessage` 或 CLI 已写入的真实回复内容。
+- 更新：`scripts/test_flow_a_strict.py` 新增 `auto --strict-real` 选择 `shim-live` 的 smoke case，`scripts/test_flow_a_live_telemetry.py` 新增真实输出文件断言。
+- 更新：`scripts/validate-framework.py` 本地校验新增 Flow A runtime smoke tests，消除“本地只 py_compile、CI 才跑行为测试”的假绿灯。
+
+**Flow A 文档对齐（3 项）**
+- 更新：`roles/test-designer.md`、`roles/test-case-evaluator.md` 去掉把 Skill/Agent 测试写成 `Dry Run` 的旧口径，统一为 `live` / `shim-live` 真实执行要求。
+- 更新：`flows/skill-testing.md`、`roles/skill-tester.md`、`DEFINITIONS.md`、`reference-sandbox-spec.md` 补充 `auto --strict-real` 的模式选择规则。
+- 更新：`README.md` 当前版本同步到 `v0.9.23`。
+
+**sandbox-exec 防误用（2 项）**
+- 更新：`sandbox-exec.sh` 执行真实命令时新增强制参数 `--ack-unsafe-exec`，明确它只是带日志命令执行器，不是安全沙箱。
+- 更新：`reference-sandbox-spec.md`、`reference-output-verification-examples.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`DEFINITIONS.md` 同步显式确认要求。
+
+---
+
+### v0.9.22（2026-04-06）
+**减少 prompt 级自循环暗示 + 测试设计去硬编码轮数**：
+
+**流程措辞收敛（3 项）**：
+- 更新：`reference-approval-mechanism.md` 将“打回路径”统一改为“阶段回退入口”，明确含义是终止当前阶段并由主 agent 重新进入前置阶段生成新的交付物，而不是要求同一次输出里自我返工
+- 更新：`SKILL.md`、`roles/quality-assessor.md`、`roles/test-case-evaluator.md` 同步改为“重新进入前一阶段/阶段三”的表述，避免把阶段回退误读成模型内部循环
+- 更新：阶段评审不通过时的文案统一强调“当前评审不通过”，而不是笼统写“打回重做”
+
+**测试设计去硬编码（2 项）**：
+- 更新：`roles/test-designer.md` 把多轮脚本要求从固定 `3/5/10 轮` 改成短/中/长三类覆盖，不再要求 LLM 为了满足模板机械跑固定轮数
+- 更新：同文件把“打回重做”改成“由主 agent 重新进入测试设计阶段并生成新的交付物”，避免把流程回退写成同一执行链内的自循环
+
+---
+
+### v0.9.21（2026-04-06）
+**Flow A live telemetry protocol 硬门禁 + OpenClaw 原生回传协议**：
+
+**live 模式收紧（3 项）**：
+- 新增：`sandbox-skill-invoke` 为 `live` 模式定义 OpenClaw 原生 runtime telemetry protocol，当前版本为 `nexus-live-telemetry/v1`
+- 修复：`live --strict-real` 现在无条件要求 OpenClaw CLI 回传结构化 telemetry；缺少协议时返回 `blocked-live-telemetry-missing`，协议字段不完整或错误时返回 `blocked-live-telemetry-invalid`
+- 新增：`TELEMETRY_PROTOCOL_STATUS`、`TELEMETRY_PROTOCOL_VERSION`、`TELEMETRY_SOURCE` 输出字段，并通过环境变量把协议要求传给 OpenClaw CLI
+
+**回归测试补齐（3 项）**：
+- 新增：`scripts/test_flow_a_live_telemetry.py`，用 mock OpenClaw CLI 覆盖 `no-protocol -> blocker`、`protocol-pass -> success`、`bad-evidence -> assertion-failed`
+- 更新：GitHub Actions 新增 Flow A live telemetry smoke test，避免 `live` 模式退回“只看退出码和 stdout”
+- 更新：`validate-framework.py` 将 `scripts/test_flow_a_live_telemetry.py` 纳入必检与 `py_compile` 范围
+
+**规范同步（3 项）**：
+- 更新：`DEFINITIONS.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md` 明确 `live --strict-real` 没有 runtime telemetry protocol 就不得返回成功
+- 更新：`reference-sandbox-spec.md` 新增 OpenClaw runtime telemetry protocol 章节、环境变量、载荷示例和 blocker 规则
+- 更新：`README.md` 明确 `live` 严格模式依赖 OpenClaw CLI 原生回传 `nexus-live-telemetry/v1`
+
+---
+
+### v0.9.20（2026-04-06）
+**Flow A 严格 verifier 硬门禁 + CI 行为级回归**：
+
+**严格门禁收紧（3 项）**：
+- 修复：`sandbox-skill-invoke` 在 `shim-live --strict-real` 下改为无条件要求独立 `--verification-manifest`；即使没有传 `--expect-*` / `--require-*` 断言参数，也不能再绕过 verifier 门禁返回成功
+- 修复：`shim-live --strict-real` 缺少独立 verifier 时统一返回 `assertion-failed`，并明确标记 `TELEMETRY_TRUST=self-reported`
+- 修复：当可识别 Skill 仓库根时，位于同仓库的 verifier manifest 不再被视为“独立 verifier”
+
+**回归测试补齐（3 项）**：
+- 新增：`scripts/test_flow_a_strict.py`，覆盖 `no-verifier -> fail`、`with-verifier -> pass`、`bad-evidence -> fail`、`multi-turn -> pass`、`same-repo-verifier -> fail` 五个行为级 smoke 场景
+- 更新：GitHub Actions 新增 Flow A strict smoke test，CI 不再只看语法和结构
+- 更新：`validate-framework.py` 将 `scripts/test_flow_a_strict.py` 纳入必检与 `py_compile` 范围
+
+**规范同步（2 项）**：
+- 更新：`DEFINITIONS.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md`、`reference-sandbox-spec.md` 统一为“`shim-live --strict-real` 必须带独立 verifier，否则不得返回成功”
+- 更新：示例命令与 verifier 说明同步到最新严格口径，减少测试 agent 误用或偷懒空间
+
+---
+
+### v0.9.19（2026-04-06）
+**Flow A shim-live 独立 verifier 门禁 + 多轮入口同步**：
+
+**严格门禁增强（3 项）**：
+- 新增：`sandbox-skill-invoke` 支持 `--verification-manifest`，用于在 `shim-live --strict-real` 场景下接入 Skill 目录外的独立 verifier
+- 修复：`shim-live` 在严格断言场景下不再接受 Skill 自带 adapter 的自报遥测；缺少独立 verifier 时直接返回 `assertion-failed`
+- 新增：`TELEMETRY_TRUST`、`VERIFICATION_STATUS`、`VERIFIER_SOURCE`、`VERIFIER_RESULT_FILE` 等输出字段，用于明确证据可信度与 verifier 产物
+
+**执行链路补强（2 项）**：
+- 修复：`sandbox_multi_turn.py` 透传 `--verification-manifest`，使多轮严格验证与单轮规则一致
+- 修复：多轮摘要改用 ASCII `PASS` / `FAIL`，并记录无效送达证据字段，避免日志摘要出现乱码或遗漏关键失败原因
+
+**规范同步（3 项）**：
+- 更新：`DEFINITIONS.md`、`flows/skill-testing.md`、`roles/skill-tester.md` 写明 `shim-live --strict-real` 的独立 verifier 要求
+- 更新：`reference-sandbox-spec.md` 补齐 verifier manifest、环境变量、输出字段与严格门禁说明
+- 更新：`reference-flow-skill.md` 把 verifier 要求纳入 Flow A 用例与适配器约定
+
+---
+
+### v0.9.18（2026-04-06）
+**Flow A 证据可信度继续收紧 + 审计并发安全补强**：
+
+**执行可信度增强（3 项）**：
+- 修复：`sandbox-skill-invoke` 的 `shim-live` 路径与 `live` 路径统一为同一套交付断言，补齐 `deliveryReceipts`、`invalidDeliveryEvidence` 和结构化结果回传
+- 增强：`live` 模式现在可通过 `NEXUS_RESULT_JSON_FILE` 或结构化 stdout/stderr 回传 `triggerMatched`、`toolsCalled`、`contextReferences`、`deliveryStatus`
+- 增强：送达证据必须落在当前 session 内且真实存在；无效路径会显式记入 `INVALID_DELIVERY_EVIDENCE` 并触发断言失败
+
+**稳定性与并发安全（2 项）**：
+- 修复：Skill 安装副本的源指纹从路径/mtime 规则升级为内容哈希，降低同一 session 内复用旧副本的风险
+- 修复：`sandbox-exec.sh` 与 `sandbox-skill-invoke` 的审计写入都受锁保护，避免并发执行时写坏 `logs/exit-codes.json` / `META.json`
+- 修复：Windows 下 `shim-live` 会优先选择可运行的 Git Bash，而不是误用 `system32\\bash.exe` 的 WSL 包装器
+
+**文档同步（2 项）**：
+- 更新：`reference-sandbox-spec.md` 补齐 `DELIVERY_RECEIPTS`、`INVALID_DELIVERY_EVIDENCE` 输出字段以及审计锁/内容哈希说明
+- 更新：`roles/skill-tester.md` 明确重测时必须使用最新内容哈希副本
+
+---
+
+### v0.9.17（2026-04-06）
+
+**Flow A 反偷懒断言 + 审计链补齐**：
+
+**执行严格性增强（4 项）**：
+- 新增：`sandbox-skill-invoke` 支持 `--expect-trigger`、`--require-tools`、`--expect-context-ref`、`--require-delivery-status`、`--require-delivery-evidence`
+- 修复：负向触发不再接受 `unknown`，必须拿到显式 `triggerMatched=false`
+- 修复：多轮上下文验证不再依赖关键词猜测，改为要求显式 `contextReferences`
+- 修复：渠道验证不再接受本地渲染替代送达证明，改为要求显式 `deliveryStatus` 与送达证据
+
+**执行可靠性增强（2 项）**：
+- 修复：Skill 安装目录改为基于源文件指纹，避免同一 session 内复用旧副本
+- 修复：`sandbox-skill-invoke` 现已写入 `logs/exit-codes.json` 并更新 `META.json`，纳入标准审计账本
+
+**文档与模板同步（3 项）**：
+- 更新：`reference-sandbox-spec.md` 补充断言参数、适配器返回字段、送达证据和审计要求
+- 更新：`reference-flow-skill.md`、`flows/skill-testing.md`、`roles/skill-tester.md` 强制负向触发 / 上下文 / 渠道验证使用显式证据
+- 更新：`DEFINITIONS.md` 明确 `triggerMatched=false`、`contextReferences`、`deliveryStatus` 是 Flow A 真实通过的必要条件
+
+---
+
+### v0.9.16（2026-04-06）
+
+**Flow A 严格真实执行收口 + shim 适配器补全**：
+
+**执行能力升级（4 项）**：
+- 新增：`sandbox-skill-invoke` Python 核心实现，支持 `auto` / `live` / `shim-live` / `trace` / `dry-run`
+- 新增：`--strict-real` 门禁；真实执行不可用时不再静默退回 `trace`
+- 新增：`testing.json` / `scripts/test-entry.*` 适配器约定，用于在无 OpenClaw CLI 时完成本地真实执行
+- 新增：`sandbox-multi-turn` Python 核心实现，支持真实执行模式透传与历史文件管理
+
+**规范收口（4 项）**：
+- 修复：`reference-sandbox-spec.md` 重写为现行沙箱规格，明确 `live` / `shim-live` / `trace` 的能力边界
+- 修复：`DEFINITIONS.md` 降级阶梯新增 `shim-live`，并明确 `trace` 不能计入真实执行率
+- 修复：`flows/skill-testing.md` 与 `roles/skill-tester.md` 强制 P0/P1 功能用例使用 `--strict-real`
+- 修复：`reference-flow-skill.md` 补充最低执行级别和适配器结果回传格式
+
+**基础设施补充（1 项）**：
+- 更新：`sandbox-create.sh` 新增 `workspace/state/` 与 `workspace/artifacts/` 目录，承载多轮历史和适配器产物
+
+---
+
+### v0.9.15（2026-04-06）
+
+**Flow/Role 继续瘦身 + Skill 结构校验器拆分**：
+
+**流程与角色文档优化（3 项）**：
+- 重写：`flows/web-api-testing.md`，改为只保留模式选择、阶段合同、并行角色和门禁规则，删除大量重复的步骤模板与工具细节
+- 精简：`roles/quality-assessor.md`，收敛为规格质量、风险、可测试性与 Flow B 模式选择职责
+- 精简：`roles/skill-tester.md`，收敛为隔离安装、安全门禁、能力/边界/输出验证和稳定性检查
+
+**参考文档整合（2 项）**：
+- 整合：`reference-skill-review-framework.md` 进入主入口参考索引，并在 `quality-assessor` 中作为 Skill 规格审查补充框架使用
+- 补充：`README.md` 新增「当前限制」说明，更明确区分 Flow A 的已实现能力与 Flow B/C/D 对外部环境的依赖
+
+**工程化增强（3 项）**：
+- 重构：`scripts/skill-structure-validator.py` 拆分为 CLI 外壳 + `scripts/skill_structure_validator_core.py` 核心逻辑，降低入口脚本复杂度
+- 增强：`scripts/validate-framework.py` 开始编译 `scripts/*.py` 下的全部 Python 脚本，并将 `reference-skill-review-framework.md` 纳入必检清单
+- 修复：`skill_structure_validator_core` 将同目录 Python 模块识别为本地依赖，不再误报为外部 import
+
+---
+
+### v0.9.14（2026-04-06）
+
+**规范收敛 + 文档瘦身 + 校验器增强**：
+
+**现行规范收敛（4 项）**：
+- 修复：移除当前规范链路中的 HMAC / `.nexus-hmac-salt` / `signature` 要求，批准机制改为仅依赖 `approval-records.json`、`rejection-count.json` 和阶段审计日志
+- 修复：`reference-approval-mechanism.md` 重写为现行批准/拒绝/无响应/No-Go 规则，不再与 `DEFINITIONS.md` 冲突
+- 修复：`reference-production-readiness.md` 删除对不存在脚本和矩阵文件的引用，改为只引用仓库中真实存在的脚本与交付物
+- 修复：废弃角色 `compatibility-tester-skill.md` 从活跃 `roles/` 目录移至 `archive/roles/`
+
+**入口与角色文档瘦身（3 项）**：
+- 重写：`SKILL.md`，移除与 `DEFINITIONS.md` 的大段重复定义，只保留路由、阶段合同、门禁和引用索引
+- 精简：`roles/functional-tester.md`、`roles/requirement-analyst.md`、`roles/experience-tester-a.md`、`roles/experience-tester-b.md`、`roles/report-integrator.md`，删除大块模板和重复规范，改为职责/输入输出/最低交付格式
+- 更新：`README.md` 活跃角色统计与运行期产物说明，区分活跃角色与归档模板
+
+**工程化增强（3 项）**：
+- 增强：`scripts/validate-framework.py` 新增对 HMAC 残留、废弃角色回流、额外 reference 文件缺失的校验
+- 增强：`scripts/validate-framework.py` 新增标准 CLI 参数、`--json` 机读输出和 Windows 控制台编码容错
+- 兼容：`SKILL.md` 补充 `Description`、`Usage`、`Examples`，使 `skill-structure-validator.py` 对本仓库的结构评分提升到 `EXCELLENT`
+
+---
+
 ### v0.9.13（2026-04-04）
 
 **深度一致性修复 + 验证体系增强**：

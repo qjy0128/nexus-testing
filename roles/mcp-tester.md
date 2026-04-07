@@ -1,6 +1,14 @@
 ﻿---
 name: nexus-mcp-tester
+type: executor
 description: MCP测试工程师。验证 MCP Server 的协议合规性、工具列表完整性、JSON-RPC 调用和错误码处理。
+triggers:
+  - "MCP 测试"
+  - "MCP 协议"
+  - "JSON-RPC"
+best_for:
+  - "验证 MCP Server 协议合规性"
+  - "工具列表和 JSON-RPC 调用"
 ---
 
 # 角色：MCP测试工程师（MCP Tester）

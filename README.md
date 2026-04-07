@@ -6,9 +6,21 @@
 
 ## 当前状态
 
-- Flow A（Skill 测试）已具备完整主流程，可直接作为标准用法。
-- Flow B（网页+接口）、Flow C（安卓）、Flow D（MCP）已补齐流程骨架、角色分工和参考模板，落地质量取决于目标环境、浏览器/设备能力和被测对象可访问性。
-- 仓库已补充自动自检脚本和 CI 校验，避免文档演进后再次出现版本漂移、断链或 frontmatter 缺失。
+| Flow | 状态 | 说明 |
+|------|------|------|
+| Flow A（Skill 测试） | ✅ 可用 | 完整主流程，含 `live` / `shim-live` / `trace` 三层执行支持 |
+| Flow B（网页+接口） | ⚠️ 流程骨架 | 有角色分工和模板，无专用沙箱脚本，落地依赖浏览器/设备环境 |
+| Flow C（安卓） | ⚠️ 流程骨架 | 同上，需 adb 等 Android 工具链 |
+| Flow D（MCP） | ⚠️ 流程骨架 | 同上，需 MCP Server 可连接 |
+
+沙箱当前能力：`auto` / `live` / `shim-live` / `trace` 四级调用控制。`live` 依赖 OpenClaw CLI，且在 `--strict-real` 下要求 CLI 原生回传 `nexus-live-telemetry/v1`；`shim-live` 依赖 Skill 提供 `testing.json` 或 `scripts/test-entry.*`；`trace` 仅用于静态补充分析，不能直接当成功能通过。
+
+## 当前限制
+
+- Flow A 已有完整的流程 + 沙箱脚本支撑。
+- Flow B 目前提供编排、角色与测试模板，真实落地仍依赖浏览器自动化环境或手动执行环境。
+- Flow C 目前提供编排与角色模板，真实落地依赖 adb、设备或模拟器。
+- Flow D 目前提供编排与角色模板，真实落地依赖可连接的 MCP Server。
 
 ## 支持的测试类型
 
@@ -70,9 +82,12 @@ python scripts/validate-framework.py
 - `README.md` 的当前版本是否与 `CHANGELOG.md` 最新版本一致
 - `.gitignore` 是否覆盖运行期产物
 - Flow 文件是否保留对 `DEFINITIONS.md` 的单一事实源声明
+- Python 辅助脚本是否能通过 `py_compile`
+- `reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
 - 活跃角色文档中是否混入易漂移的内联版本号
+- 本地存在可用 `bash` 时，对全部沙箱脚本执行 `bash -n` 语法检查；不可用时输出警告
 
-CI 也会在 GitHub Actions 中自动执行该校验，并对三个沙箱脚本做 `bash -n` 语法检查。
+CI 也会在 GitHub Actions 中自动执行该校验，并对全部沙箱脚本做 `bash -n` 语法检查。
 
 ## 项目结构
 
@@ -91,7 +106,7 @@ nexus-testing/
 
 角色目录当前包含：
 - 19 个活跃角色文件
-- 1 个废弃兼容模板：[roles/compatibility-tester-skill.md](roles/compatibility-tester-skill.md)
+- 1 个已归档的历史模板：`archive/roles/compatibility-tester-skill.md`
 
 ## 报告输出
 
@@ -110,7 +125,7 @@ nexus-testing/
 ## 维护约定
 
 - 统一定义只写在 [DEFINITIONS.md](DEFINITIONS.md)，`SKILL.md`、`flows/`、`roles/` 只做引用和场景化补充。
-- 运行期文件写入 `memory/nexus-reports/`、`.nexus-sandbox/`、`.nexus-hmac-salt`，不要把这些产物提交回仓库。
+- 运行期文件写入 `memory/nexus-reports/`、`.nexus-sandbox/` 等目录，不要把这些产物提交回仓库。
 - 任何修改入口、流程、角色或参考文档后，都应先跑一次 `python scripts/validate-framework.py`。
 - Shell 脚本默认按 LF 换行维护，避免在 Git Bash / Linux 环境中出现执行异常。
 
@@ -120,4 +135,4 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用“先文字后文件”的
 
 ## 当前版本
 
-v0.9.13 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.24 — 详见 [CHANGELOG.md](CHANGELOG.md)

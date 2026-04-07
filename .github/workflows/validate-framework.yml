@@ -22,11 +22,33 @@ jobs:
       - name: Validate repository structure
         run: python scripts/validate-framework.py
 
-      - name: Check sandbox-create syntax
-        run: bash -n scripts/sandbox-create.sh
+      - name: Check shell script syntax
+        run: |
+          bash -n scripts/sandbox-create.sh
+          bash -n scripts/sandbox-exec.sh
+          bash -n scripts/sandbox-cleanup.sh
+          bash -n scripts/sandbox-skill-invoke.sh
+          bash -n scripts/sandbox-mock-service.sh
+          bash -n scripts/sandbox-multi-turn.sh
+          bash -n scripts/sandbox-compare-output.sh
+          bash -n scripts/sandbox-verify-output.sh
 
-      - name: Check sandbox-exec syntax
-        run: bash -n scripts/sandbox-exec.sh
+      - name: Check Python script syntax
+        run: |
+          python -m py_compile scripts/validate-framework.py
+          python -m py_compile scripts/skill-structure-validator.py
+          python -m py_compile scripts/skill_structure_validator_core.py
+          python -m py_compile scripts/sandbox_skill_invoke.py
+          python -m py_compile scripts/sandbox_multi_turn.py
+          python -m py_compile scripts/test_flow_a_strict.py
+          python -m py_compile scripts/test_flow_a_live_telemetry.py
+          python -m py_compile scripts/test_sandbox_exec_container.py
 
-      - name: Check sandbox-cleanup syntax
-        run: bash -n scripts/sandbox-cleanup.sh
+      - name: Run Flow A strict smoke tests
+        run: python scripts/test_flow_a_strict.py
+
+      - name: Run Flow A live telemetry smoke tests
+        run: python scripts/test_flow_a_live_telemetry.py
+
+      - name: Run sandbox-exec container smoke tests
+        run: python scripts/test_sandbox_exec_container.py

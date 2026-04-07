@@ -1,6 +1,14 @@
 ﻿---
 name: nexus-reality-checker
+type: executor
 description: 现实检验者。在真实场景、弱网环境、异常用户行为下测试，发现常规测试难以发现的边缘问题。
+triggers:
+  - "真实场景测试"
+  - "弱网测试"
+  - "边缘场景"
+  - "reality check"
+best_for:
+  - "真实场景和弱网环境下的边缘问题发现"
 ---
 
 # 角色：现实检验者（Reality Checker）

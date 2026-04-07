@@ -1,137 +1,127 @@
-# Flow A（Skill 测试）详细模板参考
+# Flow A（Skill 测试）参考
 
-> 本文件供 Skill 测试时查阅，补充 SKILL.md 和 skill-testing.md 中的详细格式要求。
-
----
-
-## 一、Skill 测试用例模板
-
-### 1.1 触发条件测试用例
-
-| 用例 ID | 触发描述 | 预期行为 | 优先级 |
-|---------|---------|---------|--------|
-| TC-SKILL-01 | 用户发送触发词 | Skill 正确响应 | P0 |
-| TC-SKILL-02 | 触发词带参数 | 参数正确解析 | P0 |
-| TC-SKILL-03 | 无效触发词 | 无响应或礼貌拒绝 | P1 |
-
-### 1.2 工具调用验证用例
-
-| 用例 ID | 工具 | 调用方式 | 预期结果 | 优先级 |
-|---------|------|---------|---------|--------|
-| TC-TOOL-01 | `Read` | 读取存在的文件 | 返回文件内容 | P0 |
-| TC-TOOL-02 | `Read` | 读取不存在的文件 | 报错明确 | P0 |
-| TC-TOOL-03 | `exec` | 执行无害命令 | 返回输出 | P1 |
-
-### 1.3 输出格式验证用例
-
-| 用例 ID | 输出类型 | 格式要求 | 验证点 | 优先级 |
-|---------|---------|---------|--------|--------|
-| TC-OUTPUT-01 | MEDIA:token | `MEDIA:<path>` | 平台正确渲染 | P0 |
-| TC-OUTPUT-02 | Markdown 表格 | 最多 6 列 | Telegram 兼容 | P1 |
-| TC-OUTPUT-03 | Caption | 五要素完整 | 发送成功 | P0 |
-
-### 1.4 错误处理测试用例
-
-| 用例 ID | 错误场景 | 预期处理 | 优先级 |
-|---------|---------|---------|--------|
-| TC-ERROR-01 | 路径不存在 | 明确报错 | P0 |
-| TC-ERROR-02 | 未知子命令 | 提示有效子命令 | P1 |
-| TC-ERROR-03 | 工具调用失败 | 降级或报错 | P1 |
-
-### 1.5 能力遍历测试用例（Flow A 新增）
-
-| 用例 ID | CAP-ID | 触发消息 | 预期工具链 | 预期输出 | 优先级 |
-|---------|--------|---------|-----------|---------|--------|
-| TC-CAP-01 | CAP-01 | （触发 CAP-01 的消息） | tool1 → tool2 | （预期输出） | P0 |
-| TC-CAP-02 | CAP-02 | （触发 CAP-02 的消息） | tool3 | （预期输出） | P0 |
-
-### 1.6 参数空间穷举用例（Flow A 新增）
-
-| 用例 ID | 工具 | 参数 | 测试值 | 值类型 | 预期行为 | 优先级 |
-|---------|------|------|--------|--------|---------|--------|
-| TC-PARAM-01 | tool1 | param_a | "" | 空值 | 友好报错 | P0 |
-| TC-PARAM-02 | tool1 | param_a | (max+1) | 越界 | 拒绝或截断 | P1 |
-| TC-PARAM-03 | tool1 | param_a | 12345 | 类型错误 | 友好报错 | P1 |
-
-### 1.7 能力边界探测用例（Flow A 新增）
-
-| 用例 ID | CAP-ID | 范围内请求 | 边界请求 | 预期行为 | 优先级 |
-|---------|--------|-----------|---------|---------|--------|
-| TC-BOUNDARY-01 | CAP-01 | （正常请求） | （刚好超出能力的请求） | 优雅拒绝/降级 | P1 |
-
-### 1.8 多轮对话用例（Flow A，仅 ST-4 类型）
-
-| 用例 ID | 脚本描述 | 轮次 | 验证目标 | 优先级 |
-|---------|---------|------|---------|--------|
-| TC-MULTI-01 | 短对话 | 3 轮 | 基础上下文保持 | P0 |
-| TC-MULTI-02 | 标准对话 | 5 轮 | 话题延续+切换 | P0 |
-| TC-MULTI-03 | 长对话 | 10 轮 | 上下文溢出+性能 | P1 |
-
-### 1.9 意图解释广度用例（Flow A 新增）
-
-| 用例 ID | CAP-ID | 标准措辞 | 口语变体 | 模糊变体 | 优先级 |
-|---------|--------|---------|---------|---------|--------|
-| TC-INTENT-01 | CAP-01 | （标准触发） | （口语表达） | （间接/模糊表达） | P1 |
-
-### 1.10 渠道适配测试用例（Flow A）
-
-| 用例 ID | 渠道 | 验证点 | 优先级 |
-|---------|------|--------|--------|
-| TC-CHAN-01 | Telegram | Markdown 渲染正常 | P0 |
-| TC-CHAN-02 | 飞书 | 格式兼容 | P1 |
-| TC-CHAN-03 | QQ | 纯文本降级 | P1 |
-| TC-CHAN-04 | 微信 | 先文字后文件 | P1 |
+> 本文件补充 `flows/skill-testing.md` 与 `roles/skill-tester.md` 的详细模板，重点说明 Flow A 的用例设计和执行证明格式。
 
 ---
 
-## 二、Skill 缺陷报告模板
+## 一、关键用例模板
 
+### 1.1 触发条件
+
+| 用例 ID | 触发描述 | 最低执行级别 | 预期行为 | 优先级 |
+|---------|---------|-------------|---------|--------|
+| TC-SKILL-01 | 用户发送触发词 | `shim-live` | Skill 正确响应 | P0 |
+| TC-SKILL-02 | 触发词带参数 | `shim-live` | 参数正确解析 | P0 |
+| TC-SKILL-03 | 无效触发词 | `shim-live` | 明确返回 `triggerMatched=false` 或礼貌拒绝 | P1 |
+
+### 1.2 工具调用验证
+
+| 用例 ID | 工具 | 最低执行级别 | 预期结果 | 优先级 |
+|---------|------|-------------|---------|--------|
+| TC-TOOL-01 | `Read` | `shim-live` | 读取存在的文件并返回内容 | P0 |
+| TC-TOOL-02 | `Read` | `shim-live` | 读取不存在的文件时明确报错 | P0 |
+| TC-TOOL-03 | `exec` | `shim-live` | 执行无害命令并返回输出 | P1 |
+
+### 1.3 多轮对话
+
+| 用例 ID | 脚本描述 | 最低执行级别 | 验证目标 | 优先级 |
+|---------|---------|-------------|---------|--------|
+| TC-MULTI-01 | 短对话 | `shim-live` | 基础上下文保持 | P0 |
+| TC-MULTI-02 | 标准对话 | `shim-live` | 话题延续 + 切换 | P0 |
+| TC-MULTI-03 | 长对话 | `shim-live` | 上下文溢出 + 性能 | P1 |
+
+### 1.4 渠道适配
+
+| 用例 ID | 渠道 | 最低执行级别 | 验证点 | 优先级 |
+|---------|------|-------------|--------|--------|
+| TC-CHAN-01 | Telegram | `shim-live` | 有 `deliveryStatus` 与送达证据 | P0 |
+| TC-CHAN-02 | 飞书 | `shim-live` | 格式兼容且有送达证据 | P1 |
+| TC-CHAN-03 | QQ | `shim-live` | 纯文本降级且有送达证据 | P1 |
+| TC-CHAN-04 | 微信 | `shim-live` | 先文字后文件且有送达证据 | P1 |
+
+---
+
+## 二、执行证明模板
+
+每条 Flow A 的关键用例都必须包含以下字段：
+
+```text
+TC-XX：（用例名称）
+  能力：CAP-XX
+  执行动作：sandbox-skill-invoke --mode auto --strict-real --expect-trigger ... --require-tools ... [--verification-manifest ...]
+  执行级别：live / shim-live / trace
+  实际输入：{message/channel/history}
+  实际输出：{response.md 或 result JSON 摘要}
+  工具证据：{toolsCalled / trace file}
+  触发/上下文/送达断言：{triggerMatched / contextReferences / deliveryStatus}
+  判定：✅ 通过 / ❌ 失败
+  证据路径：{trace/output/log/result-json}
 ```
-# 缺陷报告
 
-## 缺陷统计
-| 级别 | 数量 | 阻塞发布 |
-|------|------|---------|
-| P0 | X | ✅ 绝对阻塞 |
-| P1 | X | ⚠️ 需评估 |
-| P2 | X | ❌ 不阻塞 |
-| P3 | X | ❌ 不阻塞 |
+规则：
 
----
-
-## P0 缺陷（阻断级别）
-
-### BUG-SKILL-P0-001：（标题）
-• 缺陷ID：BUG-SKILL-P0-001
-• 发现来源：[skill-tester / security-tester]
-• 严重级别：P0
-• 影响范围：[影响哪些功能/用户]
-• 实际结果：[缺陷表现]
-• 预期结果：[期望表现]
-• 修复建议：[如何修复]
+- `trace` 不能支撑“功能通过”或“渠道通过”。
+- 当用例标注最低执行级别为 `live` / `shim-live` 且只拿到 `trace` 时，结果必须记为 blocker。
+- `live --strict-real` 必须拿到 OpenClaw CLI 原生回传的 `nexus-live-telemetry/v1`；没有协议或协议字段不完整时不得返回成功。
+- `shim-live --strict-real` 必须提供独立的 `--verification-manifest`，不能只信 Skill 自带 adapter 的自报遥测；manifest 必须位于 Skill 目录外，且在可识别仓库根时不能与 Skill 同仓库。没有 verifier 时不得返回成功。
+- 适配器没有回传 `toolsCalled` 时，不能对工具调用链写“已验证”。
+- 负向触发用例没有显式 `triggerMatched=false` 时，不能写“已验证未触发”。
+- 上下文用例没有显式 `contextReferences` 时，不能写“上下文保持通过”。
+- 渠道用例没有显式 `deliveryStatus` 和送达证据时，不能写“渠道通过”。
 
 ---
 
-## P1 缺陷（高优先级）
+## 三、Skill 适配器约定
 
-### BUG-SKILL-P1-001：（标题）
-• 缺陷ID：BUG-SKILL-P1-001
-• 严重级别：P1
-• 影响范围：[]
-• 修复建议：[]
+Flow A 若要在没有 OpenClaw CLI 的情况下完成真实执行，Skill 必须提供以下二选一入口：
+
+1. `testing.json`
+2. `scripts/test-entry.py|js|ts|sh`
+
+若使用 `shim-live --strict-real`，则必须额外提供位于 Skill 目录外的 `--verification-manifest`；在可识别仓库根时，该文件也不能与 Skill 同仓库。没有 verifier 时调用结果必须失败。
+
+推荐的 `testing.json`：
+
+```json
+{
+  "version": 1,
+  "install": {
+    "command": "python -m pip install -r requirements.txt",
+    "cwd": "."
+  },
+  "invoke": {
+    "command": "python scripts/test-entry.py",
+    "cwd": "."
+  },
+  "supportsMultiTurn": true
+}
+```
+
+适配器应尽量写出 `NEXUS_RESULT_JSON_FILE`：
+
+```json
+{
+  "triggerMatched": true,
+  "toolsCalled": ["Read", "Write"],
+  "contextReferences": [1],
+  "assistantMessage": "最终回复内容",
+  "delivery": {
+    "status": "delivered",
+    "receipt": "tg:msg:12345",
+    "evidence": ["workspace/artifacts/delivery-receipt.json"]
+  },
+  "artifacts": ["workspace/artifacts/output.png"],
+  "notes": ["可选诊断信息"]
+}
 ```
 
 ---
 
-## 三、Flow A 阶段产出清单
+## 四、报告要求
 
-| 阶段 | 文件名 | 必填字段 |
-|------|--------|---------|
-| 阶段一 | `SPEC.md` | name、触发条件、工具列表、输入输出 |
-| 阶段二 | `PRODUCT-QUALITY-REVIEW.md` | 完整性评分、风险点、待确认项 |
-| 阶段三 | `TEST-DESIGN.md` | 用例清单、覆盖策略 |
-| 阶段四 | `TEST-CASE-REVIEW.md` | 覆盖率、P0/P1 用例齐全 |
-| 阶段五 | `TEST-EXECUTION/skill-results.md` | 各项检测结果、缺陷列表（具体数量取决于 TEST-DESIGN.md 用例数） |
-| 阶段五 | `TEST-EXECUTION/security-results.md` | 安全检测结果、高危工具列表 |
-| 阶段六 | `DEFECTS/DEFECT-REPORT.md` | P0/P1/P2/P3 缺陷清单 |
-| 阶段七 | `FINAL-TEST-REPORT.md` | Go/No-Go 判定、修复建议 |
+- `TEST-DESIGN.md` 必须给每条关键用例标注最低执行级别。
+- `skill-results.md` 必须单独列出执行级别矩阵。
+- `FINAL-TEST-REPORT.md` 必须区分：
+  - 真实执行通过
+  - 仅 trace 覆盖
+  - 因缺少真实入口而阻塞

@@ -63,6 +63,68 @@ aguara 未安装时降级为内置规则扫描，不阻塞流程。
 
 ## 三、S2 恶意代码与漏洞检测
 
+### S2.1 反混淆检测（Anti-Obfuscation）
+
+> 参考 skill-security-reviewer 的 94 项检测机制，新增以下反混淆检测规则。
+
+#### 编码混淆检测
+
+| 规则 ID | 检测内容 | 模式 | 风险级别 |
+|---------|---------|------|---------|
+| OBF-001 | Base64 混淆 | `[A-Za-z0-9+/]{40,}={0,2}` 解码后为可疑内容 | 高 |
+| OBF-002 | Hex 编码 | `0x[0-9a-f]+` 或仅含 `[0-9a-f]` 且偶数长度 | 中 |
+| OBF-003 | Unicode 混淆 | `\u[0-9a-f]{4}`、`\x[0-9a-f]{2}`、`&#` HTML实体 | 中 |
+| OBF-004 | URL 编码 | `%[0-9A-F]{2}` 重复出现（>3次） | 低 |
+| OBF-005 | 零宽字符 | U+200B-U+200F 范围内的 Unicode 字符 | 高 |
+| OBF-006 | 同形字混淆 | 西里尔字母与拉丁字母混用（к→k, о→o, а→a） | 高 |
+
+#### 加密检测
+
+| 规则 ID | 检测内容 | 模式 | 风险级别 |
+|---------|---------|------|---------|
+| OBF-010 | XOR 加密 | 相同长度模式重复出现、可疑 key 变量引用 | 高 |
+| OBF-011 | AES/DES 加密 | 调用 `crypto`、`aes`、`des`、`cipher`、`encrypt` 模块 | 高 |
+| OBF-012 | ROT13 替换 | 字母位移13位特征 | 低 |
+| OBF-013 | 加密常量 | 大于20字符的 hex 字符串（可能是加密块） | 中 |
+
+#### 熵分析规则
+
+| 规则 ID | 检测内容 | 计算方法 | 阈值 |
+|---------|---------|---------|------|
+| OBF-020 | 高熵字符串 | Shannon entropy > 7.0 bits/byte | 高 |
+| OBF-021 | 哈希特征 | `[0-9a-f]{32,}`（MD5/SHA系列） | 中 |
+| OBF-022 | 随机填充 | Base64 字符串解码后熵 > 7.5 | 高 |
+
+#### 字符串混淆检测
+
+| 规则 ID | 检测内容 | 模式 | 风险级别 |
+|---------|---------|------|---------|
+| OBF-030 | 拼接字符串 | 多个字符串用 `+` 或 `.concat()` 连接 | 中 |
+| OBF-031 | 字符码转换 | `String.fromCharCode()`、`chr()`、`\x##` | 高 |
+| OBF-032 | 动态变量名 | 变量名含随机字符或数字模式 `[a-z]+[0-9]+` | 中 |
+| OBF-033 | 注释隐藏代码 | 代码写在 `//` 或 `/* */` 或 `#` 注释中执行 | 高 |
+| OBF-034 | 字符串反转 | `.reverse()`、`.split('').reverse().join('')` | 中 |
+
+#### 动态代码执行检测
+
+| 规则 ID | 检测内容 | 模式 | 风险级别 |
+|---------|---------|------|---------|
+| OBF-040 | eval 变体 | `eval(atob())`、`exec(base64_decode())` | 极高 |
+| OBF-041 | Function 构造 | `new Function()`、`(function(){...})()` | 高 |
+| OBF-042 | 延迟执行 | `setTimeout(code, 0)`、`setInterval(code, 0)` | 高 |
+| OBF-043 | 动态 import | `import()`、`__import__()`、`require()` 动态拼接 | 高 |
+| OBF-044 | 反射执行 | `getattr()`、`__getattribute__()`、`apply()` | 高 |
+| OBF-045 | VM 沙箱 | `vm.runInNewContext()`、`vm.runInThisContext()` | 高 |
+
+#### 反调试检测
+
+| 规则 ID | 检测内容 | 模式 | 风险级别 |
+|---------|---------|------|---------|
+| OBF-050 | debugger 语句 | `debugger;`、无限循环 debugger | 中 |
+| OBF-051 | 进程检测 | 检测是否在 docker/虚拟机中运行 | 中 |
+| OBF-052 | 时间检测 | 调试时间差检测（两次调用时间异常） | 低 |
+| OBF-053 | 控制流干扰 | `window.onerror` 覆盖、`console.log` 禁用 | 中 |
+
 ### 危险函数模式
 
 | 函数/调用 | 风险 | 说明 |
@@ -261,7 +323,139 @@ skill-scanner 未安装时降级为内置规则扫描。
 
 ---
 
-## 九、扫描报告格式
+## 九、攻击链检测矩阵（Attack Chain Detection）
+
+> 参考 guardskills 的攻击链检测机制。当多个相关发现同时出现时，触发链式加成，表示组合攻击策略。
+
+### 链式发现类型
+
+| 发现类型 | 缩写 | 说明 |
+|----------|------|------|
+| `SECRET_READ` | SR | 读取敏感文件或凭证源 |
+| `NETWORK_POST` | NP | 外部网络请求 |
+| `DECODE_EXEC` | DE | 解码/解混淆后执行 |
+| `REMOTE_CODE_EXEC` | RCE | 远程代码执行 |
+| `ENV_ACCESS` | EA | 环境变量访问 |
+| `FILE_STAGE` | FS | 临时文件写入 |
+| `DESTRUCTIVE_OP` | DO | 破坏性操作 |
+| `PRIV_ESCALATION` | PE | 权限提升 |
+
+### 攻击链矩阵
+
+| Chain ID | 必需发现组合 | 加成分值 | 攻击意图 |
+|----------|-------------|---------|----------|
+| `CHAIN_SECRET_EXFIL` | `SECRET_READ` + `NETWORK_POST` | +25 | 凭证/数据窃取 |
+| `CHAIN_DECODE_EXEC` | `DECODE_EXEC` + `REMOTE_CODE_EXEC` | +30 | 混淆载荷执行 |
+| `CHAIN_ENV_STAGE_EXFIL` | `ENV_ACCESS` + `FILE_STAGE` + `NETWORK_POST` | +20 | 环境信息窃取 |
+| `CHAIN_DESTRUCTIVE_EXFIL` | `DESTRUCTIVE_OP` + `NETWORK_POST` | +25 | 破坏后数据外传 |
+| `CHAIN_PRIV_ESC_RCE` | `PRIV_ESCALATION` + `REMOTE_CODE_EXEC` | +35 | 权限提升后执行 |
+| `CHAIN_DOWNLOAD_EXEC` | `FILE_STAGE` + `REMOTE_CODE_EXEC` | +20 | 下载并执行 |
+
+### 链式检测执行证明格式
+
+```
+SEC-CHAIN-XXX：（攻击链名称）
+  Chain ID：{CHAIN_XXX}
+  检测到的发现：
+    - {发现类型1}：{位置}
+    - {发现类型2}：{位置}
+  链式加成：+{分数}
+  攻击意图：{描述}
+  风险评级：{CRITICAL/HIGH/MEDIUM/LOW}
+```
+
+---
+
+## 十、量化风险评分系统
+
+### 风险评分公式
+
+```
+风险分 = clamp(Σ(基础分 × 置信度) + 链式加成 - 信任积分, 0, 100)
+```
+
+### 基础分（Base Points）
+
+| 严重级别 | 基础分 |
+|----------|--------|
+| `CRITICAL` | 50 |
+| `HIGH` | 25 |
+| `MEDIUM` | 12 |
+| `LOW` | 5 |
+| `INFO` | 0 |
+
+### 置信度乘法器（Confidence Multipliers）
+
+| 置信度 | 乘法器 |
+|--------|--------|
+| `high` | 1.0 |
+| `medium` | 0.7 |
+| `low` | 0.4 |
+
+### 信任积分（Trust Credits）
+
+- 仅在无 `HIGH`/`CRITICAL` 发现时授予
+- 上限：`20` 分
+
+### 判定阈值
+
+| 模式 | 0-29 | 30-59 | 60-79 | 80-100 |
+|------|------|-------|-------|--------|
+| **Standard** | ✅ SAFE | ⚠️ WARNING | 🔴 UNSAFE | 🚫 CRITICAL |
+| **Strict** | ✅ SAFE | ⚠️ WARNING | 🔴 UNSAFE | 🚫 CRITICAL |
+
+Strict 模式阈值下移 10 分。
+
+### 分数计算示例
+
+```
+发现1: CRITICAL (50) × high (1.0) = 50
+发现2: HIGH (25) × medium (0.7) = 17.5
+链式加成: CHAIN_DECODE_EXEC (+30)
+-----------------
+原始分: 50 + 17.5 + 30 = 97.5
+最终分: clamp(97.5, 0, 100) = 97.5 → CRITICAL
+```
+
+---
+
+## 十一、硬阻断策略（Hard-Block Policy）
+
+> 只有同时满足所有条件时，才触发硬阻断（无条件阻止安装/通过测试）。
+
+### 硬阻断触发条件（必须同时满足）
+
+| 条件 | 要求 |
+|------|------|
+| 严重级别 | `CRITICAL` |
+| 置信度 | `high` |
+| 发现类型 | 以下之一：`CREDENTIAL_EXFIL`、`DESTRUCTIVE_OP`、`REMOTE_CODE_EXEC`、`PRIV_ESCALATION` |
+
+### 可硬阻断的类型定义
+
+| 类型 | 描述 | 示例规则 |
+|------|------|----------|
+| `CREDENTIAL_EXFIL` | 凭证窃取外传 | R001（读取凭证+网络发送） |
+| `DESTRUCTIVE_OP` | 破坏性操作 | R003（rm -rf /） |
+| `REMOTE_CODE_EXEC` | 远程代码执行 | R002（curl|pipe bash）、R011（PowerShell下载执行） |
+| `PRIV_ESCALATION` | 权限提升 | R004（sudo 滥用） |
+
+### 硬阻断执行证明格式
+
+```
+SEC-BLOCK-XXX：（阻断项）
+  阻断原因：{类型} + {严重级别} + {置信度}
+  发现详情：
+    - 规则ID：{RXXX}
+    - 位置：{文件:行号}
+    - 匹配内容：{代码片段}
+  硬阻断触发：CRITICAL + high + {类型} = TRUE
+  判定结果：🚫 BLOCKED
+```
+
+---
+
+## 十二、扫描报告格式
 
 ```
 ════════════════════════════════════════════════════════════
@@ -277,6 +471,9 @@ Scanners: {已安装的扫描器列表}
 [S5] 供应链验证........... ✅ PASS / ❌ FAIL (X high) / ⚠️ WARN (X medium)
 [S6] 权限与访问........... ✅ PASS / ❌ FAIL (X high) / ⚠️ WARN (X medium)
 
+════════════════════════════════════════════════════════════
+RISK SCORE: {0-100} ({SAFE/WARNING/UNSAFE/CRITICAL})
+Chain Bonuses: +{分数}
 ════════════════════════════════════════════════════════════
 VERDICT: 🚫 BLOCKED / ⚠️ REVIEW / ✅ SAFE
 Reasons: X HIGH, Y MEDIUM

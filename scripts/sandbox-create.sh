@@ -8,6 +8,7 @@ set -euo pipefail
 # --- Defaults ---
 RUNTIME="both"
 SESSION_ID=""
+PARENT_TEST_REPORT=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SANDBOX_ROOT="$PROJECT_DIR/.nexus-sandbox"
@@ -27,8 +28,12 @@ while [[ $# -gt 0 ]]; do
       SANDBOX_ROOT="$2"
       shift 2
       ;;
+    --parent-test-report)
+      PARENT_TEST_REPORT="$2"
+      shift 2
+      ;;
     -h|--help)
-      echo "Usage: sandbox-create.sh [--runtime node|python|both|none] [--session-id ID] [--sandbox-root PATH]"
+      echo "Usage: sandbox-create.sh [--runtime node|python|both|none] [--session-id ID] [--sandbox-root PATH] [--parent-test-report PATH]"
       echo ""
       echo "Creates a sandbox directory structure for isolated test execution."
       echo ""
@@ -36,6 +41,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --runtime TYPE    Runtime to detect: node, python, both, none (default: both)"
       echo "  --session-id ID   Specify session ID (default: auto-generated)"
       echo "  --sandbox-root    Sandbox root path (default: .nexus-sandbox/ in project dir)"
+      echo "  --parent-test-report  Parent report path for traceability metadata"
       exit 0
       ;;
     *)
@@ -70,8 +76,12 @@ fi
 mkdir -p "$SESSION_DIR/workspace/fixtures"
 mkdir -p "$SESSION_DIR/workspace/outputs"
 mkdir -p "$SESSION_DIR/workspace/temp"
+mkdir -p "$SESSION_DIR/workspace/state"
+mkdir -p "$SESSION_DIR/workspace/artifacts"
 mkdir -p "$SESSION_DIR/runtime"
 mkdir -p "$SESSION_DIR/logs"
+echo "[]" > "$SESSION_DIR/logs/exit-codes.json"
+echo "[]" > "$SESSION_DIR/logs/file-ops.json"
 
 # --- Probe Runtimes ---
 NODE_VERSION=""
@@ -107,6 +117,14 @@ if [[ "$PLATFORM" == msys* || "$PLATFORM" == mingw* || "$PLATFORM" == cygwin* ]]
   PLATFORM="win32"
 fi
 
+PARENT_TEST_REPORT_JSON="null"
+if [[ -n "$PARENT_TEST_REPORT" ]]; then
+  JSON_ESCAPER="python"
+  command -v python &>/dev/null || JSON_ESCAPER="python3"
+  PARENT_TEST_REPORT_ESCAPED=$(printf '%s' "$PARENT_TEST_REPORT" | "$JSON_ESCAPER" -c "import json,sys; print(json.dumps(sys.stdin.read()))" 2>/dev/null || printf '"%s"' "$PARENT_TEST_REPORT")
+  PARENT_TEST_REPORT_JSON="$PARENT_TEST_REPORT_ESCAPED"
+fi
+
 cat > "$SESSION_DIR/META.json" <<METAEOF
 {
   "sessionId": "$SESSION_ID",
@@ -118,6 +136,7 @@ cat > "$SESSION_DIR/META.json" <<METAEOF
     "python": "$PYTHON_VERSION"
   },
   "capabilities": "$CAPABILITIES",
+  "parentTestReport": $PARENT_TEST_REPORT_JSON,
   "commandCount": 0,
   "totalDurationMs": 0
 }

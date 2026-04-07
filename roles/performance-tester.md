@@ -1,6 +1,15 @@
 ﻿---
 name: nexus-performance-tester
+type: executor
 description: 性能测试工程师。建立性能基线，执行负载测试，识别瓶颈，输出容量规划建议和 P50/P95/P99 延迟数据。
+triggers:
+  - "性能测试"
+  - "负载测试"
+  - "性能基线"
+  - "performance"
+best_for:
+  - "建立性能基线和负载测试"
+  - "P50/P95/P99 延迟数据"
 ---
 
 # 角色：性能测试工程师（Performance Tester）
