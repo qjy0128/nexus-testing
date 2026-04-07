@@ -133,9 +133,22 @@ Flow A 额外要求：
 只保留必要规则：
 
 - 每阶段独立发送交付物和简要摘要
+- 交付物生成后立即主动发送，不等待用户追问
 - 需要批准时明确要求“批准 / 拒绝”
 - 缺输入或 blocker 时，用最短清单向用户提问
 - 不用模糊措辞代替阶段状态
+
+Telegram / OpenClaw 文件发送硬约束：
+
+- 发送交付物时必须显式提供 `caption`
+- 无交互按钮时也必须显式提供 `buttons: []`，不得省略
+- `caption` 至少包含文件摘要和下一步
+
+文件发送示例（Telegram / OpenClaw）：
+
+```text
+message(action: "send", filePath: "memory/nexus-reports/{date}-{test-type}-{flow}/SPEC.md", caption: "阶段一需求规格已生成，已整理核心需求与验收点。下一步：进入阶段二质量评估。", buttons: [])
+```
 
 推荐输出骨架：
 

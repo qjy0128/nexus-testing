@@ -31,10 +31,14 @@
 **执行角色**：`roles/requirement-analyst.md`  
 输出：`SPEC.md`
 
+**主 agent 动作**：`SPEC.md` 生成后立即发送文件和摘要，不等待用户索取。
+
 ### 阶段二：质量评估
 
 **执行角色**：`roles/quality-assessor.md`  
 输出：`PRODUCT-QUALITY-REVIEW.md`
+
+**主 agent 动作**：`PRODUCT-QUALITY-REVIEW.md` 生成后立即发送文件，并在同一轮明确发起批准请求。
 
 **需批准后才能进入阶段三。**
 
@@ -42,6 +46,8 @@
 
 **执行角色**：`roles/test-designer.md`  
 输出：`TEST-DESIGN.md`
+
+**主 agent 动作**：`TEST-DESIGN.md` 生成后立即发送文件和摘要，不等待用户索取。
 
 设计时必须为每条关键用例标明：
 
@@ -54,6 +60,8 @@
 
 **执行角色**：`roles/test-case-evaluator.md`  
 输出：`TEST-CASE-REVIEW.md`
+
+**主 agent 动作**：`TEST-CASE-REVIEW.md` 生成后立即发送文件，并在同一轮明确发起批准请求。
 
 **需批准后才能进入阶段五。**
 
@@ -92,12 +100,18 @@
 **执行角色**：`roles/evidence-collector.md`  
 输出：`DEFECTS/evidence-collection.md`
 
+**主 agent 动作**：`DEFECTS/evidence-collection.md` 生成后立即发送文件和摘要，不等待用户索取。
+
 ### 阶段六：缺陷分析
 
 **执行角色**：`roles/defect-analyst.md`  
 输出：`DEFECTS/DEFECT-REPORT.md`
 
+**主 agent 动作**：`DEFECTS/DEFECT-REPORT.md` 生成后立即发送文件和摘要，不等待用户索取。
+
 ### 阶段七：报告整合
 
 **执行角色**：`roles/report-integrator.md`  
 输出：`FINAL-TEST-REPORT.md`
+
+**主 agent 动作**：`FINAL-TEST-REPORT.md` 生成后立即发送文件和摘要，不等待用户索取。

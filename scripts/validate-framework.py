@@ -122,6 +122,7 @@ SEMVER_PATTERN = re.compile(r"v\d+\.\d+\.\d+")
 CHANGELOG_VERSION_PATTERN = re.compile(r"^###\s+(v\d+\.\d+\.\d+)（", re.MULTILINE)
 SINGLE_SOURCE_REF = "> **所有阶段、角色、输出文件、超时配置均以 `DEFINITIONS.md` 为单一事实源。**"
 ROLE_REF_PATTERN = re.compile(r"`roles/([^`]+\.md)`")
+MESSAGE_SEND_PATTERN = re.compile(r'message\(action:\s*"send"(?P<body>.*?)\)', re.DOTALL)
 MARKDOWN_EXCLUDE_PARTS = {
     ".git",
     ".nexus-sandbox",
@@ -513,6 +514,68 @@ def validate_definition_consistency() -> list[str]:
     return issues
 
 
+def validate_message_send_contract() -> list[str]:
+    issues: list[str] = []
+    example_files = (
+        "SKILL.md",
+        "reference-report-format.md",
+    )
+
+    skill_text = read_text(ROOT / "SKILL.md")
+    if "交付物生成后立即主动发送" not in skill_text:
+        issues.append(
+            "SKILL.md is missing the proactive deliverable-send rule"
+        )
+
+    definitions_text = read_text(ROOT / "DEFINITIONS.md")
+    if "阶段文件已写入但尚未发送给用户，不算阶段完成" not in definitions_text:
+        issues.append(
+            "DEFINITIONS.md is missing the sent-before-complete rule"
+        )
+
+    flow_skill_text = read_text(ROOT / "flows" / "skill-testing.md")
+    if "主 agent 动作" not in flow_skill_text:
+        issues.append(
+            "flows/skill-testing.md is missing explicit main-agent send actions"
+        )
+
+    approval_text = read_text(ROOT / "reference-approval-mechanism.md")
+    if "交付物发送与批准请求必须同轮触发" not in approval_text:
+        issues.append(
+            "reference-approval-mechanism.md is missing the same-turn send-and-approve rule"
+        )
+
+    for relative_path in example_files:
+        text = read_text(ROOT / relative_path)
+        matches = list(MESSAGE_SEND_PATTERN.finditer(text))
+        if not matches:
+            issues.append(
+                f"{relative_path} is missing a concrete message(action: \"send\", ...) example"
+            )
+            continue
+
+        has_empty_buttons = False
+        for match in matches:
+            body = match.group("body")
+            if "caption:" not in body:
+                issues.append(
+                    f"{relative_path} contains a file-send example without caption"
+                )
+            if "buttons:" not in body:
+                issues.append(
+                    f"{relative_path} contains a file-send example without buttons"
+                )
+            if "buttons: []" in body:
+                has_empty_buttons = True
+
+        if not has_empty_buttons:
+            issues.append(
+                f"{relative_path} is missing a file-send example with buttons: []"
+            )
+
+    return issues
+
+
 def find_runnable_bash() -> tuple[str | None, str | None]:
     candidates: list[str] = []
     primary = which("bash")
@@ -687,6 +750,7 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("python script syntax", validate_python_script_syntax()),
         ("runtime smoke tests", validate_runtime_smoke_tests()),
         ("definitions consistency", validate_definition_consistency()),
+        ("message send contract", validate_message_send_contract()),
         ("role version tags", validate_role_version_tags()),
         ("role references", validate_role_references()),
         ("role definitions ref", validate_role_definitions_ref()),

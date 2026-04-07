@@ -6,11 +6,13 @@ import json
 import shutil
 import sys
 import time
+import tempfile
 from pathlib import Path
 
 from sandbox_skill_invoke.core import find_bash_executable
 
-TEST_TMP_ROOT = Path(__file__).resolve().parents[1] / ".tmp-test-runs"
+# Use a temp directory without spaces to avoid MSYS2 quoting bugs on Windows
+TEST_TMP_ROOT = Path(tempfile.gettempdir()) / "nexus-testing-tmp"
 
 
 def write_text(path: Path, content: str) -> None:
@@ -34,6 +36,8 @@ def parse_kv_output(output: str) -> dict[str, str]:
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
     if actual != expected:
+        import sys
+        print(f"Assertion failed for {label}: expected {expected!r}, got {actual!r}", file=sys.stderr)
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 

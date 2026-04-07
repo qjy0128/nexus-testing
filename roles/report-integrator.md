@@ -40,6 +40,8 @@ best_for:
 
 读取所有已产出的测试结果与 `DEFECT-REPORT.md`，生成统一的 `FINAL-TEST-REPORT.md`。本角色做汇总与判断，不新增测试结论。
 
+`FINAL-TEST-REPORT.md` 写入后，应立即把结果交回主 agent 发送给用户；不要把最终交付物留在工作目录里等待用户索取。
+
 ## 输入
 
 - `TEST-EXECUTION/` 下的全部结果文件

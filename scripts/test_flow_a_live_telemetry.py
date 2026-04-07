@@ -28,6 +28,7 @@ INVOKE_SCRIPT = ROOT / "scripts" / "sandbox_skill_invoke.py"
 
 def build_skill(skill_dir: Path) -> Path:
     skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / ".git").mkdir(parents=True, exist_ok=True)
     write_text(
         skill_dir / "SKILL.md",
         "\n".join(
@@ -121,21 +122,21 @@ def build_mock_openclaw(bin_dir: Path, outside_evidence: Path) -> Path:
         ),
     )
 
+    wrapper = bin_dir / "openclaw"
+    write_text(
+        wrapper,
+        "#!/usr/bin/env bash\n"
+        f"\"{sys.executable}\" \"{driver}\" \"$@\"\n",
+    )
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+
     if os.name == "nt":
-        wrapper = bin_dir / "openclaw.cmd"
+        cmd_wrapper = bin_dir / "openclaw.cmd"
         write_text(
-            wrapper,
+            cmd_wrapper,
             "@echo off\r\n"
             f"\"{sys.executable}\" \"{driver}\" %*\r\n",
         )
-    else:
-        wrapper = bin_dir / "openclaw"
-        write_text(
-            wrapper,
-            "#!/usr/bin/env bash\n"
-            f"\"{sys.executable}\" \"{driver}\" \"$@\"\n",
-        )
-        wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
     outside_evidence.write_text("outside-live-proof\n", encoding="utf-8")
     return wrapper
 
@@ -194,6 +195,9 @@ def main() -> int:
             env,
         )
         assert_equal(no_protocol_proc.returncode, 2, "live no protocol return code")
+        if no_protocol.get("INVOKE_STATUS") != "blocked-live-telemetry-missing":
+            print("STDOUT:", no_protocol_proc.stdout)
+            print("STDERR:", no_protocol_proc.stderr)
         assert_equal(no_protocol.get("INVOKE_STATUS"), "blocked-live-telemetry-missing", "live no protocol status")
         assert_contains(
             no_protocol.get("BLOCKER_REASON", ""),

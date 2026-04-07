@@ -121,6 +121,9 @@ def build_minimal_skill(base_dir: Path, *, adapter_body: str | None = None) -> P
     """Create a minimal skill with optional adapter script."""
     skill_dir = base_dir / "minimal-skill"
     skill_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create fake .git directories to simulate separate repositories
+    (skill_dir / ".git").mkdir(parents=True, exist_ok=True)
 
     write_text(
         skill_dir / "SKILL.md",
@@ -242,6 +245,9 @@ def build_verifier(base_dir: Path) -> Path:
     """Create an independent verifier that echoes the adapter result."""
     verifier_dir = base_dir / "independent-verifier"
     verifier_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create fake .git directories to simulate separate repositories
+    (verifier_dir / ".git").mkdir(parents=True, exist_ok=True)
 
     write_text(
         verifier_dir / "verify.py",

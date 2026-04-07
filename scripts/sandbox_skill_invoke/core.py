@@ -218,7 +218,7 @@ def run_shell(command: str, cwd: Path, timeout: int, env: dict[str, str]) -> sub
     bash = find_bash_executable()
     if not bash:
         raise RuntimeError("bash is required for shim-live command execution")
-    return subprocess.run(
+    proc = subprocess.run(
         [bash, "-lc", command],
         cwd=str(cwd),
         capture_output=True,
@@ -228,6 +228,12 @@ def run_shell(command: str, cwd: Path, timeout: int, env: dict[str, str]) -> sub
         timeout=timeout,
         env=env,
     )
+    if proc.returncode != 0:
+        import sys
+        print(f"run_shell failed: {command}", file=sys.stderr)
+        print(f"STDOUT: {proc.stdout}", file=sys.stderr)
+        print(f"STDERR: {proc.stderr}", file=sys.stderr)
+    return proc
 
 
 def resolve_skill_path(raw_path: str) -> tuple[Path, Path]:

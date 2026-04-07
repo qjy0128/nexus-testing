@@ -27,11 +27,16 @@ INVOKE_SCRIPT = ROOT / "scripts" / "sandbox_skill_invoke.py"
 MULTI_TURN_SCRIPT = ROOT / "scripts" / "sandbox_multi_turn.py"
 
 
-def build_mock_skill(base_dir: Path, outside_evidence: Path) -> tuple[Path, Path]:
+def build_mock_skill(base_dir: Path, outside_evidence: Path, separate_repo: bool = True) -> tuple[Path, Path]:
     skill_dir = base_dir / "mock-skill"
     verifier_dir = base_dir / "external-verifier"
     skill_dir.mkdir(parents=True, exist_ok=True)
     verifier_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create fake .git directories to simulate separate repositories
+    if separate_repo:
+        (skill_dir / ".git").mkdir(parents=True, exist_ok=True)
+        (verifier_dir / ".git").mkdir(parents=True, exist_ok=True)
 
     write_text(
         skill_dir / "SKILL.md",
@@ -185,21 +190,21 @@ def build_mock_openclaw_without_telemetry(bin_dir: Path) -> Path:
             ]
         ),
     )
+    wrapper = bin_dir / "openclaw"
+    write_text(
+        wrapper,
+        "#!/usr/bin/env bash\n"
+        f"\"{sys.executable}\" \"{driver}\" \"$@\"\n",
+    )
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+
     if os.name == "nt":
-        wrapper = bin_dir / "openclaw.cmd"
+        cmd_wrapper = bin_dir / "openclaw.cmd"
         write_text(
-            wrapper,
+            cmd_wrapper,
             "@echo off\r\n"
             f"\"{sys.executable}\" \"{driver}\" %*\r\n",
         )
-    else:
-        wrapper = bin_dir / "openclaw"
-        write_text(
-            wrapper,
-            "#!/usr/bin/env bash\n"
-            f"\"{sys.executable}\" \"{driver}\" \"$@\"\n",
-        )
-        wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
     return wrapper
 
 
@@ -299,6 +304,9 @@ def main() -> int:
             ],
             env=env,
         )
+        if with_verifier_proc.returncode != 0:
+            print("STDOUT:", with_verifier_proc.stdout)
+            print("STDERR:", with_verifier_proc.stderr)
         assert_equal(with_verifier_proc.returncode, 0, "with verifier return code")
         assert_equal(with_verifier.get("INVOKE_STATUS"), "success", "with verifier status")
         assert_equal(with_verifier.get("TELEMETRY_TRUST"), "independent", "with verifier telemetry trust")
@@ -444,7 +452,7 @@ def main() -> int:
         same_repo_root = temp_root / "same-repo-fixture"
         (same_repo_root / ".git").mkdir(parents=True, exist_ok=True)
         same_repo_outside = same_repo_root / "outside-proof.txt"
-        same_repo_skill, same_repo_verifier = build_mock_skill(same_repo_root, same_repo_outside)
+        same_repo_skill, same_repo_verifier = build_mock_skill(same_repo_root, same_repo_outside, separate_repo=False)
         create_session(sandbox_root, "flowa-strict-same-repo")
         same_repo_proc, same_repo = run_process(
             [

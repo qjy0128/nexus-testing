@@ -233,6 +233,17 @@
 下一步：[继续评审 / 等待确认 / 进入下一阶段]
 ```
 
+Telegram / OpenClaw 文件发送调用示例：
+
+```text
+message(action: "send", filePath: "memory/nexus-reports/{date}-{test-type}-{flow}/FINAL-TEST-REPORT.md", caption: "最终测试报告已生成，已汇总执行结果、缺陷分级和 Go/No-Go 结论。下一步：请查收并决定是否推进修复。", buttons: [])
+```
+
+要求：
+
+- `caption` 必填，且要和本节格式一致
+- 无按钮场景也必须显式传 `buttons: []`
+
 ---
 
 ## 六、阶段完成通知统一格式

@@ -42,6 +42,8 @@ best_for:
 ## 职责
 评估 TEST-DESIGN.md 中的测试用例是否充分覆盖 SPEC.md 中的产品需求。
 
+`TEST-CASE-REVIEW.md` 写入后，应立即把结果交回主 agent 发送并发起批准请求；不要等待用户追问文件。
+
 ## 输入
 - `SPEC.md` + `TEST-DESIGN.md`
 
