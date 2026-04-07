@@ -43,6 +43,9 @@ jobs:
           python -m py_compile scripts/test_flow_a_strict.py
           python -m py_compile scripts/test_flow_a_live_telemetry.py
           python -m py_compile scripts/test_sandbox_exec_container.py
+          python -m py_compile scripts/security-scanner.py
+          python -m py_compile scripts/test_sandbox_lifecycle.py
+          python -m py_compile scripts/test_flow_a_integration.py
 
       - name: Run Flow A strict smoke tests
         run: python scripts/test_flow_a_strict.py
@@ -52,3 +55,15 @@ jobs:
 
       - name: Run sandbox-exec container smoke tests
         run: python scripts/test_sandbox_exec_container.py
+
+      - name: Run security scanner against fixtures
+        run: |
+          python scripts/security-scanner.py scripts/fixtures/fixture-pass-skill --format json > /dev/null
+          python scripts/security-scanner.py scripts/fixtures/fixture-defect-skill --format json && exit 1 || true
+          python scripts/security-scanner.py scripts/fixtures/fixture-extreme-skill --format json > /dev/null
+
+      - name: Run sandbox lifecycle E2E tests
+        run: python scripts/test_sandbox_lifecycle.py
+
+      - name: Run Flow A integration smoke tests
+        run: python scripts/test_flow_a_integration.py

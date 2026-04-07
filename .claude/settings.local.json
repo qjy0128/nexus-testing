@@ -76,7 +76,29 @@
       "Bash(python scripts/test_sandbox_exec_container.py)",
       "Bash(python -m py_compile scripts/test_flow_a_integration.py)",
       "Bash(python scripts/test_flow_a_integration.py)",
-      "Bash(python -c \"from scripts.validate_framework import RUNTIME_SMOKE_TEST_FILES; print\\(RUNTIME_SMOKE_TEST_FILES\\)\")"
+      "Bash(python -c \"from scripts.validate_framework import RUNTIME_SMOKE_TEST_FILES; print\\(RUNTIME_SMOKE_TEST_FILES\\)\")",
+      "Bash(python -m py_compile scripts/security-scanner.py)",
+      "Bash(python scripts/security-scanner.py scripts/fixtures/fixture-pass-skill --format text)",
+      "Bash(python scripts/security-scanner.py scripts/fixtures/fixture-defect-skill --format text)",
+      "Bash(python scripts/security-scanner.py scripts/fixtures/fixture-extreme-skill --format text)",
+      "Bash(python scripts/security-scanner.py scripts/fixtures/fixture-defect-skill --format json)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'verdict={d[\\\\\"verdict\\\\\"]} findings={d[\\\\\"total_findings\\\\\"]} score={d[\\\\\"risk_score\\\\\"]} chains={len\\(d[\\\\\"chain_detections\\\\\"]\\)}'\\)\")",
+      "Bash(python -m py_compile scripts/sandbox_multi_turn.py)",
+      "Bash(python -m py_compile scripts/test_sandbox_lifecycle.py)",
+      "Bash(python scripts/test_sandbox_lifecycle.py)",
+      "Bash(bash scripts/sandbox-create.sh --session-id test-debug-01)",
+      "Bash(bash scripts/sandbox-cleanup.sh --session-id test-debug-01)",
+      "Read(//c/Users/qjy01/.claude/**)",
+      "Read(//tmp/everything-claude-code/**)",
+      "Bash(ls ~/.claude/agents/*.md)",
+      "Bash(ls -la *.md)",
+      "Bash(python -m py_compile scripts/test_helpers.py)",
+      "Bash(python -m py_compile scripts/test_flow_a_strict.py)",
+      "Bash(python -m py_compile scripts/test_flow_a_live_telemetry.py)",
+      "Bash(python -m py_compile scripts/test_sandbox_exec_container.py)",
+      "Bash(python scripts/validate_framework.py)",
+      "Bash(d)",
+      "Bash(python -c \"import py_compile scripts/test_sandbox_exec_container.py\")"
     ]
   }
 }

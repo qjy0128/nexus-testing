@@ -199,3 +199,4 @@ Flow A 额外要求：
 | `reference-flow-android.md` | Flow C 详细模板 |
 | `reference-flow-mcp.md` | Flow D 详细模板 |
 | `reference-production-readiness.md` | 测试完成后的生产就绪检查项 |
+| `reference-recovery.md` | 测试中断后的恢复与续跑机制 |

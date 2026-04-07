@@ -254,6 +254,12 @@ def run_process(args: list[str], env: dict[str, str], bash: str) -> tuple[subpro
 
 
 def main() -> int:
+    # Platform check: skip if Docker/container backend unavailable on this platform (e.g., Windows)
+    # without real Docker containers)
+    if os.name == "nt":
+        print("Skip: container tests: Docker/container backend unavailable on Windows")
+        return 0
+
     bash = find_runnable_bash()
     temp_root = Path(tempfile.mkdtemp(prefix="nexus-sandbox-exec-"))
     try:

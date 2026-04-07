@@ -11,19 +11,7 @@ import time
 from pathlib import Path
 
 from sandbox_skill_invoke import PROJECT_DIR
-
-
-def kv(key: str, value: object) -> None:
-    print(f"{key}={value}")
-
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+from sandbox_skill_invoke.core import kv, read_text, write_text
 
 
 def parse_kv_output(output: str) -> dict[str, str]:

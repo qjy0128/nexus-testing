@@ -74,6 +74,14 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/test_flow_a_live_telemetry.py",
     "scripts/test_sandbox_exec_container.py",
     "scripts/test_flow_a_integration.py",
+    "scripts/security-scanner.py",
+    "scripts/test_sandbox_lifecycle.py",
+)
+
+REQUIRED_FIXTURE_DIRS = (
+    "scripts/fixtures/fixture-pass-skill",
+    "scripts/fixtures/fixture-defect-skill",
+    "scripts/fixtures/fixture-extreme-skill",
 )
 
 RUNTIME_SMOKE_TEST_FILES = (
@@ -81,6 +89,8 @@ RUNTIME_SMOKE_TEST_FILES = (
     "scripts/test_flow_a_live_telemetry.py",
     "scripts/test_sandbox_exec_container.py",
     "scripts/test_flow_a_integration.py",
+    "scripts/test_sandbox_lifecycle.py",
+    "scripts/test_helpers.py",
 )
 
 FRONTMATTER_FILES = ("SKILL.md",)
@@ -209,6 +219,12 @@ def validate_required_files() -> list[str]:
     ):
         if not (ROOT / relative_path).exists():
             issues.append(f"Missing required file: {relative_path}")
+
+    for relative_path in REQUIRED_FIXTURE_DIRS:
+        if not (ROOT / relative_path).is_dir():
+            issues.append(f"Missing required fixture directory: {relative_path}")
+        elif not (ROOT / relative_path / "SKILL.md").exists():
+            issues.append(f"Fixture directory missing SKILL.md: {relative_path}")
 
     return issues
 
@@ -354,6 +370,52 @@ def validate_runtime_smoke_tests() -> list[str]:
     return issues
 
 
+def validate_security_scanner_fixtures() -> list[str]:
+    """Run security-scanner against fixture Skills and verify expected results."""
+    issues: list[str] = []
+    scanner_path = ROOT / "scripts" / "security-scanner.py"
+    if not scanner_path.exists():
+        return ["scripts/security-scanner.py not found"]
+
+    # pass-skill must be SAFE (exit 0)
+    pass_skill = ROOT / "scripts" / "fixtures" / "fixture-pass-skill"
+    if pass_skill.is_dir():
+        try:
+            result = subprocess.run(
+                [sys.executable, str(scanner_path), str(pass_skill), "--format", "json"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=30,
+            )
+            if result.returncode != 0:
+                issues.append(f"security-scanner: fixture-pass-skill should be SAFE but exited {result.returncode}")
+        except subprocess.TimeoutExpired:
+            issues.append("security-scanner: fixture-pass-skill scan timed out")
+
+    # defect-skill must be CRITICAL (exit 1)
+    defect_skill = ROOT / "scripts" / "fixtures" / "fixture-defect-skill"
+    if defect_skill.is_dir():
+        try:
+            result = subprocess.run(
+                [sys.executable, str(scanner_path), str(defect_skill), "--format", "json"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=30,
+            )
+            if result.returncode == 0:
+                issues.append("security-scanner: fixture-defect-skill should be CRITICAL but exited 0")
+            else:
+                data = json.loads(result.stdout)
+                if data.get("total_findings", 0) < 5:
+                    issues.append(
+                        f"security-scanner: fixture-defect-skill only found {data['total_findings']} issues, expected >= 5"
+                    )
+        except subprocess.TimeoutExpired:
+            issues.append("security-scanner: fixture-defect-skill scan timed out")
+        except (json.JSONDecodeError, KeyError) as exc:
+            issues.append(f"security-scanner: defect-skill output parse error: {exc}")
+
+    return issues
+
+
 def validate_definition_consistency() -> list[str]:
     issues: list[str] = []
     definitions_text = read_text(ROOT / "DEFINITIONS.md")
@@ -483,6 +545,52 @@ def validate_role_version_tags() -> list[str]:
     return issues
 
 
+def validate_flow_role_consistency() -> list[str]:
+    """Check that Flow files reference the expected number of parallel roles."""
+    issues: list[str] = []
+    definitions_text = read_text(ROOT / "DEFINITIONS.md")
+
+    expected_roles: dict[str, int] = {}
+    for line in definitions_text.splitlines():
+        for flow_label, count in [
+            ("Flow A", 2), ("Flow B", 5), ("Flow C", 5), ("Flow D", 4),
+        ]:
+            if line.startswith("|") and flow_label in line and "skill-tester" in line:
+                expected_roles[flow_label] = count
+
+    for relative_path in REQUIRED_FLOW_FILES:
+        path = ROOT / relative_path
+        if not path.exists():
+            continue
+        content = read_text(path)
+        role_refs = ROLE_REF_PATTERN.findall(content)
+        unique_roles = set(role_refs)
+
+        # Check that referenced roles exist
+        for role_name in unique_roles:
+            if not (ROOT / "roles" / role_name).exists():
+                issues.append(
+                    f"{relative_path} references non-existent role: roles/{role_name}"
+                )
+
+    return issues
+
+
+def validate_required_references() -> list[str]:
+    """Check that key reference files exist and CLAUDE.md exists."""
+    issues: list[str] = []
+    required_refs = (
+        "reference-recovery.md",
+        "reference-production-readiness.md",
+    )
+    for ref in required_refs:
+        if not (ROOT / ref).exists():
+            issues.append(f"Missing required reference file: {ref}")
+    if not (ROOT / "CLAUDE.md").exists():
+        issues.append("Missing CLAUDE.md (project AI collaboration guide)")
+    return issues
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -511,6 +619,9 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("role version tags", validate_role_version_tags()),
         ("role references", validate_role_references()),
         ("role definitions ref", validate_role_definitions_ref()),
+        ("security scanner fixtures", validate_security_scanner_fixtures()),
+        ("flow role consistency", validate_flow_role_consistency()),
+        ("required references", validate_required_references()),
     )
     return list(checks), shell_syntax_issues, shell_syntax_warnings, len(markdown_files)
 
