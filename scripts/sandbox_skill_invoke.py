@@ -213,6 +213,7 @@ def main() -> int:
         write_channel_render("dry-run", False, delivery_status="unknown")
         seq = append_audit_entry(session_dir, command_text=command_repr, exit_code=0 if not assertion_failures else 3, duration_ms=0, status=invoke_status, execution_level="dry-run", real_executed=False, output_file=output_file, extra={"traceFile": session_relative(trace_file, session_dir), "adapterSource": adapter.get("source", "none")})
         kv("REQUESTED_MODE", requested_mode); kv("SELECTED_MODE", "dry-run"); kv("EXECUTION_LEVEL", "dry-run"); kv("REAL_EXECUTED", "false"); kv("STRICT_REAL", bool_text(args.strict_real)); kv("INVOKE_STATUS", invoke_status); kv("ADAPTER_AVAILABLE", bool_text(bool(adapter.get("available")))); kv("ADAPTER_SOURCE", adapter.get("source", "none")); kv("DELIVERY_STATUS", "unknown"); kv("DELIVERY_EVIDENCE", "unknown"); kv("CONTEXT_REFERENCES", "unknown"); kv("ASSERTIONS_PASSED", bool_text(not assertion_failures)); kv("ASSERTION_FAILURES", " | ".join(assertion_failures) if assertion_failures else ""); kv("TOOL_TRACE_FILE", trace_file); kv("OUTPUT_FILE", output_file); kv("CHANNEL_RENDER_FILE", channel_render_file); kv("SEQ", seq)
+        kv("RESULT_JSON_FILE", result_json_file)
         return 0 if not assertion_failures else 3
 
     if selected_mode == "trace":
@@ -227,6 +228,7 @@ def main() -> int:
         write_channel_render("trace", False, delivery_status="unknown")
         seq = append_audit_entry(session_dir, command_text=command_repr, exit_code=0 if not assertion_failures else 3, duration_ms=0, status=invoke_status, execution_level="trace", real_executed=False, output_file=output_file, extra={"traceFile": session_relative(trace_file, session_dir), "toolsCalled": actual_tools})
         kv("REQUESTED_MODE", requested_mode); kv("SELECTED_MODE", "trace"); kv("EXECUTION_LEVEL", "trace"); kv("REAL_EXECUTED", "false"); kv("STRICT_REAL", bool_text(args.strict_real)); kv("INVOKE_STATUS", invoke_status); kv("TRIGGER_MATCHED", actual_trigger); kv("TOOLS_CALLED", tools_csv); kv("DELIVERY_STATUS", "unknown"); kv("DELIVERY_EVIDENCE", "unknown"); kv("CONTEXT_REFERENCES", "unknown"); kv("ASSERTIONS_PASSED", bool_text(not assertion_failures)); kv("ASSERTION_FAILURES", " | ".join(assertion_failures) if assertion_failures else ""); kv("TOOL_TRACE_FILE", trace_file); kv("OUTPUT_FILE", output_file); kv("CHANNEL_RENDER_FILE", channel_render_file); kv("SEQ", seq)
+        kv("RESULT_JSON_FILE", result_json_file)
         return 0 if not assertion_failures else 3
 
     # ── shim-live mode ──────────────────────────────────────────────────
@@ -280,6 +282,7 @@ def main() -> int:
             kv("ASSERTION_FAILURES", " | ".join(assertion_failures))
             kv("TOOL_TRACE_FILE", trace_file); kv("OUTPUT_FILE", output_file)
             kv("CHANNEL_RENDER_FILE", channel_render_file); kv("SEQ", seq)
+            kv("RESULT_JSON_FILE", result_json_file)
             return 3
 
         # ── run adapter install ──
@@ -434,6 +437,7 @@ def main() -> int:
         kv("ASSERTION_FAILURES", " | ".join(assertion_failures) if assertion_failures else "")
         kv("TOOL_TRACE_FILE", trace_file); kv("OUTPUT_FILE", output_file)
         kv("CHANNEL_RENDER_FILE", channel_render_file); kv("SEQ", seq)
+        kv("RESULT_JSON_FILE", adapter_result_file)
         return 0 if not assertion_failures else 3
 
     # ── live mode ───────────────────────────────────────────────────────
@@ -541,6 +545,7 @@ def main() -> int:
         kv("TELEMETRY_SOURCE", live_telemetry.get("telemetry_source", ""))
         kv("TOOL_TRACE_FILE", trace_file); kv("OUTPUT_FILE", output_file)
         kv("CHANNEL_RENDER_FILE", channel_render_file); kv("SEQ", seq)
+        kv("RESULT_JSON_FILE", live_result_file)
         return 0 if not assertion_failures else 3
 
     return blocked("blocked-unknown-mode", f"unhandled mode: {selected_mode}")

@@ -19,9 +19,16 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 class StdioJsonRpcClient:
     """Communicate with an MCP server process via stdio JSON-RPC framing."""
 
-    def __init__(self, proc: subprocess.Popen[bytes], transcript_path: Path) -> None:
+    def __init__(
+        self,
+        proc: subprocess.Popen[bytes],
+        transcript_path: Path,
+        *,
+        framing: str = "content-length",
+    ) -> None:
         self.proc = proc
         self.transcript_path = transcript_path
+        self.framing = framing
         self._messages: "queue.Queue[dict[str, object]]" = queue.Queue()
         self._reader_errors: "queue.Queue[str]" = queue.Queue()
         self._stderr_chunks: list[str] = []
@@ -33,12 +40,36 @@ class StdioJsonRpcClient:
 
     def _read_stdout(self) -> None:
         assert self.proc.stdout is not None
-        stream = self.proc.stdout
+        if self.framing == "line-delimited":
+            self._read_stdout_lines(self.proc.stdout)
+            return
+        self._read_stdout_content_length(self.proc.stdout)
+
+    def _read_stdout_lines(self, stream: object) -> None:
+        assert hasattr(stream, "readline")
+        while True:
+            try:
+                line = stream.readline()  # type: ignore[call-arg]
+                if not line:
+                    return
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if not decoded:
+                    continue
+                payload = json.loads(decoded)
+                self._transcript.append({"direction": "recv", "payload": payload})
+                self._messages.put(payload)
+            except Exception as exc:  # noqa: BLE001
+                self._reader_errors.put(str(exc))
+                return
+
+    def _read_stdout_content_length(self, stream: object) -> None:
+        assert hasattr(stream, "readline")
+        assert hasattr(stream, "read")
         while True:
             try:
                 header_lines: list[str] = []
                 while True:
-                    line = stream.readline()
+                    line = stream.readline()  # type: ignore[call-arg]
                     if not line:
                         return
                     decoded = line.decode("utf-8", errors="replace")
@@ -55,7 +86,7 @@ class StdioJsonRpcClient:
                 if content_length is None:
                     self._reader_errors.put(f"missing Content-Length header: {header_lines}")
                     return
-                body = stream.read(content_length)
+                body = stream.read(content_length)  # type: ignore[call-arg]
                 payload = json.loads(body.decode("utf-8", errors="replace"))
                 self._transcript.append({"direction": "recv", "payload": payload})
                 self._messages.put(payload)
@@ -96,7 +127,10 @@ class StdioJsonRpcClient:
     def _send_payload(self, payload: dict[str, object]) -> None:
         assert self.proc.stdin is not None
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        frame = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+        if self.framing == "line-delimited":
+            frame = body + b"\n"
+        else:
+            frame = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
         self.proc.stdin.write(frame)
         self.proc.stdin.flush()
         self._transcript.append({"direction": "send", "payload": payload})
@@ -112,7 +146,10 @@ class StdioJsonRpcClient:
         return "".join(self._stderr_chunks)
 
     def write_transcript(self) -> None:
-        _write_json(self.transcript_path, {"transcript": self._transcript, "stderr": self.stderr_text()})
+        _write_json(
+            self.transcript_path,
+            {"framing": self.framing, "transcript": self._transcript, "stderr": self.stderr_text()},
+        )
 
 
 def choose_tool_for_call(tools: list[dict[str, object]]) -> dict[str, object] | None:

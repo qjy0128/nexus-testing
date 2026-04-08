@@ -85,9 +85,9 @@ Flow B 支持双模式：
 python scripts/validate-framework.py        # 结构 + 语法 + 行为级 smoke test 校验
 python scripts/diagnose_bash_runtime.py     # 诊断为什么当前环境没有可运行 bash
 python scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir> # 生成 Flow A 阶段一三件套
-python scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language> # 生成多表面 TEST-DESIGN
-python scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir> --language <request-language> # 生成阶段五 surface 工单
-python scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --language <request-language> # 按 surface 执行 skill-tester；skill/bin 为真实执行，package/plugin-manifest 为结构化校验，openclaw-extension 优先走 testing.json.openclawExtensionRuntimeHarness，其次 openclawExtensionHarness；若无 harness 但 live runtime 可用则先做 live probe，mcp 可走 stdio JSON-RPC harness
+python scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language> # 生成多表面 TEST-DESIGN + SURFACE-EXECUTION-PLAN + CASE-EXECUTION-PLAN
+python scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir> --language <request-language> # 生成阶段五 surface 工单与初始 SURFACE-COVERAGE
+python scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --case-plan <CASE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --language <request-language> # 优先按 case plan 执行 skill-tester；若 testing.json 提供 caseExecutionHarness / caseExecutionHarnesses，则逐 case 真实执行并回填 case coverage；否则对 skill surface 启用框架内置 generic case executor，自动逐 case 调用 skill，并对缺少强断言的 case 保守记为 incomplete；非 skill surface 默认按 surface 级能力生成单条 structural case，避免设计/执行错配
 python scripts/prepare_report_delivery.py --report-file memory/nexus-reports/<date>-<type>-<flow>/<artifact>.md # 镜像阶段交付物到 files/... 供平台发送
 python scripts/security-scanner.py <dir>     # 安全扫描
 python scripts/test_sandbox_lifecycle.py     # E2E 生命周期测试
@@ -100,14 +100,18 @@ python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke 
 - `SKILL.md` 和 `roles/*.md` 的 frontmatter 是否完整
 - `README.md` 的当前版本是否与 `CHANGELOG.md` 最新版本一致
 - `.gitignore` 是否覆盖运行期产物
+- 仓库内自带 JS helper 的 `package-lock.json` 是否存在且未被 `.gitignore` 错误忽略
 - Flow 文件是否保留对 `DEFINITIONS.md` 的单一事实源声明
 - Python 辅助脚本是否能通过 `py_compile`
 - `reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
 - Flow A 的产品事实指纹与阶段一生成链是否存在，并可通过 smoke test 生成 `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`
 - Flow A 的阶段三是否会把复杂目标拆成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
 - Flow A 的规则/决策/检查项 inventory 是否能从 `SKILL.md`、伴随规则文件、以及相关源码中被抽取并数据驱动展开，而不是每个 capability 只有 1 条泛化用例
-- Flow A 的阶段五是否会把所有 surface 落到 `SKILL-SURFACE-WORKLIST.md`，并能用 `validate_flow_a_skill_results.py` 校验 `skill-results.md` 覆盖完整性
+- Flow A 的阶段三是否会生成 `CASE-EXECUTION-PLAN.json`，把每条测试用例变成阶段五可执行输入，而不是只停留在文档枚举
+- Flow A 的阶段五是否会把所有 surface 落到 `SKILL-SURFACE-WORKLIST.md`，并能用 `validate_flow_a_skill_results.py` 校验 `skill-results.md` 与 `SURFACE-COVERAGE.json` 的 case 覆盖完整性
+- Flow A 是否在没有 custom harness 的情况下，仍能通过框架内置 generic case executor 把 skill surface 的所有 case 自动执行一遍，而不是直接跳过
 - Flow A 的 surface runner 是否能真实执行 `skill/bin`，对 `package/plugin-manifest` 给出结构化校验结果，并通过 `openclawExtensionRuntimeHarness` / `openclawExtensionHarness` / live probe 处理 `openclaw-extension`，对 `mcp` 验证协议交互
+- Flow A 的 case harness 是否能通过 `testing.json.caseExecutionHarness` / `caseExecutionHarnesses` 把复杂 skill 的规则、决策路径、检查项逐条执行，而不是只做 smoke test
 - 交付物发送契约是否要求 `files/...` 中转、同轮发送和请求语言一致性
 - 活跃角色文档中是否混入易漂移的内联版本号
 - 本地存在可用 `bash` 时，对全部沙箱脚本执行 `bash -n` 语法检查；不可用时输出警告
@@ -136,7 +140,7 @@ nexus-testing/
 │   ├── generate_flow_a_stage1.py # Flow A 阶段一产物生成
 │   ├── generate_flow_a_test_design.py # Flow A 阶段三多表面测试设计生成
 │   ├── generate_flow_a_skill_execution.py # Flow A 阶段五 surface 工单生成
-│   ├── run_flow_a_skill_execution.py # Flow A 阶段五 surface 执行 runner
+│   ├── run_flow_a_skill_execution.py # Flow A 阶段五 case/surface 执行 runner
 │   ├── sandbox_skill_invoke/   # Python 沙箱包（源码快照+安全复制）
 │   ├── security-scanner.py     # 安全扫描
 │   ├── validate-framework.py   # 框架结构校验
@@ -185,6 +189,7 @@ nexus-testing/
 - 运行期文件写入 `memory/nexus-reports/`、`.nexus-sandbox/`、`.tmp-test-runs/`、`.tmp-validation/` 等目录，不要把这些产物提交回仓库。
 - 任何修改入口、流程、角色或参考文档后，都应先跑一次 `python scripts/validate-framework.py`。
 - 任何修改入口、流程、角色、参考文档、校验器或执行语义时，必须同步更新 `README.md` 和 `CHANGELOG.md`。
+- 仓库内维护的 JS helper 需要提交对应 `package-lock.json`，保证 Playwright 等依赖可复现安装。
 - Shell 脚本默认按 LF 换行维护，避免在 Git Bash / Linux 环境中出现执行异常。
 - 新增脚本文件需要在 `validate-framework.py` 的 `REQUIRED_*` 列表中注册。
 
@@ -218,4 +223,4 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 
 ## 当前版本
 
-v0.9.38 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.39 — 详见 [CHANGELOG.md](CHANGELOG.md)

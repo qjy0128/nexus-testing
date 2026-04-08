@@ -71,8 +71,10 @@ def test_surface_aware_test_design() -> None:
 
         test_design_path = reports_dir / "TEST-DESIGN.md"
         plan_path = reports_dir / "SURFACE-EXECUTION-PLAN.json"
+        case_plan_path = reports_dir / "CASE-EXECUTION-PLAN.json"
         assert test_design_path.exists(), "TEST-DESIGN.md missing"
         assert plan_path.exists(), "SURFACE-EXECUTION-PLAN.json missing"
+        assert case_plan_path.exists(), "CASE-EXECUTION-PLAN.json missing"
 
         test_design = read_text(test_design_path)
         assert_contains(test_design, "Surface Inventory", "surface inventory section")
@@ -92,6 +94,15 @@ def test_surface_aware_test_design() -> None:
         assert_equal(by_kind["plugin-manifest"].get("path"), "openclaw.plugin.json", "plugin manifest path metadata")
         assert_equal(by_kind["package"].get("path"), "package.json", "package path metadata")
         assert_equal(by_kind["mcp"].get("command"), "./dist/mcp-server.js", "mcp command metadata")
+        case_plan = json.loads(read_text(case_plan_path))
+        assert_equal(case_plan.get("totalCaseCount"), plan.get("totalCaseCount"), "case plan count sync")
+        fingerprint = json.loads(read_text(reports_dir / "PRODUCT-FINGERPRINT.json"))
+        assert_equal(plan.get("resolvedRootPath"), fingerprint.get("resolvedRootPath"), "plan root path metadata")
+        assert_equal(plan.get("targetSkillPath"), fingerprint.get("targetSkillPath"), "plan target skill path metadata")
+        assert_equal(case_plan.get("resolvedRootPath"), fingerprint.get("resolvedRootPath"), "case plan root path metadata")
+        assert case_plan.get("cases"), "case execution plan should include cases"
+        first_case = case_plan.get("cases", [])[0]
+        assert "executionHints" in first_case, "case execution hints missing"
         print("  [PASS] test_surface_aware_test_design")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -143,6 +154,7 @@ def test_data_driven_rule_expansion_and_language_switch() -> None:
 
         test_design = read_text(reports_dir / "TEST-DESIGN.md")
         plan = json.loads(read_text(reports_dir / "SURFACE-EXECUTION-PLAN.json"))
+        case_plan = json.loads(read_text(reports_dir / "CASE-EXECUTION-PLAN.json"))
         assert_contains(test_design, "## 测试策略", "default language switched to Chinese")
         assert_contains(test_design, "规则 `prompt-injection` 检出", "rule-positive expansion")
         assert_contains(test_design, "规则 `prompt-injection` 不误报", "rule false-positive expansion")
@@ -150,6 +162,7 @@ def test_data_driven_rule_expansion_and_language_switch() -> None:
         assert_contains(test_design, "检查项 `runtime-hook-installed`", "check expansion")
         total_case_count = int(plan.get("totalCaseCount", 0))
         assert total_case_count >= 16, f"dense fixture should expand to >=16 cases, got {total_case_count}"
+        assert_equal(case_plan.get("totalCaseCount"), total_case_count, "dense case plan count sync")
         print("  [PASS] test_data_driven_rule_expansion_and_language_switch")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -199,11 +212,13 @@ def test_companion_inventory_expansion() -> None:
 
         test_design = read_text(reports_dir / "TEST-DESIGN.md")
         plan = json.loads(read_text(reports_dir / "SURFACE-EXECUTION-PLAN.json"))
+        case_plan = json.loads(read_text(reports_dir / "CASE-EXECUTION-PLAN.json"))
         assert_contains(test_design, "rule `RULE_01` detection", "companion scan rule expansion")
         assert_contains(test_design, "decision path `Invalid URL -> DENY`", "companion decision expansion")
         assert_contains(test_design, "check `Patrol Check 1`", "companion patrol check expansion")
         total_case_count = int(plan.get("totalCaseCount", 0))
         assert total_case_count >= 60, f"companion fixture should expand to >=60 cases, got {total_case_count}"
+        assert_equal(case_plan.get("totalCaseCount"), total_case_count, "companion case plan count sync")
         print("  [PASS] test_companion_inventory_expansion")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

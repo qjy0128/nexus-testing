@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -49,6 +50,14 @@ SURFACE_RULES: dict[str, dict[str, object]] = {
         "focus": ["server-registration", "tool-contract", "invocation-shape"],
         "security_focus": ["tool-abuse", "parameter-injection", "protocol-mismatch"],
     },
+}
+
+STATIC_VALIDATION_SURFACE_KINDS = {
+    "bin",
+    "package",
+    "plugin-manifest",
+    "openclaw-extension",
+    "mcp",
 }
 
 
@@ -517,6 +526,33 @@ def build_cases(surface: dict[str, object], case_start: int, language: str) -> l
     surface_id = str(surface["surfaceId"])
     cases: list[dict[str, object]] = []
 
+    if str(surface.get("kind", "")) in STATIC_VALIDATION_SURFACE_KINDS:
+        cases.append(
+            build_case(
+                f"TC-{case_start:03d}",
+                surface,
+                f"{surface_id}-STRUCTURAL",
+                "TD-02",
+                "structural",
+                text(language, f"{surface['label']} 结构完整性", f"{surface['label']} structural integrity"),
+                text(
+                    language,
+                    f"验证结构化表面 `{identifier}` 可被解析并输出可审计证据。",
+                    f"Verify the structured surface `{identifier}` can be parsed and emits auditable evidence.",
+                ),
+                [
+                    text(language, f"定位 `{identifier}` 并执行结构化校验。", f"Resolve `{identifier}` and run structural validation."),
+                    text(language, "确认关键字段与事实指纹一致。", "Confirm key fields remain consistent with the fingerprint."),
+                    text(language, "保存结构化校验结果，避免退化成仅凭描述的结论。", "Persist structured validation output instead of relying on prose-only conclusions."),
+                ],
+                [
+                    text(language, "表面文件存在且可解析。", "The surface file exists and is parseable."),
+                    text(language, "校验结果包含结构化证据或明确 blocker。", "The validation result includes structured evidence or an explicit blocker."),
+                ],
+            )
+        )
+        return cases
+
     cases.append(
         build_case(
             f"TC-{case_start:03d}",
@@ -625,12 +661,93 @@ def build_execution_plan(
         surface["generatedCases"] = cases
 
     return {
+        "targetPath": fingerprint.get("targetPath"),
+        "resolvedRootPath": fingerprint.get("resolvedRootPath"),
+        "targetSkillPath": fingerprint.get("targetSkillPath"),
         "packageName": fingerprint.get("packageName", "unknown"),
         "productType": list(fingerprint.get("productType", [])),
         "parallelRoles": ["skill-tester", "security-tester"],
         "totalCaseCount": case_counter - 1,
         "designWarnings": inventory_warnings(surface_inventory, language),
         "surfaces": surfaces,
+    }
+
+
+def build_case_execution_plan(
+    fingerprint: dict[str, object],
+    surface_inventory: list[dict[str, object]],
+    execution_plan: dict[str, object],
+) -> dict[str, object]:
+    cases: list[dict[str, object]] = []
+    for surface in surface_inventory:
+        for case in surface.get("generatedCases", []):
+            case_payload = dict(case)
+            case_payload["identifier"] = surface["identifier"]
+            case_payload["surfaceLabel"] = surface["label"]
+            case_payload["surfaceSource"] = surface.get("source")
+            case_payload["focusAreas"] = list(surface.get("focusAreas", []))
+            case_payload["securityFocus"] = list(surface.get("securityFocus", []))
+            case_payload["linkedCapabilityNames"] = [
+                str(item.get("name", "unknown")) for item in surface.get("linkedCapabilities", [])
+            ]
+            case_payload["executionHints"] = build_case_execution_hints(case_payload)
+            cases.append(case_payload)
+    return {
+        "targetPath": fingerprint.get("targetPath"),
+        "resolvedRootPath": fingerprint.get("resolvedRootPath"),
+        "targetSkillPath": fingerprint.get("targetSkillPath"),
+        "packageName": fingerprint.get("packageName", "unknown"),
+        "productType": list(fingerprint.get("productType", [])),
+        "totalCaseCount": execution_plan.get("totalCaseCount", len(cases)),
+        "parallelRoles": list(execution_plan.get("parallelRoles", [])),
+        "cases": cases,
+    }
+
+
+def extract_case_tokens(case: dict[str, object]) -> list[str]:
+    tokens = []
+    for candidate in re.findall(r"`([^`]+)`", str(case.get("title", ""))):
+        cleaned = candidate.strip()
+        if cleaned:
+            tokens.append(cleaned)
+    return tokens
+
+
+def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
+    category = str(case.get("category", "scenario"))
+    minimum_mode = str(case.get("minimumMode", "shim-live"))
+    title = str(case.get("title", "")).strip()
+    objective = str(case.get("objective", "")).strip()
+    token_candidates = extract_case_tokens(case)
+    expected_keywords: list[str] = []
+    verification_policy = "assertion-only"
+    expect_trigger: str | None = None
+
+    if category in {"positive", "boundary", "capability", "scenario", "rule-positive", "decision", "check"}:
+        expect_trigger = "true"
+    elif category in {"negative", "rule-negative"}:
+        verification_policy = "manual-negative-review"
+
+    if category == "decision":
+        expected_keywords = [token for token in token_candidates if token.isupper()]
+        verification_policy = "assertion-and-keyword"
+
+    message_lines = [
+        f"case-id={case.get('caseId')}",
+        f"surface-id={case.get('surfaceId')}",
+        f"title={title}",
+        f"objective={objective}",
+    ]
+    if token_candidates:
+        message_lines.append(f"focus={', '.join(token_candidates[:3])}")
+
+    return {
+        "message": "; ".join(line for line in message_lines if line),
+        "mode": minimum_mode,
+        "expectTrigger": expect_trigger,
+        "requireDeliveryStatus": "delivered" if expect_trigger == "true" else None,
+        "expectedKeywords": expected_keywords,
+        "verificationPolicy": verification_policy,
     }
 
 
@@ -658,6 +775,8 @@ def render_branch_matrix(surface_inventory: list[dict[str, object]], language: s
             category = str(case["category"])
             if category.startswith("rule") or category.startswith("decision") or category.startswith("check") or category == "scenario":
                 counts["capability"] += 1
+            elif category == "structural":
+                counts["positive"] += 1
             else:
                 counts[category] += 1
         lines.append(
@@ -799,6 +918,7 @@ def main(argv: list[str] | None = None) -> int:
 
     surface_inventory = build_surface_inventory(fingerprint, args.language)
     execution_plan = build_execution_plan(fingerprint, surface_inventory, args.language)
+    case_execution_plan = build_case_execution_plan(fingerprint, surface_inventory, execution_plan)
     test_design = build_test_design_markdown(fingerprint, surface_inventory, execution_plan, args.language)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -807,10 +927,15 @@ def main(argv: list[str] | None = None) -> int:
         output_dir / "SURFACE-EXECUTION-PLAN.json",
         json.dumps(execution_plan, ensure_ascii=False, indent=2) + "\n",
     )
+    write_text(
+        output_dir / "CASE-EXECUTION-PLAN.json",
+        json.dumps(case_execution_plan, ensure_ascii=False, indent=2) + "\n",
+    )
 
     print(f"OUTPUT_DIR={output_dir}")
     print(f"TEST_DESIGN={output_dir / 'TEST-DESIGN.md'}")
     print(f"SURFACE_EXECUTION_PLAN={output_dir / 'SURFACE-EXECUTION-PLAN.json'}")
+    print(f"CASE_EXECUTION_PLAN={output_dir / 'CASE-EXECUTION-PLAN.json'}")
     return 0
 
 

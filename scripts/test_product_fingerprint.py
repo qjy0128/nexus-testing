@@ -286,6 +286,31 @@ def test_mixed_target() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_nested_skill_target_keeps_repo_surfaces() -> None:
+    temp_root = make_temp_root("fingerprint-nested-skill-")
+    try:
+        repo_dir = build_mixed_fixture(temp_root)
+        nested_target = repo_dir / "skills" / "agentguard"
+        payload = run_extractor(nested_target)
+
+        assert_equal(payload.get("targetPath"), str(nested_target.resolve()), "nested target path")
+        assert_equal(payload.get("resolvedRootPath"), str(repo_dir.resolve()), "resolved root path")
+        assert_equal(payload.get("targetSkillPath"), "skills/agentguard", "target skill scope")
+
+        product_type = payload.get("productType", [])
+        for expected in ("skill", "package", "plugin", "cli", "mcp"):
+            assert expected in product_type, f"missing nested target product type {expected}: {product_type}"
+
+        entry_surfaces = json.dumps(payload.get("entrySurfaces", []), ensure_ascii=False)
+        assert_contains(entry_surfaces, "skills/agentguard/SKILL.md", "nested skill entry surface")
+        assert_contains(entry_surfaces, "agentguard-lite", "nested target bin entry surface")
+        print("  [PASS] test_nested_skill_target_keeps_repo_surfaces")
+    finally:
+        import shutil
+
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_rule_dense_inventory_extraction() -> None:
     temp_root = make_temp_root("fingerprint-rule-dense-")
     try:
@@ -356,7 +381,12 @@ def main() -> int:
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-    tests = [test_mixed_target, test_rule_dense_inventory_extraction, test_companion_inventory_extraction]
+    tests = [
+        test_mixed_target,
+        test_nested_skill_target_keeps_repo_surfaces,
+        test_rule_dense_inventory_extraction,
+        test_companion_inventory_extraction,
+    ]
     passed = 0
     failed = 0
 

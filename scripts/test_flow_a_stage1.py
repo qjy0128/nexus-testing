@@ -19,7 +19,7 @@ GENERATOR = PROJECT_DIR / "scripts" / "generate_flow_a_stage1.py"
 def test_stage1_generation() -> None:
     temp_root = make_temp_root("flowa-stage1-")
     try:
-        target = build_mixed_fixture(temp_root)
+        target = build_mixed_fixture(temp_root) / "skills" / "agentguard"
         output_dir = temp_root / "reports"
         proc = subprocess.run(
             [
@@ -50,6 +50,8 @@ def test_stage1_generation() -> None:
         fingerprint = json.loads(read_text(fingerprint_path))
         assert "skill" in fingerprint.get("productType", []), "missing skill product type"
         assert "plugin" in fingerprint.get("productType", []), "missing plugin product type"
+        assert_equal(fingerprint.get("targetSkillPath"), "skills/agentguard", "target skill path")
+        assert_equal(fingerprint.get("packageName"), "@example/agentguard-lite", "package name from repo root")
 
         spec_text = read_text(spec_path)
         assert_contains(spec_text, "Real Entry Surfaces", "spec real entry section")

@@ -39,11 +39,13 @@ def render_surface(surface: dict[str, object], language: str) -> str:
         f"- {text(language, 'linked-capabilities', 'linked-capabilities')}: {', '.join(str(item) for item in surface.get('linkedCapabilityNames', [])) or text(language, '(无)', '(none)')}",
         f"- {text(language, 'source', 'source')}: `{source_path}{source_suffix} ({source_key})`",
         f"- {text(language, 'required-test-cases', 'required-test-cases')}: {case_ids or text(language, '(无)', '(none)')}",
+        f"- {text(language, 'required-test-case-count', 'required-test-case-count')}: `{len(surface.get('testCaseIds', []))}`",
         f"- {text(language, 'execution-template', 'execution-template')}:",
         f"  - surface-id: `{surface.get('surfaceId')}`",
         f"  - {text(language, 'execution-level', 'execution-level')}: `{surface.get('minimumMode')}`",
         f"  - {text(language, 'status', 'status')}: `passed|blocked|incomplete`",
         f"  - {text(language, 'evidence', 'evidence')}: `<trace/output/log path>`",
+        f"  - {text(language, 'executed-case-ids', 'executed-case-ids')}: `<TC-001, TC-002>`",
         f"  - {text(language, 'notes', 'notes')}: <{text(language, '简要结论', 'brief outcome')}>",
         "",
     ]
@@ -53,6 +55,7 @@ def render_surface(surface: dict[str, object], language: str) -> str:
 def build_coverage(plan: dict[str, object]) -> dict[str, object]:
     surfaces = []
     for surface in plan.get("surfaces", []):
+        required_case_ids = [str(case_id) for case_id in surface.get("testCaseIds", []) if str(case_id).strip()]
         surfaces.append(
             {
                 "surfaceId": surface.get("surfaceId"),
@@ -62,7 +65,18 @@ def build_coverage(plan: dict[str, object]) -> dict[str, object]:
                 "path": surface.get("path"),
                 "command": surface.get("command"),
                 "minimumMode": surface.get("minimumMode"),
-                "requiredCaseIds": list(surface.get("testCaseIds", [])),
+                "requiredCaseIds": required_case_ids,
+                "requiredCaseCount": len(required_case_ids),
+                "executedCaseIds": [],
+                "executedCaseCount": 0,
+                "caseResults": [
+                    {
+                        "caseId": case_id,
+                        "status": "pending",
+                        "evidence": [],
+                    }
+                    for case_id in required_case_ids
+                ],
                 "status": "pending",
                 "executionLevel": None,
                 "evidence": [],
@@ -87,6 +101,8 @@ def build_worklist(plan: dict[str, object], language: str) -> str:
         text(language, "- 按顺序执行各个 surface；禁止只挑单一入口。", "- Execute surfaces in order; do not cherry-pick a single entry point."),
         text(language, "- 每个 surface 都必须在 `skill-results.md` 中生成一个结构化区块。", "- Every surface must produce one structured block in `skill-results.md`."),
         text(language, "- 每个区块都必须包含 `surface-id`、`execution-level`、`status`、`evidence` 和 `notes`。", "- Each block must include `surface-id`, `execution-level`, `status`, `evidence`, and `notes`."),
+        text(language, "- `SURFACE-COVERAGE.json` 必须逐条回填 `requiredCaseIds`；未回填的 case 默认视为未执行。", "- `SURFACE-COVERAGE.json` must update every `requiredCaseIds` entry; untouched cases are treated as unexecuted."),
+        text(language, "- 只做 surface smoke 或 spot check 时，surface 结论必须写 `incomplete`，不能把全部 required cases 写成 `passed`。", "- A surface must stay `incomplete` when only a smoke test or spot check ran; it cannot mark all required cases as `passed`."),
         text(language, "- 只拿到 trace 或 probe-only 证据的 surface，最终结论不得当成功能通过。", "- If a surface only reached trace or probe-only evidence, the final conclusion must not treat it as a functional pass."),
         "",
         text(language, "## 有序 Surface 工单", "## Ordered Surface Worklist"),
@@ -105,6 +121,7 @@ def build_worklist(plan: dict[str, object], language: str) -> str:
             f"- {text(language, 'execution-level', 'execution-level')}: `live|shim-live|trace`",
             f"- {text(language, 'status', 'status')}: `passed|blocked|incomplete`",
             f"- {text(language, 'evidence', 'evidence')}: `<path1>, <path2>`",
+            f"- {text(language, 'executed-case-ids', 'executed-case-ids')}: `<TC-001, TC-002>`",
             f"- {text(language, 'notes', 'notes')}: <{text(language, '简要结论', 'brief outcome')}>",
             "```",
             "",

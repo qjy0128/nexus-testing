@@ -210,8 +210,15 @@ def iter_markdown_files() -> list[Path]:
 
 
 def find_latest_version(changelog_text: str) -> str | None:
-    match = CHANGELOG_VERSION_PATTERN.search(changelog_text)
-    return match.group(1) if match else None
+    matches = CHANGELOG_VERSION_PATTERN.findall(changelog_text)
+    if not matches:
+        return None
+
+    def semver_key(version: str) -> tuple[int, int, int]:
+        major, minor, patch = version.lstrip("v").split(".")
+        return int(major), int(minor), int(patch)
+
+    return max(matches, key=semver_key)
 
 
 def find_readme_version(readme_text: str) -> str | None:
@@ -420,6 +427,50 @@ def validate_local_only_files_not_tracked() -> list[str]:
         if result.returncode == 0:
             issues.append(
                 f"Local-only file is tracked by git and should be removed from the index: {relative_path}"
+            )
+
+    return issues
+
+
+def iter_repo_package_json_paths() -> list[Path]:
+    package_files: list[Path] = []
+    for path in ROOT.rglob("package.json"):
+        relative = rel(path)
+        if _is_excluded(relative):
+            continue
+        package_files.append(path)
+    return sorted(package_files)
+
+
+def validate_embedded_js_lockfiles() -> list[str]:
+    issues: list[str] = []
+    git_available = bool(which("git"))
+
+    for package_path in iter_repo_package_json_paths():
+        relative_package = rel(package_path)
+        lockfile_path = package_path.with_name("package-lock.json")
+        relative_lockfile = rel(lockfile_path)
+
+        if not lockfile_path.exists():
+            issues.append(
+                f"{relative_package} is missing sibling package-lock.json for reproducible helper installs"
+            )
+            continue
+
+        if not git_available:
+            continue
+
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "--", relative_lockfile],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if ignored.returncode == 0:
+            issues.append(
+                f"{relative_lockfile} is ignored by git; helper lockfiles must stay trackable"
             )
 
     return issues
@@ -691,6 +742,7 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("doc update discipline", validate_docs_updated_with_core_changes()),
         ("gitignore entries", validate_gitignore_entries()),
         ("local-only tracked files", validate_local_only_files_not_tracked()),
+        ("embedded js lockfiles", validate_embedded_js_lockfiles()),
         ("flow headers", validate_flow_headers()),
         ("shell scripts", validate_shell_scripts()),
         ("python script syntax", validate_python_script_syntax()),

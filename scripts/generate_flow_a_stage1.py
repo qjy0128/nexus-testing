@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from extract_product_fingerprint import extract_product_fingerprint, resolve_target_root
+from extract_product_fingerprint import extract_product_fingerprint, resolve_target_context
 from flow_a_localization import add_output_language_argument
 from sandbox_skill_invoke.core import write_text
 
@@ -380,14 +380,29 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     args = parse_args(argv)
-    target_root = resolve_target_root(args.target)
+    target_context = resolve_target_context(args.target)
+    target_root = Path(target_context["scan_root"]) if isinstance(target_context.get("scan_root"), Path) else Path(args.target).expanduser().resolve()
     if not target_root.exists():
         raise SystemExit(f"ERROR: target does not exist: {args.target}")
 
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    fingerprint = extract_product_fingerprint(target_root)
+    requested_path = (
+        Path(target_context["requested_path"])
+        if isinstance(target_context.get("requested_path"), Path)
+        else target_root
+    )
+    skill_scope = (
+        Path(target_context["skill_scope"])
+        if isinstance(target_context.get("skill_scope"), Path)
+        else None
+    )
+    fingerprint = extract_product_fingerprint(
+        target_root,
+        requested_path=requested_path,
+        skill_scope=skill_scope,
+    )
     write_text(
         output_dir / "PRODUCT-FINGERPRINT.json",
         json.dumps(fingerprint, ensure_ascii=False, indent=2) + "\n",

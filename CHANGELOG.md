@@ -701,3 +701,10 @@
 - 更新：`scripts/validate_flow_a_skill_results.py`，收紧 `openclaw-extension` / `mcp` 通过态门槛，分别要求 `registered-hooks` 与 `protocol-version/tools` 证据 notes
 - 更新：`scripts/test_flow_a_surface_runner.py`、`scripts/test_flow_a_skill_execution.py`，补充真实 hook/MCP harness 回归和坏 harness 启动失败回归
 - 更新：`SKILL.md`、`flows/skill-testing.md`、`roles/skill-tester.md`、`reference-flow-skill.md`、`README.md`，同步阶段五 runner 的真实执行语义
+### v0.9.39（2026-04-08）**Flow A surface-case alignment + helper lockfile governance**
+
+- 更新：`scripts/generate_flow_a_test_design.py`，将 `bin` / `package` / `plugin-manifest` / `openclaw-extension` / `mcp` 统一收口为单条 `structural` case，保证阶段三设计与阶段五现有 surface 级执行能力一致，不再因为 case 粒度错配把可验证表面误判成 `incomplete`
+- 更新：`scripts/run_flow_a_skill_execution.py`，为 AgentGuard 推断扫描补充 rule fixture fallback；当专用样例未命中时，会退回已知高风险样例继续验证规则存在性，修复 `SHELL_EXEC` 等 case 被误记为 `incomplete` 的回归
+- 更新：`scripts/test_flow_a_surface_runner.py` 与相关 smoke tests，同步新的 surface 判定语义，确保 `bin` / `package` / `plugin-manifest` / `mcp` 在结构化验证通过时可以稳定收敛到 `passed`
+- 更新：`.github/workflows/validate-framework.yml`，CI 改为单入口执行 `python scripts/validate-framework.py`，移除与校验器内部重复的 shell / py_compile / smoke test 步骤
+- 更新：`.gitignore`、`scripts/validate-framework.py`、`README.md`，不再忽略仓库内 helper 的 `package-lock.json`，并新增校验器规则，要求所有内置 JS helper 都有可追踪 lockfile

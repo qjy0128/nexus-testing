@@ -17,7 +17,6 @@ __pycache__/
 
 # Node.js (may be present if tested skills use npm)
 node_modules/
-package-lock.json
 
 # Environment / secrets
 .env

@@ -12,6 +12,15 @@ from pathlib import Path
 from sandbox_skill_invoke.core import read_text
 
 IGNORED_PATH_PARTS = {".git", "node_modules", "__pycache__", ".tmp", ".tmp-test-runs", ".tmp-validation"}
+REPO_ROOT_MARKERS = (
+    "package.json",
+    "openclaw.plugin.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "go.mod",
+    "Cargo.toml",
+    ".git",
+)
 INVENTORY_FILE_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".toml", ".ts", ".js", ".tsx", ".jsx", ".py"}
 DECISION_TOKENS = ("ALLOW", "DENY", "CONFIRM")
 IGNORED_UPPER_TOKENS = {
@@ -479,13 +488,53 @@ def extract_inventory_from_file(path: Path, root: Path, capability_name: str) ->
     return extract_source_groups(text, capability_name)
 
 
-def resolve_target_root(raw_path: str) -> Path:
+def _target_directory(target: Path) -> Path:
+    return target.parent if target.is_file() else target
+
+
+def has_repo_root_markers(path: Path) -> bool:
+    for marker in REPO_ROOT_MARKERS:
+        if (path / marker).exists():
+            return True
+    return False
+
+
+def resolve_target_context(raw_path: str) -> dict[str, Path | None]:
     target = Path(raw_path).expanduser().resolve()
-    if target.is_file():
-        if target.name.upper() == "SKILL.MD":
-            return target.parent
-        return target.parent
-    return target
+    requested_dir = _target_directory(target)
+    scan_root = requested_dir
+    if not has_repo_root_markers(scan_root):
+        for candidate in requested_dir.parents:
+            if has_repo_root_markers(candidate):
+                scan_root = candidate
+                break
+
+    skill_scope: Path | None = None
+    if target.is_file() and target.name.upper() == "SKILL.MD":
+        skill_scope = target.parent
+    elif target.is_dir() and (target / "SKILL.md").exists():
+        skill_scope = target
+    else:
+        for candidate in (requested_dir, *requested_dir.parents):
+            if candidate == scan_root.parent:
+                break
+            if (candidate / "SKILL.md").exists():
+                skill_scope = candidate
+                break
+
+    return {
+        "requested_path": target,
+        "scan_root": scan_root,
+        "skill_scope": skill_scope,
+    }
+
+
+def resolve_target_root(raw_path: str) -> Path:
+    context = resolve_target_context(raw_path)
+    root = context.get("scan_root")
+    if isinstance(root, Path):
+        return root
+    return Path(raw_path).expanduser().resolve()
 
 
 def detect_runtime(root: Path) -> tuple[list[str], list[dict[str, object]]]:
@@ -554,9 +603,12 @@ def extract_version_and_license(root: Path) -> tuple[dict[str, object], dict[str
     return version, license_info, runtime_requirements
 
 
-def discover_skill_files(root: Path) -> list[Path]:
+def discover_skill_files(root: Path, *, skill_scope: Path | None = None) -> list[Path]:
     skill_files: list[Path] = []
-    for path in root.rglob("SKILL.md"):
+    search_root = skill_scope if skill_scope is not None else root
+    if not search_root.exists():
+        return skill_files
+    for path in search_root.rglob("SKILL.md"):
         if is_ignored_path(path):
             continue
         skill_files.append(path)
@@ -627,10 +679,15 @@ def extract_capabilities_from_skill(skill_path: Path, root: Path) -> list[dict[s
     return list(capabilities.values())
 
 
-def extract_product_fingerprint(root: Path) -> dict[str, object]:
+def extract_product_fingerprint(
+    root: Path,
+    *,
+    requested_path: Path | None = None,
+    skill_scope: Path | None = None,
+) -> dict[str, object]:
     package_json = root / "package.json"
     plugin_json = root / "openclaw.plugin.json"
-    skill_files = discover_skill_files(root)
+    skill_files = discover_skill_files(root, skill_scope=skill_scope)
 
     product_type: list[str] = []
     entry_surfaces: list[dict[str, object]] = []
@@ -761,13 +818,15 @@ def extract_product_fingerprint(root: Path) -> dict[str, object]:
         deduped_evidence.append(item)
 
     return {
-        "targetPath": str(root),
+        "targetPath": str(requested_path or root),
+        "resolvedRootPath": str(root),
         "packageName": package_name if package_json.exists() and isinstance(package_name, str) else "unknown",
         "productType": deduped_types,
         "runtime": runtime,
         "version": version,
         "license": license_info,
         "runtimeRequirements": runtime_requirements,
+        "targetSkillPath": relative_to_root(skill_scope, root) if skill_scope is not None else None,
         "entrySurfaces": deduped_entry_surfaces,
         "capabilitySurfaces": deduped_capabilities,
         "evidence": deduped_evidence,
@@ -791,11 +850,16 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     args = parse_args(argv)
-    root = resolve_target_root(args.target)
+    context = resolve_target_context(args.target)
+    root = Path(context["scan_root"]) if isinstance(context.get("scan_root"), Path) else resolve_target_root(args.target)
     if not root.exists():
         raise SystemExit(f"ERROR: target does not exist: {args.target}")
 
-    payload = extract_product_fingerprint(root)
+    payload = extract_product_fingerprint(
+        root,
+        requested_path=Path(context["requested_path"]) if isinstance(context.get("requested_path"), Path) else root,
+        skill_scope=Path(context["skill_scope"]) if isinstance(context.get("skill_scope"), Path) else None,
+    )
     rendered = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
     if args.output:
