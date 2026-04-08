@@ -9,118 +9,28 @@ import shutil
 import stat
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-from test_helpers import make_temp_root
+from test_helpers import (
+    assert_contains,
+    assert_equal,
+    create_session,
+    find_runnable_bash as _find_runnable_bash,
+    make_temp_root,
+    parse_kv_output,
+    read_text,
+    write_text,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 EXEC_SCRIPT = ROOT / "scripts" / "sandbox-exec.sh"
-WINDOWS_GIT_BASH_CANDIDATES = (
-    Path(r"C:\Program Files\Git\bin\bash.exe"),
-    Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
-    Path(r"C:\Program Files (x86)\Git\bin\bash.exe"),
-    Path(r"C:\Program Files (x86)\Git\usr\bin\bash.exe"),
-)
-WINDOWS_BASH_BLACKLIST = {r"c:\windows\system32\bash.exe"}
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
-
-
-def parse_kv_output(output: str) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-    for line in output.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        parsed[key.strip()] = value.strip()
-    return parsed
-
-
-def assert_equal(actual: object, expected: object, label: str) -> None:
-    if actual != expected:
-        raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
-
-
-def assert_contains(text: str, needle: str, label: str) -> None:
-    if needle not in text:
-        raise AssertionError(f"{label}: expected to find {needle!r} in {text!r}")
 
 
 def find_runnable_bash() -> str:
-    candidates: list[str] = []
-    primary = shutil.which("bash")
-    if primary:
-        candidates.append(primary)
-    if os.name == "nt":
-        candidates.extend(str(path) for path in WINDOWS_GIT_BASH_CANDIDATES)
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        resolved = str(Path(candidate)).strip()
-        if not resolved:
-            continue
-        lowered = resolved.lower()
-        if lowered in seen or lowered in WINDOWS_BASH_BLACKLIST:
-            continue
-        seen.add(lowered)
-        if not Path(resolved).exists():
-            continue
-        proc = subprocess.run(
-            [resolved, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if proc.returncode == 0:
-            return resolved
-    raise RuntimeError("No runnable bash found for sandbox-exec smoke test")
-
-
-def create_session(sandbox_root: Path, session_id: str) -> Path:
-    session_dir = sandbox_root / session_id
-    if session_dir.exists():
-        shutil.rmtree(session_dir)
-    for relative in (
-        "workspace/fixtures",
-        "workspace/outputs",
-        "workspace/temp",
-        "workspace/state",
-        "workspace/artifacts",
-        "runtime",
-        "logs",
-    ):
-        (session_dir / relative).mkdir(parents=True, exist_ok=True)
-    write_text(session_dir / "logs" / "exit-codes.json", "[]\n")
-    write_text(session_dir / "logs" / "file-ops.json", "[]\n")
-    write_text(
-        session_dir / "META.json",
-        json.dumps(
-            {
-                "sessionId": session_id,
-                "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-                "status": "active",
-                "platform": sys.platform,
-                "runtime": {"python": sys.version.split()[0], "node": ""},
-                "capabilities": "full",
-                "parentTestReport": None,
-                "commandCount": 0,
-                "totalDurationMs": 0,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-    )
-    return session_dir
+    result = _find_runnable_bash()
+    if result is None:
+        raise RuntimeError("No runnable bash found for sandbox-exec smoke test")
+    return result
 
 
 def build_mock_docker(bin_dir: Path, capture_file: Path) -> Path:

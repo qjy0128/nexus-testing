@@ -9,11 +9,7 @@ import sys
 from pathlib import Path
 
 from extract_product_fingerprint import extract_product_fingerprint, resolve_target_root
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+from sandbox_skill_invoke.core import write_text
 
 
 def render_source(source: dict[str, object] | None) -> str:

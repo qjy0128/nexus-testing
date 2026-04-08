@@ -1,3 +1,17 @@
+### v0.9.36（2026-04-08）
+**代码质量优化与 Bug 修复**
+
+- 修复：`scripts/sandbox_skill_invoke/adapter.py`，`_detect_from_testing_json()` 对 list 类型 `invoke.command` 调用 `str()` 产生无效 shell 字符串的 Bug，改用 `shlex.join()` 正确拼接
+- 重构：消除 `read_text`/`write_text`/`parse_kv_output`/`assert_equal` 等工具函数在 9 个脚本中的重复定义，统一导入 `sandbox_skill_invoke.core` 或 `test_helpers`
+- 重构：`scripts/run_flow_a_skill_execution.py`（991→780 行），提取 `StdioJsonRpcClient` 到 `flow_a_mcp_client.py`，命令构造器到 `flow_a_command_builders.py`
+- 重构：`scripts/validate-framework.py`（1027→767 行），提取合约/角色校验器到 `validate_contracts.py`
+- 重构：`test_flow_a_integration.py`、`test_sandbox_exec_container.py`，复用 `test_helpers` 共享工具函数和 `create_session`
+- 更新：`.gitignore`，补充 `.tmp/` 和 `*.log` 条目
+- 修复：`scripts/run_flow_a_skill_execution.py`，`timeoutSeconds` 配置值的 `int()` 转换改为带边界校验的 `_safe_timeout()`（1–3600 秒），防止非整数值导致崩溃
+- 修复：`scripts/run_flow_a_skill_execution.py`，harness 结果文件和 coverage JSON 加载增加 `JSONDecodeError` 防护
+- 修复：`scripts/sandbox_skill_invoke/audit.py`，`commandCount`/`totalDurationMs` 字段增加防御性 `int()` 转换
+- 清理：`scripts/sandbox_skill_invoke/core.py`、`scripts/test_helpers.py`，移除冗余的内联 `import sys`
+
 ### v0.9.35（2026-04-07）
 **Flow A hook / MCP harness hardening**
 

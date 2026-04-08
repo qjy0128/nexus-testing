@@ -8,14 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+from sandbox_skill_invoke.core import read_text, write_text
 
 
 def load_json(path: Path) -> dict[str, object]:

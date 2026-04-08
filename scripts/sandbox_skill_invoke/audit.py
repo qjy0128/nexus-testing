@@ -47,8 +47,14 @@ def update_meta_metrics_unlocked(session_dir: Path, duration_ms: int) -> None:
         payload = json.loads(read_text(meta_file))
     except json.JSONDecodeError:
         return
-    payload["commandCount"] = int(payload.get("commandCount", 0) or 0) + 1
-    payload["totalDurationMs"] = int(payload.get("totalDurationMs", 0) or 0) + max(duration_ms, 0)
+    try:
+        payload["commandCount"] = int(payload.get("commandCount", 0) or 0) + 1
+    except (TypeError, ValueError):
+        payload["commandCount"] = 1
+    try:
+        payload["totalDurationMs"] = int(payload.get("totalDurationMs", 0) or 0) + max(duration_ms, 0)
+    except (TypeError, ValueError):
+        payload["totalDurationMs"] = max(duration_ms, 0)
     write_text(meta_file, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 

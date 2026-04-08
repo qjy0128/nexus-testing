@@ -36,7 +36,6 @@ def parse_kv_output(output: str) -> dict[str, str]:
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
     if actual != expected:
-        import sys
         print(f"Assertion failed for {label}: expected {expected!r}, got {actual!r}", file=sys.stderr)
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 

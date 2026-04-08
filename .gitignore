@@ -6,6 +6,9 @@
 /.tmp-test-runs/
 /.tmp-validation/
 
+# Generic temp directories
+.tmp/
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -27,6 +30,9 @@ package-lock.json
 *.swp
 *.swo
 *~
+
+# Log files
+*.log
 
 # OS noise
 .DS_Store

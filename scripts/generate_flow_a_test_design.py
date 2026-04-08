@@ -8,6 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+from sandbox_skill_invoke.core import read_text, write_text
+
 
 SURFACE_RULES: dict[str, dict[str, object]] = {
     "skill": {
@@ -47,15 +49,6 @@ SURFACE_RULES: dict[str, dict[str, object]] = {
         "security_focus": ["tool-abuse", "parameter-injection", "protocol-mismatch"],
     },
 }
-
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
 
 
 def load_json(path: Path) -> dict[str, object]:

@@ -6,28 +6,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import queue
 import re
 import shlex
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
-from sandbox_skill_invoke.core import detect_command, find_bash_executable
+from flow_a_command_builders import build_bin_command, build_launch_command, build_module_probe_command
+from flow_a_mcp_client import StdioJsonRpcClient, choose_tool_for_call
+from sandbox_skill_invoke.core import find_bash_executable, read_text, write_text
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 INVOKE_SCRIPT = PROJECT_DIR / "scripts" / "sandbox_skill_invoke.py"
-
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
 
 
 def load_json(path: Path) -> dict[str, object]:
@@ -42,6 +33,15 @@ def load_testing_manifest(skill_path: Path) -> dict[str, object]:
         return load_json(manifest_path)
     except json.JSONDecodeError:
         return {}
+
+
+def _safe_timeout(value: object, default: int = 30) -> int:
+    """Parse a timeout value with bounds clamping (1–3600 seconds)."""
+    try:
+        result = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(result, 3600))
 
 
 def normalize_harness_block(block: object) -> dict[str, object]:
@@ -191,102 +191,6 @@ def resolve_surface_path(skill_path: Path, surface: dict[str, object]) -> Path |
     return (skill_path / raw_target).resolve()
 
 
-def build_bin_command(target: Path, skill_path: Path) -> tuple[list[str] | None, str | None]:
-    suffix = target.suffix.lower()
-    if suffix == ".py":
-        return [sys.executable, str(target), "--help"], None
-    if suffix in {".js", ".mjs", ".cjs"}:
-        node = detect_command("node")
-        if not node:
-            return None, "node runtime is unavailable"
-        return [node, str(target), "--help"], None
-    if suffix == ".ts":
-        local_tsx = skill_path / "node_modules" / ".bin" / ("tsx.cmd" if os.name == "nt" else "tsx")
-        if local_tsx.exists():
-            return [str(local_tsx), str(target), "--help"], None
-        npx = detect_command("npx")
-        if npx:
-            return [npx, "--no-install", "tsx", str(target), "--help"], None
-        return None, "tsx runtime is unavailable"
-    if suffix == ".sh":
-        bash = find_bash_executable()
-        if not bash:
-            return None, "bash runtime is unavailable"
-        return [bash, str(target), "--help"], None
-    if os.access(target, os.X_OK):
-        return [str(target), "--help"], None
-    return None, f"unsupported bin target suffix `{suffix or 'none'}`"
-
-
-def build_launch_command(target: Path, skill_path: Path) -> tuple[list[str] | None, str | None]:
-    suffix = target.suffix.lower()
-    if suffix == ".py":
-        return [sys.executable, str(target)], None
-    if suffix in {".js", ".mjs", ".cjs"}:
-        node = detect_command("node")
-        if not node:
-            return None, "node runtime is unavailable"
-        return [node, str(target)], None
-    if suffix == ".ts":
-        local_tsx = skill_path / "node_modules" / ".bin" / ("tsx.cmd" if os.name == "nt" else "tsx")
-        if local_tsx.exists():
-            return [str(local_tsx), str(target)], None
-        npx = detect_command("npx")
-        if npx:
-            return [npx, "--no-install", "tsx", str(target)], None
-        return None, "tsx runtime is unavailable"
-    if suffix == ".sh":
-        bash = find_bash_executable()
-        if not bash:
-            return None, "bash runtime is unavailable"
-        return [bash, str(target)], None
-    if os.access(target, os.X_OK):
-        return [str(target)], None
-    return None, f"unsupported launch target suffix `{suffix or 'none'}`"
-
-
-def build_module_probe_command(target: Path, skill_path: Path) -> tuple[list[str] | None, str | None]:
-    suffix = target.suffix.lower()
-    if suffix == ".py":
-        script = (
-            "import importlib.util, pathlib, sys; "
-            "target = pathlib.Path(sys.argv[1]); "
-            "spec = importlib.util.spec_from_file_location('nexus_surface_probe', target); "
-            "module = importlib.util.module_from_spec(spec); "
-            "assert spec and spec.loader; "
-            "spec.loader.exec_module(module); "
-            "print('loaded')"
-        )
-        return [sys.executable, "-c", script, str(target)], None
-    if suffix in {".js", ".mjs", ".cjs"}:
-        node = detect_command("node")
-        if not node:
-            return None, "node runtime is unavailable"
-        script = (
-            "const { pathToFileURL } = require('url'); "
-            "const target = process.argv[1]; "
-            "import(pathToFileURL(target).href)"
-            ".then(() => { console.log('loaded'); })"
-            ".catch((error) => { console.error(error && error.stack ? error.stack : String(error)); process.exit(1); });"
-        )
-        return [node, "-e", script, str(target)], None
-    if suffix == ".ts":
-        local_tsx = skill_path / "node_modules" / ".bin" / ("tsx.cmd" if os.name == "nt" else "tsx")
-        script = "import(process.argv[1]).then(() => console.log('loaded')).catch((error) => { console.error(error?.stack || String(error)); process.exit(1); });"
-        if local_tsx.exists():
-            return [str(local_tsx), "--eval", script, str(target)], None
-        npx = detect_command("npx")
-        if npx:
-            return [npx, "--no-install", "tsx", "--eval", script, str(target)], None
-        return None, "tsx runtime is unavailable"
-    if suffix == ".sh":
-        bash = find_bash_executable()
-        if not bash:
-            return None, "bash runtime is unavailable"
-        return [bash, "-n", str(target)], None
-    return None, f"unsupported module probe suffix `{suffix or 'none'}`"
-
-
 def run_bin_surface(
     surface: dict[str, object],
     skill_path: Path,
@@ -357,7 +261,7 @@ def run_explicit_surface_harness(
         )
 
     cwd = skill_path / str(harness_block.get("cwd", "."))
-    timeout_seconds = int(harness_block.get("timeoutSeconds", 30))
+    timeout_seconds = _safe_timeout(harness_block.get("timeoutSeconds", 30))
     logs_dir = execution_logs_dir(execution_dir)
     stdout_path = logs_dir / f"{surface.get('surfaceId')}.stdout.log"
     stderr_path = logs_dir / f"{surface.get('surfaceId')}.stderr.log"
@@ -415,7 +319,14 @@ def run_explicit_surface_harness(
             str(result_path),
         )
 
-    payload = load_json(result_path)
+    try:
+        payload = load_json(result_path)
+    except (json.JSONDecodeError, ValueError):
+        return mark_blocked(
+            surface,
+            "explicit harness result file contains invalid JSON",
+            str(result_path),
+        )
     verified = bool(payload.get(result_flag))
     evidence = [str(stdout_path), str(stderr_path), str(result_path)]
     evidence.extend(str(item) for item in payload.get("evidence", []) if str(item).strip())
@@ -515,112 +426,6 @@ def probe_module_surface(
     }
 
 
-class StdioJsonRpcClient:
-    def __init__(self, proc: subprocess.Popen[bytes], transcript_path: Path) -> None:
-        self.proc = proc
-        self.transcript_path = transcript_path
-        self._messages: "queue.Queue[dict[str, object]]" = queue.Queue()
-        self._reader_errors: "queue.Queue[str]" = queue.Queue()
-        self._stderr_chunks: list[str] = []
-        self._transcript: list[dict[str, object]] = []
-        self._stdout_thread = threading.Thread(target=self._read_stdout, daemon=True)
-        self._stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
-        self._stdout_thread.start()
-        self._stderr_thread.start()
-
-    def _read_stdout(self) -> None:
-        assert self.proc.stdout is not None
-        stream = self.proc.stdout
-        while True:
-            try:
-                header_lines: list[str] = []
-                while True:
-                    line = stream.readline()
-                    if not line:
-                        return
-                    decoded = line.decode("utf-8", errors="replace")
-                    if decoded in ("\r\n", "\n", ""):
-                        break
-                    header_lines.append(decoded.strip())
-                if not header_lines:
-                    continue
-                content_length = None
-                for header in header_lines:
-                    if header.lower().startswith("content-length:"):
-                        content_length = int(header.split(":", 1)[1].strip())
-                        break
-                if content_length is None:
-                    self._reader_errors.put(f"missing Content-Length header: {header_lines}")
-                    return
-                body = stream.read(content_length)
-                payload = json.loads(body.decode("utf-8", errors="replace"))
-                self._transcript.append({"direction": "recv", "payload": payload})
-                self._messages.put(payload)
-            except Exception as exc:  # noqa: BLE001
-                self._reader_errors.put(str(exc))
-                return
-
-    def _read_stderr(self) -> None:
-        assert self.proc.stderr is not None
-        stream = self.proc.stderr
-        while True:
-            chunk = stream.readline()
-            if not chunk:
-                return
-            self._stderr_chunks.append(chunk.decode("utf-8", errors="replace"))
-
-    def request(self, request_id: int, method: str, params: dict[str, object], timeout: float) -> dict[str, object]:
-        payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
-        self._send_payload(payload)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self._raise_reader_error_if_any()
-            remaining = max(0.01, deadline - time.time())
-            try:
-                message = self._messages.get(timeout=remaining)
-            except queue.Empty:
-                continue
-            if message.get("id") == request_id:
-                return message
-        raise TimeoutError(f"timed out waiting for response to {method}")
-
-    def notify(self, method: str, params: dict[str, object] | None = None) -> None:
-        payload = {"jsonrpc": "2.0", "method": method}
-        if params is not None:
-            payload["params"] = params
-        self._send_payload(payload)
-
-    def _send_payload(self, payload: dict[str, object]) -> None:
-        assert self.proc.stdin is not None
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        frame = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
-        self.proc.stdin.write(frame)
-        self.proc.stdin.flush()
-        self._transcript.append({"direction": "send", "payload": payload})
-
-    def _raise_reader_error_if_any(self) -> None:
-        try:
-            error = self._reader_errors.get_nowait()
-        except queue.Empty:
-            return
-        raise RuntimeError(error)
-
-    def stderr_text(self) -> str:
-        return "".join(self._stderr_chunks)
-
-    def write_transcript(self) -> None:
-        write_json(self.transcript_path, {"transcript": self._transcript, "stderr": self.stderr_text()})
-
-
-def choose_tool_for_call(tools: list[dict[str, object]]) -> dict[str, object] | None:
-    for tool in tools:
-        schema = tool.get("inputSchema", {})
-        required = schema.get("required", []) if isinstance(schema, dict) else []
-        if not required:
-            return tool
-    return None
-
-
 def run_generic_mcp_surface(
     surface: dict[str, object],
     skill_path: Path,
@@ -644,7 +449,7 @@ def run_generic_mcp_surface(
     if harness_block:
         command = resolve_command_items(harness_block.get("command"))
         cwd = skill_path / str(harness_block.get("cwd", "."))
-        timeout_seconds = int(harness_block.get("timeoutSeconds", timeout_seconds))
+        timeout_seconds = _safe_timeout(harness_block.get("timeoutSeconds", timeout_seconds), default=timeout_seconds)
         protocol_versions = [str(item) for item in harness_block.get("protocolVersions", []) if str(item).strip()]
     if not command:
         command, runtime_issue = build_launch_command(target, skill_path)
@@ -686,7 +491,7 @@ def run_generic_mcp_surface(
                     {
                         "protocolVersion": version,
                         "capabilities": {},
-                        "clientInfo": {"name": "nexus-testing", "version": "0.9.35"},
+                        "clientInfo": {"name": "nexus-testing", "version": "0.9.36"},
                     },
                     timeout=5.0,
                 )
@@ -878,7 +683,10 @@ def main(argv: list[str] | None = None) -> int:
     execution_dir = output_dir / "TEST-EXECUTION"
     execution_dir.mkdir(parents=True, exist_ok=True)
     coverage_path = execution_dir / "SURFACE-COVERAGE.json"
-    coverage = load_json(coverage_path) if coverage_path.exists() else {"surfaces": []}
+    try:
+        coverage = load_json(coverage_path) if coverage_path.exists() else {"surfaces": []}
+    except (json.JSONDecodeError, ValueError):
+        coverage = {"surfaces": []}
 
     results: list[dict[str, object]] = []
     has_bash = find_bash_executable() is not None

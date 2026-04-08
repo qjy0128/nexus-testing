@@ -229,7 +229,6 @@ def run_shell(command: str, cwd: Path, timeout: int, env: dict[str, str]) -> sub
         env=env,
     )
     if proc.returncode != 0:
-        import sys
         print(f"run_shell failed: {command}", file=sys.stderr)
         print(f"STDOUT: {proc.stdout}", file=sys.stderr)
         print(f"STDERR: {proc.stderr}", file=sys.stderr)

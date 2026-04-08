@@ -9,9 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
+from sandbox_skill_invoke.core import read_text
 
 
 def parse_frontmatter(text: str) -> dict[str, object]:

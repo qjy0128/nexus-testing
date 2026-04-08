@@ -41,6 +41,13 @@ def _normalize_adapter_block(block: object) -> dict[str, object]:
     return {}
 
 
+def _command_to_str(cmd: object) -> str:
+    """Convert a command value (str or list) to a shell string."""
+    if isinstance(cmd, list):
+        return shlex.join(str(c) for c in cmd)
+    return str(cmd).strip()
+
+
 def detect_adapter(skill_root: Path) -> dict[str, object]:
     testing_json = skill_root / "testing.json"
     if testing_json.exists():
@@ -64,14 +71,14 @@ def _detect_from_testing_json(testing_json: Path) -> dict[str, object]:
     elif supports is False:
         supports_text = "false"
 
-    invoke_command = str(invoke.get("command", "")).strip()
+    invoke_command = _command_to_str(invoke.get("command", ""))
     if not invoke_command:
         return {"available": False, "error": "testing.json is missing invoke.command"}
 
     return {
         "available": True,
         "source": "testing.json",
-        "install_command": str(install.get("command", "")).strip(),
+        "install_command": _command_to_str(install.get("command", "")),
         "install_cwd": str(install.get("cwd", ".")).strip() or ".",
         "invoke_command": invoke_command,
         "invoke_cwd": str(invoke.get("cwd", ".")).strip() or ".",

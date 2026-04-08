@@ -9,15 +9,13 @@ import re
 import sys
 from pathlib import Path
 
+from sandbox_skill_invoke.core import read_text
+
 
 SURFACE_BLOCK_RE = re.compile(
     r"^###\s+(?P<title>[^\n]+)\n(?P<body>(?:- .*(?:\n|$))+)",
     re.MULTILINE,
 )
-
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
 
 
 def load_json(path: Path) -> dict[str, object]:
