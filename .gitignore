@@ -1,5 +1,6 @@
 # Generated test artifacts
 /memory/nexus-reports/
+/files/nexus-reports/
 
 # Local sandbox state
 /.nexus-sandbox/

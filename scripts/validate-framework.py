@@ -17,14 +17,20 @@ from pathlib import Path
 from shutil import which
 from urllib.parse import unquote
 
-from sandbox_skill_invoke.core import read_text as _core_read_text
+from sandbox_skill_invoke.core import (
+    find_bash_executable as _core_find_bash_executable,
+    read_text as _core_read_text,
+)
 from validate_contracts import (
     validate_definition_consistency,
+    validate_flow_a_case_depth_contract,
     validate_flow_a_fact_contract,
+    validate_flow_a_runtime_harness_contract,
     validate_flow_a_surface_execution_contract,
     validate_flow_a_surface_plan_contract,
     validate_flow_role_consistency as _validate_flow_role_consistency,
     validate_message_send_contract,
+    validate_output_language_contract,
     validate_required_references,
     validate_role_definitions_ref,
     validate_role_references as _validate_role_references,
@@ -89,8 +95,10 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/generate_flow_a_test_design.py",
     "scripts/generate_flow_a_skill_execution.py",
     "scripts/flow_a_command_builders.py",
+    "scripts/flow_a_localization.py",
     "scripts/flow_a_mcp_client.py",
     "scripts/run_flow_a_skill_execution.py",
+    "scripts/prepare_report_delivery.py",
     "scripts/validate_contracts.py",
     "scripts/skill-structure-validator.py",
     "scripts/skill_structure_validator_core.py",
@@ -113,6 +121,7 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/test_product_fingerprint.py",
     "scripts/test_sandbox_exec_container.py",
     "scripts/test_flow_a_integration.py",
+    "scripts/test_prepare_report_delivery.py",
     "scripts/security-scanner.py",
     "scripts/test_sandbox_lifecycle.py",
     "scripts/validate_flow_a_skill_results.py",
@@ -135,6 +144,7 @@ RUNTIME_SMOKE_TEST_FILES = (
     "scripts/test_sandbox_exec_container.py",
     "scripts/test_flow_a_integration.py",
     "scripts/test_sandbox_lifecycle.py",
+    "scripts/test_prepare_report_delivery.py",
     "scripts/test_helpers.py",
 )
 
@@ -142,6 +152,7 @@ FRONTMATTER_FILES = ("SKILL.md",)
 
 GITIGNORE_EXPECTED_ENTRIES = (
     "/memory/nexus-reports/",
+    "/files/nexus-reports/",
     "/.nexus-sandbox/",
     "/.tmp-test-runs/",
     "/.tmp-validation/",
@@ -575,40 +586,55 @@ def validate_security_scanner_fixtures() -> list[str]:
 
 
 def find_runnable_bash() -> tuple[str | None, str | None]:
-    candidates: list[str] = []
-    primary = which("bash")
-    if primary:
-        candidates.append(primary)
+    selected = _core_find_bash_executable()
+    if selected:
+        return selected, None
+    detected = which("bash")
+    if detected:
+        return None, "bash is visible on PATH but no supported Git Bash runtime was found; skipped shell syntax validation"
+    return None, "bash not found; skipped shell syntax validation"
 
-    if sys.platform.startswith("win"):
-        candidates.extend(
-            [
-                r"C:\Program Files\Git\bin\bash.exe",
-                r"C:\Program Files\Git\usr\bin\bash.exe",
-            ]
-        )
 
+def bash_visible_path(path: Path) -> str:
+    if not sys.platform.startswith("win"):
+        return str(path)
+    drive = path.drive.rstrip(":")
+    if drive:
+        suffix = path.as_posix()[2:].lstrip("/")
+        return f"/{drive.lower()}/{suffix}"
+    return path.as_posix()
+
+
+def bash_probe_paths(path: Path) -> list[str]:
+    if not sys.platform.startswith("win"):
+        return [str(path)]
+    drive = path.drive.rstrip(":").lower()
+    suffix = path.as_posix()[2:].lstrip("/")
+    candidates = [str(path), bash_visible_path(path)]
+    if drive:
+        candidates.append(f"/mnt/{drive}/{suffix}")
+    deduped: list[str] = []
     seen: set[str] = set()
     for candidate in candidates:
-        if not candidate or candidate in seen:
+        if candidate in seen:
             continue
         seen.add(candidate)
-        path = Path(candidate)
-        if not path.exists():
-            continue
+        deduped.append(candidate)
+    return deduped
+
+
+def resolve_bash_script_path(bash: str, path: Path) -> str | None:
+    for candidate in bash_probe_paths(path):
         probe = subprocess.run(
-            [str(path), "--version"],
+            [bash, "-c", 'test -f "$1"', "bash", candidate],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
         )
         if probe.returncode == 0:
-            return str(path), None
-
-    if candidates:
-        return None, "bash is not runnable; skipped shell syntax validation"
-    return None, "bash not found; skipped shell syntax validation"
+            return candidate
+    return None
 
 
 def validate_shell_script_syntax() -> tuple[list[str], list[str]]:
@@ -623,8 +649,14 @@ def validate_shell_script_syntax() -> tuple[list[str], list[str]]:
         path = ROOT / relative_path
         if not path.exists():
             continue
+        bash_path = resolve_bash_script_path(bash, path)
+        if bash_path is None:
+            warnings.append(
+                "bash is present but cannot access workspace shell scripts; skipped shell syntax validation"
+            )
+            return issues, warnings
         result = subprocess.run(
-            [bash, "-n", str(path)],
+            [bash, "-n", bash_path],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -667,7 +699,10 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("flow a fact contract", validate_flow_a_fact_contract()),
         ("flow a surface plan contract", validate_flow_a_surface_plan_contract()),
         ("flow a surface execution contract", validate_flow_a_surface_execution_contract()),
+        ("flow a case-depth contract", validate_flow_a_case_depth_contract()),
+        ("flow a runtime-harness contract", validate_flow_a_runtime_harness_contract()),
         ("message send contract", validate_message_send_contract()),
+        ("output language contract", validate_output_language_contract()),
         ("role version tags", validate_role_version_tags()),
         ("role references", _validate_role_references(REQUIRED_FLOW_FILES)),
         ("role definitions ref", validate_role_definitions_ref()),

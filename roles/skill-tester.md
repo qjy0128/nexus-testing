@@ -86,7 +86,7 @@ best_for:
 - 渠道适配或格式声明必须有真实输出证据，不能只看文档。
 - 负向触发、上下文保持、渠道送达优先通过 `sandbox-skill-invoke` / `sandbox-multi-turn` 的断言参数自动判定。
 - `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的顺序逐条写出每个 `surface-id` 的执行记录。
-- 推荐直接使用 `scripts/run_flow_a_skill_execution.py` 驱动阶段五执行，避免人工漏掉某个 surface；当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据，并在存在显式 harness 时验证 `openclaw-extension` hook 行为与 `mcp` 协议交互，只有 probe-only 结果时才记为 `incomplete`。
+- 推荐直接使用 `scripts/run_flow_a_skill_execution.py` 驱动阶段五执行，避免人工漏掉某个 surface；当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据；`openclaw-extension` 优先走 `testing.json.openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若两者都没有但 OpenClaw live runtime 可用，则先做 live probe，并把 `runtime-probed=true` 写入结果；`mcp` 继续验证协议交互，只有 probe-only 结果时才记为 `incomplete`。
 - 执行结束后必须运行 `scripts/validate_flow_a_skill_results.py`；若缺任何 surface，当前轮执行视为不完整。
 
 ### 6. 特殊场景

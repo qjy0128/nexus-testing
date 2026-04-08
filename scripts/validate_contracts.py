@@ -163,11 +163,19 @@ def validate_message_send_contract() -> list[str]:
         issues.append(
             "DEFINITIONS.md is missing the sent-before-complete rule"
         )
+    if "files/" not in definitions_text or "prepare_report_delivery.py" not in definitions_text:
+        issues.append(
+            "DEFINITIONS.md is missing the files/ relay rule for artifact delivery"
+        )
 
     flow_skill_text = read_text(ROOT / "flows" / "skill-testing.md")
     if "主 agent 动作" not in flow_skill_text:
         issues.append(
             "flows/skill-testing.md is missing explicit main-agent send actions"
+        )
+    if "files/" not in flow_skill_text:
+        issues.append(
+            "flows/skill-testing.md is missing the files/ relay delivery rule"
         )
 
     approval_text = read_text(ROOT / "reference-approval-mechanism.md")
@@ -175,10 +183,18 @@ def validate_message_send_contract() -> list[str]:
         issues.append(
             "reference-approval-mechanism.md is missing the same-turn send-and-approve rule"
         )
+    if "prepare_report_delivery.py" not in approval_text:
+        issues.append(
+            "reference-approval-mechanism.md is missing the relay-send fallback guidance"
+        )
 
     for relative_path in example_files:
         text = read_text(ROOT / relative_path)
-        matches = list(MESSAGE_SEND_PATTERN.finditer(text))
+        matches = [
+            match
+            for match in MESSAGE_SEND_PATTERN.finditer(text)
+            if "filePath:" in match.group("body")
+        ]
         if not matches:
             issues.append(
                 f"{relative_path} is missing a concrete message(action: \"send\", ...) example"
@@ -198,12 +214,80 @@ def validate_message_send_contract() -> list[str]:
                 )
             if "buttons: []" in body:
                 has_empty_buttons = True
+            if 'filePath: "memory/' in body:
+                issues.append(
+                    f"{relative_path} contains a file-send example that incorrectly uses memory/ instead of files/"
+                )
+            if 'filePath: "files/' not in body:
+                issues.append(
+                    f"{relative_path} is missing a file-send example that uses a files/ relay path"
+                )
 
         if not has_empty_buttons:
             issues.append(
                 f"{relative_path} is missing a file-send example with buttons: []"
             )
 
+    return issues
+
+
+def validate_output_language_contract() -> list[str]:
+    issues: list[str] = []
+    required_paths = (
+        "SKILL.md",
+        "DEFINITIONS.md",
+        "reference-report-format.md",
+        "roles/requirement-analyst.md",
+        "roles/test-designer.md",
+        "roles/test-case-evaluator.md",
+        "roles/report-integrator.md",
+    )
+    required_markers = (
+        "发起测试请求的语言",
+        "--language",
+    )
+    for relative_path in required_paths:
+        text = read_text(ROOT / relative_path)
+        if not any(marker in text for marker in required_markers):
+            issues.append(
+                f"{relative_path} is missing the request-language output contract"
+            )
+    return issues
+
+
+def validate_flow_a_case_depth_contract() -> list[str]:
+    issues: list[str] = []
+    checks = {
+        "flows/skill-testing.md": ("数据驱动", "规则", "决策路径", "检查项"),
+        "roles/test-designer.md": ("数据驱动", "规则", "决策路径", "检查项"),
+        "roles/test-case-evaluator.md": ("数据驱动", "规则", "决策路径", "检查项"),
+        "reference-flow-skill.md": ("规则", "决策路径", "检查项"),
+    }
+    for relative_path, markers in checks.items():
+        text = read_text(ROOT / relative_path)
+        if not all(marker in text for marker in markers):
+            issues.append(
+                f"{relative_path} is missing the Flow A data-driven case-depth contract"
+            )
+    return issues
+
+
+def validate_flow_a_runtime_harness_contract() -> list[str]:
+    issues: list[str] = []
+    checks = {
+        "SKILL.md": ("openclawExtensionRuntimeHarness",),
+        "README.md": ("openclawExtensionRuntimeHarness",),
+        "flows/skill-testing.md": ("openclawExtensionRuntimeHarness", "伴随规则文件"),
+        "reference-flow-skill.md": ("openclawExtensionRuntimeHarness", "伴随规则文件"),
+        "roles/requirement-analyst.md": ("伴随规则文件", "源码"),
+        "roles/skill-tester.md": ("openclawExtensionRuntimeHarness", "runtime-probed=true"),
+    }
+    for relative_path, markers in checks.items():
+        text = read_text(ROOT / relative_path)
+        if not all(marker in text for marker in markers):
+            issues.append(
+                f"{relative_path} is missing the Flow A runtime-harness / companion-inventory contract"
+            )
     return issues
 
 

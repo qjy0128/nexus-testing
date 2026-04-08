@@ -103,9 +103,9 @@ Flow A 额外要求：
 
 - 识别 Node / npm、Python、外部插件、系统命令依赖
 - 使用 `scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir>` 优先生成阶段一三件套；其内部先调用 `scripts/extract_product_fingerprint.py` 抽取事实指纹，再写规格
-- 使用 `scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir>` 生成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
+- 使用 `scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language>` 生成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
 - 使用 `scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir>` 生成阶段五 `SKILL-SURFACE-WORKLIST.md` 与 `SURFACE-COVERAGE.json`
-- 使用 `scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir>` 让 `skill-tester` 按 surface 顺序执行；当前 `skill/bin` 可给真实执行结论，`package/plugin-manifest` 为结构化校验，`openclaw-extension` 可通过 `testing.json` 显式 hook harness 验证行为，`mcp` 可通过 stdio JSON-RPC harness 验证协议交互，只有 probe 证据时才记为 `incomplete`
+- 使用 `scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --language <request-language>` 让 `skill-tester` 按 surface 顺序执行；当前 `skill/bin` 可给真实执行结论，`package/plugin-manifest` 为结构化校验，`openclaw-extension` 优先通过 `testing.json` 的 `openclawExtensionRuntimeHarness` 验证真实 OpenClaw runtime / subagent 行为，其次才是 `openclawExtensionHarness`；若无 harness 但 live runtime 可用，runner 也必须先做 live probe，并把 `runtime-probed=true` 记入结果；`mcp` 可通过 stdio JSON-RPC harness 验证协议交互，只有 probe 证据时才记为 `incomplete`
 - 阶段五完成后，用 `scripts/validate_flow_a_skill_results.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-results <TEST-EXECUTION/skill-results.md>` 校验 surface 覆盖是否完整
 - 判断是否需要 `sandbox-create.sh`、`sandbox-exec.sh` 等沙箱脚本
 - 阶段一先生成 `PRODUCT-FINGERPRINT.json`，再生成 `SPEC.md`
@@ -141,6 +141,7 @@ Flow A 额外要求：
 
 - 每阶段独立发送交付物和简要摘要
 - 交付物生成后立即主动发送，不等待用户追问
+- 所有交付物的描述性内容必须使用用户**发起测试请求的语言**；代码、命令、路径、协议名保持原样
 - 需要批准时明确要求“批准 / 拒绝”
 - 缺输入或 blocker 时，用最短清单向用户提问
 - 不用模糊措辞代替阶段状态
@@ -150,11 +151,14 @@ Telegram / OpenClaw 文件发送硬约束：
 - 发送交付物时必须显式提供 `caption`
 - 无交互按钮时也必须显式提供 `buttons: []`，不得省略
 - `caption` 至少包含文件摘要和下一步
+- 报告文件先写入 `memory/nexus-reports/...`，再通过 `python scripts/prepare_report_delivery.py --report-file <memory-report-file>` 镜像到工作区 `files/...`
+- `message(action: "send", ...)` 的 `filePath` 必须使用相对工作区的 `files/...` 路径；`memory/...` 只用于归档，不直接用于发送
+- 首次发送失败时，必须重试 `files/...` 中转路径；若平台仍拒绝，需在同轮消息里明确告知报告所在的工作区路径
 
 文件发送示例（Telegram / OpenClaw）：
 
 ```text
-message(action: "send", filePath: "memory/nexus-reports/{date}-{test-type}-{flow}/SPEC.md", caption: "阶段一需求规格已生成，已整理核心需求与验收点。下一步：进入阶段二质量评估。", buttons: [])
+message(action: "send", filePath: "files/nexus-reports/{date}-{test-type}-{flow}/SPEC.md", caption: "阶段一需求规格已生成，已整理核心需求与验收点。下一步：进入阶段二质量评估。", buttons: [])
 ```
 
 推荐输出骨架：

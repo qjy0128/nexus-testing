@@ -45,6 +45,8 @@ best_for:
 
 `SPEC.md` 写入后，应立即把结果交回主 agent 发送给用户；不要把交付物留在工作目录里等待用户索取。
 
+`SPEC.md` 与阶段一的所有**描述性内容**必须使用用户发起测试请求的语言；代码、路径、命令、协议名保持原样。
+
 在写 `SPEC.md` 前，必须先生成 `PRODUCT-FINGERPRINT.json`，把产品“是什么”收敛成结构化事实，而不是直接写自然语言规格。
 
 ## 输入
@@ -90,6 +92,8 @@ best_for:
 - `evidence`：每个关键字段的来源文件
 
 任何关键字段没有来源证据时，只能写 `unknown`，不能猜。
+- 对复杂安全 Skill，不能只从 `SKILL.md` 摘 capability 名称；必须继续读取伴随规则文件、策略文件、检查清单和相关源码，把规则、决策路径、检查项 inventory 合并进 `PRODUCT-FINGERPRINT.json`。
+- 若 `SKILL.md` 明确引用 `scan-rules.md`、`action-policies.md`、`patrol-checks.md` 这类伴随规则文件，默认视为阶段一必读输入；相关源码中的规则/策略常量也要作为补充证据来源。
 
 ### 3. Flow A 额外要求
 
@@ -101,6 +105,7 @@ best_for:
 - Skill 类型分类：主类型、次类型、分类依据
 - 产品表面：这是 OpenClaw Skill、npm package、plugin、CLI 还是混合体
 - 真实入口：来自 `SKILL.md`、`package.json`、`openclaw.plugin.json`、`bin`、`scripts/*` 的可执行表面
+- 伴随规则文件与源码：来自 `scan-rules.md`、`action-policies.md`、`patrol-checks.md`、`src/*`、`scripts/*` 中的规则/决策/检查项 inventory 线索
 
 能力地图不要求穷举所有实现细节，但必须覆盖会影响测试设计的关键能力。
 

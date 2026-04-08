@@ -38,6 +38,8 @@ jobs:
           python -m py_compile scripts/validate-framework.py
           python -m py_compile scripts/skill-structure-validator.py
           python -m py_compile scripts/skill_structure_validator_core.py
+          python -m py_compile scripts/flow_a_localization.py
+          python -m py_compile scripts/prepare_report_delivery.py
           python -m py_compile scripts/sandbox_skill_invoke.py
           python -m py_compile scripts/sandbox_multi_turn.py
           python -m py_compile scripts/sandbox_skill_invoke/__init__.py
@@ -54,6 +56,7 @@ jobs:
           python -m py_compile scripts/security-scanner.py
           python -m py_compile scripts/test_sandbox_lifecycle.py
           python -m py_compile scripts/test_flow_a_integration.py
+          python -m py_compile scripts/test_prepare_report_delivery.py
           python -m py_compile scripts/test_helpers.py
 
       - name: Run Flow A strict smoke tests

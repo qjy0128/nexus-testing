@@ -41,6 +41,11 @@
 
 所有报告输出到：`memory/nexus-reports/{date}-{test-type}-{flow}/`
 
+发送约束补充：
+- `memory/nexus-reports/...` 是归档路径，不直接作为平台发文件路径
+- 对用户发送交付物前，先用 `python scripts/prepare_report_delivery.py --report-file <memory-report-file>` 镜像到工作区 `files/nexus-reports/...`
+- 平台消息中的 `filePath` 必须使用相对工作区的 `files/...` 路径
+
 ```
 {date}-{test-type}-{flow}/
 ├── PRODUCT-FINGERPRINT.json         # 阶段一事实指纹
@@ -341,6 +346,8 @@ PRODUCT-QUALITY-REVIEW.md
 | 禁止合并输出 | 每个阶段的交付物必须独立发送，禁止合并 |
 | 批准前置 | 需批准的阶段（二、四）获批后才能继续 |
 | 状态前置检查 | 进入任何阶段前，验证上一阶段交付物已存在 |
+| 发送路径 | 交付物发送必须使用 `files/...` 中转路径，不得直接发送 `memory/...` |
+| 语言一致性 | 交付物描述性内容必须使用用户发起测试请求的语言 |
 
 **执行顺序**：
 ```
@@ -351,6 +358,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 - 阶段文件已写入但尚未发送给用户，不算阶段完成
 - 用户追问“把文件发我”时，视为上一轮漏发；应立即补发交付物，而不是重新解释阶段状态
+- 若平台拒绝 `memory/...` 路径，必须改走 `prepare_report_delivery.py` 生成的 `files/...` 路径；仍失败时要在同轮消息里明确告知报告工作区路径
 
 ### 阶段转换审计日志
 
@@ -417,6 +425,7 @@ PRODUCT-QUALITY-REVIEW.md
 - `auto --strict-real` 在存在独立 verifier 时应优先选择 `shim-live`；否则再尝试 `live`，最后才是 `shim-live` / blocker。
 - `live --strict-real` 必须拿到 OpenClaw CLI 原生回传的 runtime telemetry protocol（当前版本：`nexus-live-telemetry/v1`）；没有协议或协议字段不完整时不得返回成功。
 - `shim-live --strict-real` 必须提供独立的 `--verification-manifest`；该文件必须位于 Skill 目录外，且在可识别仓库根时不能与 Skill 同仓库。没有 verifier 时不得返回成功。
+- `openclaw-extension` 若要证明真实 OpenClaw runtime / subagent 行为，优先通过 `testing.json.openclawExtensionRuntimeHarness` 产出 `behaviorVerified`、`runtimeVerified`、`runtimeTransport`、`registeredHooks`；没有 runtime harness 但 live runtime 可用时，至少先留下 `runtime-probed=true` 的 live probe 证据，不能直接降级成“无 runtime”。
 - 负向触发用例必须拿到显式 `triggerMatched=false`；`unknown` 不算通过。
 - 上下文保持用例必须拿到显式 `contextReferences`；关键词猜测不算通过。
 - 渠道用例必须拿到显式 `deliveryStatus` 和送达证据；本地渲染文件不算送达证明。
@@ -557,6 +566,19 @@ test-designer 分析被测产品功能
 | TC-{NN} | 常规测试用例编号（可引用 FX） | TC-15 使用 FX-03 |
 
 **追溯要求**：TEST-DESIGN.md 中每个 FX 必须关联至少一个 TC/META-TC；每个 META-TC 必须引用一个 FX。
+
+### 数据驱动用例扩展（复杂 Skill / 安全工具强制）
+
+当能力清单中存在**规则、决策路径、检查项**等可枚举 inventory 时，阶段三必须按 inventory 展开，而不是每个 capability 只写 1 条泛化用例：
+
+- 规则清单：每条规则至少 2 个用例
+  - 能检出
+  - 不误报
+- 决策路径：每条路径至少 1 个独立用例
+  - 如 `DENY` / `CONFIRM` / `ALLOW`
+- 检查项：每项检查至少 1 个真实执行用例
+  - 如 patrol / monitor / health / runtime checks
+- 若 capability 看起来是规则/决策/检查项驱动，但事实指纹未抽取到明细 inventory，阶段四必须判定测试设计不通过
 
 ---
 

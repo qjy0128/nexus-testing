@@ -33,6 +33,7 @@ Flow A 在生成 `SPEC.md` 前，必须先写 `PRODUCT-FINGERPRINT.json`。最�
 - 关键字段必须能回溯到仓库事实源
 - 没有证据时写 `unknown`
 - 不得在 `SPEC.md` 引入 `PRODUCT-FINGERPRINT.json` 中不存在的能力面
+- 若能力面下存在规则、决策路径或检查项清单，必须一并写入事实指纹，供阶段三数据驱动展开
 
 ### 1.1 触发条件
 
@@ -66,6 +67,18 @@ Flow A 在生成 `SPEC.md` 前，必须先写 `PRODUCT-FINGERPRINT.json`。最�
 | TC-CHAN-02 | 飞书 | `shim-live` | 格式兼容且有送达证据 | P1 |
 | TC-CHAN-03 | QQ | `shim-live` | 纯文本降级且有送达证据 | P1 |
 | TC-CHAN-04 | 微信 | `shim-live` | 先文字后文件且有送达证据 | P1 |
+
+### 1.5 数据驱动展开模板
+
+当 capability 带有可枚举 inventory 时，必须按下列方式展开：
+
+| Inventory 类型 | 最低展开规则 |
+|---------------|-------------|
+| 规则（rules / policies / detectors） | 每条至少 2 个用例：能检出 + 不误报 |
+| 决策路径（decision paths） | 每条路径至少 1 个独立用例 |
+| 检查项（checks / patrol / monitor） | 每项至少 1 个真实执行用例 |
+
+若 capability 看起来是规则/决策/检查项驱动，但阶段一事实指纹没有抽取出 inventory，阶段四必须阻塞并要求补全。
 
 ---
 
@@ -144,16 +157,31 @@ Flow A 若要在没有 OpenClaw CLI 的情况下完成真实执行，Skill 必�
 }
 ```
 
+若需要证明 `openclaw-extension` 真实使用了 OpenClaw runtime / subagent，推荐在 `testing.json` 额外提供：
+```json
+{
+  "openclawExtensionRuntimeHarness": {
+    "command": ["python", "scripts/runtime-harness.py"],
+    "cwd": ".",
+    "timeoutSeconds": 30
+  }
+}
+```
+该 harness 的结果 JSON 至少应包含：`behaviorVerified`、`runtimeVerified`、`runtimeTransport`、`registeredHooks`。
+
 ---
 
 ## 四、报告要求
+- 阶段一抽取 `PRODUCT-FINGERPRINT.json` 时，复杂安全 Skill 不能只读 `SKILL.md`；必须继续扫描伴随规则文件、策略文件、检查清单和相关源码，把 inventory 合并进 capability facts
 
 - `TEST-DESIGN.md` 必须给每条关键用例标注最低执行级别。
 - `TEST-DESIGN.md` 必须标注每个用例来自哪个真实入口表面。
+- `TEST-DESIGN.md` 的描述性内容必须使用用户发起测试请求的语言；生成脚本应显式传 `--language <request-language>`
 - `SURFACE-EXECUTION-PLAN.json` 必须覆盖所有真实入口表面，并把每个 surface 分配给阶段五执行。
 - `skill-results.md` 必须单独列出执行级别矩阵。
 - 阶段五开始前必须生成 `SKILL-SURFACE-WORKLIST.md`；执行结束后必须用 `validate_flow_a_skill_results.py` 校验所有 surface 是否都出现在 `skill-results.md`。
-- 若使用通用执行链，优先通过 `run_flow_a_skill_execution.py` 驱动 `skill-tester`，而不是手工挑 surface；当前通用执行链应真实覆盖 `skill/bin`，对 `package/plugin-manifest` 产出结构化校验证据，并在存在显式 harness 时验证 `openclaw-extension` hook 行为与 `mcp` 协议交互，只有 probe-only 结果时才保守记为 `incomplete`。
+- 若使用通用执行链，优先通过 `run_flow_a_skill_execution.py` 驱动 `skill-tester`，而不是手工挑 surface；当前通用执行链应真实覆盖 `skill/bin`，对 `package/plugin-manifest` 产出结构化校验证据；`openclaw-extension` 优先走 `openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若都没有但 live runtime 可用，则先留下 `runtime-probed=true` 的 live probe 证据；`mcp` 继续验证协议交互。
+- 若当前测试上下文本身可用 OpenClaw runtime / subagent，`openclaw-extension` 相关 surface 不得仅因“缺少通用 runner”就记为 runtime unavailable；必须先尝试真实运行时、`openclawExtensionRuntimeHarness`，或至少做 live probe。
 - `FINAL-TEST-REPORT.md` 必须区分：
   - 真实执行通过
   - 仅 trace 覆盖

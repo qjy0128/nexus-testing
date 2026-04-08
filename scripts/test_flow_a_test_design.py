@@ -10,7 +10,11 @@ import sys
 from pathlib import Path
 
 from test_helpers import assert_contains, assert_equal, make_temp_root, read_text
-from test_product_fingerprint import build_mixed_fixture
+from test_product_fingerprint import (
+    build_companion_inventory_fixture,
+    build_mixed_fixture,
+    build_rule_dense_fixture,
+)
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 STAGE1 = PROJECT_DIR / "scripts" / "generate_flow_a_stage1.py"
@@ -31,6 +35,8 @@ def test_surface_aware_test_design() -> None:
                 str(target),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             cwd=str(PROJECT_DIR),
             capture_output=True,
@@ -52,6 +58,8 @@ def test_surface_aware_test_design() -> None:
                 str(reports_dir / "SPEC-CONSISTENCY-REVIEW.md"),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             cwd=str(PROJECT_DIR),
             capture_output=True,
@@ -89,6 +97,118 @@ def test_surface_aware_test_design() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_data_driven_rule_expansion_and_language_switch() -> None:
+    temp_root = make_temp_root("flowa-design-rule-dense-")
+    try:
+        target = build_rule_dense_fixture(temp_root)
+        reports_dir = temp_root / "reports"
+
+        stage1 = subprocess.run(
+            [
+                sys.executable,
+                str(STAGE1),
+                "--target",
+                str(target),
+                "--output-dir",
+                str(reports_dir),
+            ],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert_equal(stage1.returncode, 0, "stage1 dense generator exit code")
+
+        stage3 = subprocess.run(
+            [
+                sys.executable,
+                str(STAGE3),
+                "--fingerprint",
+                str(reports_dir / "PRODUCT-FINGERPRINT.json"),
+                "--spec",
+                str(reports_dir / "SPEC.md"),
+                "--consistency-review",
+                str(reports_dir / "SPEC-CONSISTENCY-REVIEW.md"),
+                "--output-dir",
+                str(reports_dir),
+            ],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert_equal(stage3.returncode, 0, "stage3 dense generator exit code")
+
+        test_design = read_text(reports_dir / "TEST-DESIGN.md")
+        plan = json.loads(read_text(reports_dir / "SURFACE-EXECUTION-PLAN.json"))
+        assert_contains(test_design, "## 测试策略", "default language switched to Chinese")
+        assert_contains(test_design, "规则 `prompt-injection` 检出", "rule-positive expansion")
+        assert_contains(test_design, "规则 `prompt-injection` 不误报", "rule false-positive expansion")
+        assert_contains(test_design, "决策路径 `DENY`", "decision-path expansion")
+        assert_contains(test_design, "检查项 `runtime-hook-installed`", "check expansion")
+        total_case_count = int(plan.get("totalCaseCount", 0))
+        assert total_case_count >= 16, f"dense fixture should expand to >=16 cases, got {total_case_count}"
+        print("  [PASS] test_data_driven_rule_expansion_and_language_switch")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_companion_inventory_expansion() -> None:
+    temp_root = make_temp_root("flowa-design-companion-")
+    try:
+        target = build_companion_inventory_fixture(temp_root)
+        reports_dir = temp_root / "reports"
+
+        for command in (
+            [
+                sys.executable,
+                str(STAGE1),
+                "--target",
+                str(target),
+                "--output-dir",
+                str(reports_dir),
+                "--language",
+                "en",
+            ],
+            [
+                sys.executable,
+                str(STAGE3),
+                "--fingerprint",
+                str(reports_dir / "PRODUCT-FINGERPRINT.json"),
+                "--spec",
+                str(reports_dir / "SPEC.md"),
+                "--consistency-review",
+                str(reports_dir / "SPEC-CONSISTENCY-REVIEW.md"),
+                "--output-dir",
+                str(reports_dir),
+                "--language",
+                "en",
+            ],
+        ):
+            proc = subprocess.run(
+                command,
+                cwd=str(PROJECT_DIR),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            assert_equal(proc.returncode, 0, f"companion design exit code: {' '.join(command[1:3])}")
+
+        test_design = read_text(reports_dir / "TEST-DESIGN.md")
+        plan = json.loads(read_text(reports_dir / "SURFACE-EXECUTION-PLAN.json"))
+        assert_contains(test_design, "rule `RULE_01` detection", "companion scan rule expansion")
+        assert_contains(test_design, "decision path `Invalid URL -> DENY`", "companion decision expansion")
+        assert_contains(test_design, "check `Patrol Check 1`", "companion patrol check expansion")
+        total_case_count = int(plan.get("totalCaseCount", 0))
+        assert total_case_count >= 60, f"companion fixture should expand to >=60 cases, got {total_case_count}"
+        print("  [PASS] test_companion_inventory_expansion")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -104,6 +224,18 @@ def main() -> int:
         passed += 1
     except AssertionError as exc:
         print(f"  [FAIL] test_surface_aware_test_design: {exc}")
+        failed += 1
+    try:
+        test_data_driven_rule_expansion_and_language_switch()
+        passed += 1
+    except AssertionError as exc:
+        print(f"  [FAIL] test_data_driven_rule_expansion_and_language_switch: {exc}")
+        failed += 1
+    try:
+        test_companion_inventory_expansion()
+        passed += 1
+    except AssertionError as exc:
+        print(f"  [FAIL] test_companion_inventory_expansion: {exc}")
         failed += 1
     print("=" * 40)
     print(f"{passed} passed, {failed} failed")

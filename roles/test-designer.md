@@ -31,6 +31,8 @@ best_for:
 
 `TEST-DESIGN.md` 和 `SURFACE-EXECUTION-PLAN.json` 写入后，应立即把结果交回主 agent 发送给用户；不要把交付物留在工作目录里等待用户索取。
 
+测试设计文档中的所有**描述性内容**必须使用用户发起测试请求的语言；若调用生成脚本，必须显式传 `--language <request-language>`。
+
 所有用例必须从 `PRODUCT-FINGERPRINT.json` 的真实入口和能力表面反推；未在事实指纹中出现的接口、子命令、HTTP 路由、运行模型不得写入测试设计。
 
 ## 设计原则：边界优先（Edge-Case-First）
@@ -77,6 +79,15 @@ TEST-DESIGN.md 中必须包含**逻辑分支覆盖矩阵**。
 ## 能力驱动测试设计（Flow A 强制）
 
 > 从 SPEC.md 的能力地图出发，对每个 CAP-ID 按 `DEFINITIONS.md` 第十七节的维度矩阵生成用例。
+
+### 数据驱动展开（复杂 Skill / 安全工具强制）
+
+若 capability 下存在规则、决策路径、检查项等可枚举 inventory，必须按 inventory 展开：
+- 规则：每条至少 2 个用例（能检出 + 不误报）
+- 决策路径：每条路径至少 1 个独立用例
+- 检查项：每项至少 1 个真实执行用例
+
+禁止把 24 条规则、8 项检查或多条决策路径压缩成 1 条泛化 capability 用例。
 
 ### 能力→测试映射
 

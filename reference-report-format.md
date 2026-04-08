@@ -2,6 +2,10 @@
 
 > 所有测试报告、缺陷报告、评审报告的输出格式统一遵循本文件。统一占位符，避免输出内容格式混乱。
 
+语言约束：
+- 所有**描述性内容**必须使用用户发起测试请求的语言
+- 代码、命令、路径、协议名、状态枚举保持原样
+
 ---
 
 ## 一、占位符规范
@@ -236,13 +240,15 @@
 Telegram / OpenClaw 文件发送调用示例：
 
 ```text
-message(action: "send", filePath: "memory/nexus-reports/{date}-{test-type}-{flow}/FINAL-TEST-REPORT.md", caption: "最终测试报告已生成，已汇总执行结果、缺陷分级和 Go/No-Go 结论。下一步：请查收并决定是否推进修复。", buttons: [])
+python scripts/prepare_report_delivery.py --report-file memory/nexus-reports/{date}-{test-type}-{flow}/FINAL-TEST-REPORT.md
+message(action: "send", filePath: "files/nexus-reports/{date}-{test-type}-{flow}/FINAL-TEST-REPORT.md", caption: "最终测试报告已生成，已汇总执行结果、缺陷分级和 Go/No-Go 结论。下一步：请查收并决定是否推进修复。", buttons: [])
 ```
 
 要求：
 
 - `caption` 必填，且要和本节格式一致
 - 无按钮场景也必须显式传 `buttons: []`
+- `filePath` 必须使用相对工作区的 `files/...` 中转路径，不能直接发送 `memory/...`
 
 ---
 

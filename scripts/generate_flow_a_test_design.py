@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 
+from flow_a_localization import add_output_language_argument
 from sandbox_skill_invoke.core import read_text, write_text
 
 
@@ -49,6 +50,23 @@ SURFACE_RULES: dict[str, dict[str, object]] = {
         "security_focus": ["tool-abuse", "parameter-injection", "protocol-mismatch"],
     },
 }
+
+
+def text(language: str, zh: str, en: str) -> str:
+    return zh if language == "zh-CN" else en
+
+
+def surface_label(kind: str, fallback: str, language: str) -> str:
+    labels = {
+        "skill": ("Skill 入口", "Skill Entry"),
+        "bin": ("CLI 入口", "CLI Entry"),
+        "openclaw-extension": ("OpenClaw 扩展", "Plugin Extension"),
+        "plugin-manifest": ("插件清单", "Plugin Manifest"),
+        "package": ("Package 表面", "Package Surface"),
+        "mcp": ("MCP 表面", "MCP Surface"),
+    }
+    zh, en = labels.get(kind, (fallback, fallback))
+    return text(language, zh, en)
 
 
 def load_json(path: Path) -> dict[str, object]:
@@ -174,7 +192,10 @@ def related_capabilities(
     return deduped
 
 
-def build_surface_inventory(fingerprint: dict[str, object]) -> list[dict[str, object]]:
+def build_surface_inventory(
+    fingerprint: dict[str, object],
+    language: str,
+) -> list[dict[str, object]]:
     inventory: list[dict[str, object]] = []
     capabilities = list(fingerprint.get("capabilitySurfaces", []))
     for index, surface in enumerate(dedupe_surfaces(fingerprint), start=1):
@@ -185,7 +206,7 @@ def build_surface_inventory(fingerprint: dict[str, object]) -> list[dict[str, ob
             {
                 "surfaceId": f"SURFACE-{index:02d}",
                 "kind": kind,
-                "label": rule["label"],
+                "label": surface_label(kind, str(rule["label"]), language),
                 "identifier": str(identifier),
                 "name": surface.get("name"),
                 "path": surface.get("path"),
@@ -206,6 +227,7 @@ def build_case(
     case_id: str,
     surface: dict[str, object],
     capability_id: str,
+    test_dimension: str,
     category: str,
     title: str,
     objective: str,
@@ -219,6 +241,7 @@ def build_case(
         "title": title,
         "category": category,
         "capabilityId": capability_id,
+        "testDimension": test_dimension,
         "minimumMode": surface["minimumMode"],
         "primaryExecutor": surface["primaryExecutor"],
         "secondaryExecutor": surface["secondaryExecutor"],
@@ -228,7 +251,268 @@ def build_case(
     }
 
 
-def build_cases(surface: dict[str, object], case_start: int) -> list[dict[str, object]]:
+def requires_detailed_inventory(capability: dict[str, object]) -> bool:
+    name = str(capability.get("name", "")).lower()
+    return any(
+        token in name
+        for token in ("scan", "rule", "policy", "guard", "action", "decision", "patrol", "check", "security")
+    )
+
+
+def inventory_warnings(surface_inventory: list[dict[str, object]], language: str) -> list[str]:
+    warnings: list[str] = []
+    for surface in surface_inventory:
+        for capability in surface.get("linkedCapabilities", []):
+            groups = list(capability.get("scenarioGroups", []))
+            if groups or not requires_detailed_inventory(capability):
+                continue
+            capability_name = str(capability.get("name", "unknown"))
+            warnings.append(
+                text(
+                    language,
+                    f"能力 `{capability_name}` 看起来是规则/决策/检查项驱动，但事实指纹未抽取到明细 inventory；阶段四应阻塞并要求补全数据驱动用例。",
+                    f"Capability `{capability_name}` looks rule/decision/check-driven, but the fingerprint did not extract a detailed inventory; stage four should block until data-driven cases are expanded.",
+                )
+            )
+    return warnings
+
+
+def build_rule_cases(
+    language: str,
+    surface: dict[str, object],
+    capability_name: str,
+    group_title: str,
+    item: str,
+    case_index: int,
+) -> list[dict[str, object]]:
+    return [
+        build_case(
+            f"TC-{case_index:03d}",
+            surface,
+            f"{surface['surfaceId']}-{capability_name}-RULE",
+            "TD-17",
+            "rule-positive",
+            text(
+                language,
+                f"{surface['label']} 规则 `{item}` 检出",
+                f"{surface['label']} rule `{item}` detection",
+            ),
+            text(
+                language,
+                f"验证 `{capability_name}` 的 `{group_title}` 条目 `{item}` 能被真实检出。",
+                f"Verify `{capability_name}` inventory item `{item}` under `{group_title}` can be detected with real evidence.",
+            ),
+            [
+                text(language, f"构造能命中 `{item}` 的最小输入。", f"Construct the smallest input that should trigger `{item}`."),
+                text(language, "以声明的真实入口执行，而不是只读文档。", "Execute against the declared real surface instead of reading documentation only."),
+                text(language, "记录真实输出与结构化证据。", "Capture the real output and structured evidence."),
+            ],
+            [
+                text(language, f"`{item}` 被明确命中或拦截。", f"`{item}` is explicitly detected or blocked."),
+                text(language, "证据可追溯到真实执行记录。", "Evidence is traceable to a real execution record."),
+            ],
+        ),
+        build_case(
+            f"TC-{case_index + 1:03d}",
+            surface,
+            f"{surface['surfaceId']}-{capability_name}-RULE-FP",
+            "TD-17",
+            "rule-negative",
+            text(
+                language,
+                f"{surface['label']} 规则 `{item}` 不误报",
+                f"{surface['label']} rule `{item}` no-false-positive",
+            ),
+            text(
+                language,
+                f"验证 `{capability_name}` 的 `{item}` 不会对安全样本产生误报。",
+                f"Verify `{capability_name}` item `{item}` does not raise a false positive on a safe control sample.",
+            ),
+            [
+                text(language, f"构造与 `{item}` 相邻但应放行的安全输入。", f"Construct a safe control input adjacent to `{item}`."),
+                text(language, "用同一入口重复执行并保留证据。", "Run through the same surface and preserve evidence."),
+            ],
+            [
+                text(language, f"`{item}` 不应把安全样本误判为风险。", f"`{item}` does not falsely classify the safe control as risky."),
+                text(language, "结果明确说明为何未命中。", "The result explicitly explains why the item did not trigger."),
+            ],
+        ),
+    ]
+
+
+def build_decision_case(
+    language: str,
+    surface: dict[str, object],
+    capability_name: str,
+    group_title: str,
+    item: str,
+    case_index: int,
+) -> dict[str, object]:
+    return build_case(
+        f"TC-{case_index:03d}",
+        surface,
+        f"{surface['surfaceId']}-{capability_name}-DECISION",
+        "TD-06",
+        "decision",
+        text(
+            language,
+            f"{surface['label']} 决策路径 `{item}`",
+            f"{surface['label']} decision path `{item}`",
+        ),
+        text(
+            language,
+            f"验证 `{capability_name}` 在 `{group_title}` 中声明的 `{item}` 路径能被真实走到。",
+            f"Verify `{capability_name}` can reach the declared `{item}` path under `{group_title}`.",
+        ),
+        [
+            text(language, f"准备应进入 `{item}` 的输入。", f"Prepare an input that should land on `{item}`."),
+            text(language, "保留判定依据和结构化结果。", "Capture the decision rationale and structured result."),
+        ],
+        [
+            text(language, f"输出明确落到 `{item}` 路径。", f"The output clearly lands on the `{item}` path."),
+            text(language, "路径结论可追溯到真实执行证据。", "The path outcome is traceable to real execution evidence."),
+        ],
+    )
+
+
+def build_check_case(
+    language: str,
+    surface: dict[str, object],
+    capability_name: str,
+    group_title: str,
+    item: str,
+    case_index: int,
+) -> dict[str, object]:
+    return build_case(
+        f"TC-{case_index:03d}",
+        surface,
+        f"{surface['surfaceId']}-{capability_name}-CHECK",
+        "TD-16",
+        "check",
+        text(
+            language,
+            f"{surface['label']} 检查项 `{item}`",
+            f"{surface['label']} check `{item}`",
+        ),
+        text(
+            language,
+            f"验证 `{capability_name}` 的 `{group_title}` 条目 `{item}` 被真实执行，而不是只在报告中声明。",
+            f"Verify `{capability_name}` item `{item}` under `{group_title}` is actually executed instead of merely claimed in prose.",
+        ),
+        [
+            text(language, f"触发 `{item}` 所需的真实运行条件。", f"Trigger the real runtime condition required for `{item}`."),
+            text(language, "记录检查动作、输入和输出。", "Record the check action, input, and output."),
+        ],
+        [
+            text(language, f"`{item}` 产生真实执行证据。", f"`{item}` produces real execution evidence."),
+            text(language, "不能退化成仅文档验证。", "The case does not collapse into a documentation-only check."),
+        ],
+    )
+
+
+def build_generic_inventory_case(
+    language: str,
+    surface: dict[str, object],
+    capability_name: str,
+    group_title: str,
+    item: str,
+    case_index: int,
+) -> dict[str, object]:
+    return build_case(
+        f"TC-{case_index:03d}",
+        surface,
+        f"{surface['surfaceId']}-{capability_name}-SCENARIO",
+        "TD-01",
+        "scenario",
+        text(
+            language,
+            f"{surface['label']} 场景 `{item}`",
+            f"{surface['label']} scenario `{item}`",
+        ),
+        text(
+            language,
+            f"验证 `{capability_name}` 在 `{group_title}` 中定义的场景 `{item}`。",
+            f"Verify scenario `{item}` declared under `{group_title}` for `{capability_name}`.",
+        ),
+        [
+            text(language, f"构造 `{item}` 场景输入。", f"Construct an input for scenario `{item}`."),
+            text(language, "执行并采集真实结果。", "Execute and capture the real result."),
+        ],
+        [
+            text(language, f"`{item}` 的期望行为被观测到。", f"The expected behavior for `{item}` is observed."),
+            text(language, "结果与真实入口表面一致。", "The result remains anchored to the real entry surface."),
+        ],
+    )
+
+
+def build_capability_cases(
+    language: str,
+    surface: dict[str, object],
+    capability: dict[str, object],
+    case_start: int,
+) -> list[dict[str, object]]:
+    capability_name = str(capability.get("name", "capability"))
+    groups = list(capability.get("scenarioGroups", []))
+    if not groups:
+        return [
+            build_case(
+                f"TC-{case_start:03d}",
+                surface,
+                f"{surface['surfaceId']}-{capability_name}",
+                "TD-01",
+                "capability",
+                text(
+                    language,
+                    f"{surface['label']} 能力 `{capability_name}`",
+                    f"{surface['label']} capability `{capability_name}`",
+                ),
+                text(
+                    language,
+                    f"验证能力 `{capability_name}` 由真实入口表面驱动，而不是靠文档描述推断。",
+                    f"Verify capability `{capability_name}` is driven by a real surface instead of prose-only assumptions.",
+                ),
+                [
+                    text(language, f"触发 `{capability_name}` 的最小真实输入。", f"Run the smallest real input that should trigger `{capability_name}`."),
+                    text(language, "捕获结构化证据。", "Capture structured evidence."),
+                ],
+                [
+                    text(language, f"`{capability_name}` 可从声明入口观测到。", f"`{capability_name}` is observable from the declared surface."),
+                    text(language, "结果可回溯到事实指纹。", "The result is traceable to the product fingerprint."),
+                ],
+            )
+        ]
+
+    cases: list[dict[str, object]] = []
+    next_case = case_start
+    for group in groups:
+        group_title = str(group.get("title", "Details"))
+        group_kind = str(group.get("kind", "scenario"))
+        for item in group.get("items", []):
+            item_text = str(item)
+            if group_kind == "rule":
+                cases.extend(
+                    build_rule_cases(language, surface, capability_name, group_title, item_text, next_case)
+                )
+                next_case += 2
+                continue
+            if group_kind == "decision":
+                cases.append(
+                    build_decision_case(language, surface, capability_name, group_title, item_text, next_case)
+                )
+            elif group_kind == "check":
+                cases.append(
+                    build_check_case(language, surface, capability_name, group_title, item_text, next_case)
+                )
+            else:
+                cases.append(
+                    build_generic_inventory_case(language, surface, capability_name, group_title, item_text, next_case)
+                )
+            next_case += 1
+
+    return cases
+
+
+def build_cases(surface: dict[str, object], case_start: int, language: str) -> list[dict[str, object]]:
     identifier = str(surface["identifier"])
     surface_id = str(surface["surfaceId"])
     cases: list[dict[str, object]] = []
@@ -238,17 +522,22 @@ def build_cases(surface: dict[str, object], case_start: int) -> list[dict[str, o
             f"TC-{case_start:03d}",
             surface,
             f"{surface_id}-BASE",
+            "TD-01",
             "positive",
-            f"{surface['label']} positive path",
-            f"Verify the real {surface['kind']} surface `{identifier}` can be reached with real evidence.",
+            text(language, f"{surface['label']} 正向路径", f"{surface['label']} positive path"),
+            text(
+                language,
+                f"验证真实 `{surface['kind']}` 表面 `{identifier}` 能以真实证据被到达。",
+                f"Verify the real {surface['kind']} surface `{identifier}` can be reached with real evidence.",
+            ),
             [
-                f"Resolve the real surface `{identifier}` from the repository or runtime.",
-                f"Invoke or load the surface in `{surface['minimumMode']}` mode.",
-                "Capture trigger, tool, output, or load evidence instead of relying on prose.",
+                text(language, f"从仓库或运行时解析真实表面 `{identifier}`。", f"Resolve the real surface `{identifier}` from the repository or runtime."),
+                text(language, f"以 `{surface['minimumMode']}` 模式调用或加载该表面。", f"Invoke or load the surface in `{surface['minimumMode']}` mode."),
+                text(language, "采集触发、工具、输出或加载证据，不依赖自然语言描述。", "Capture trigger, tool, output, or load evidence instead of relying on prose."),
             ],
             [
-                "The surface is discoverable and matches the fingerprint.",
-                "The invocation result contains structured evidence or an explicit blocker.",
+                text(language, "该表面可被发现且与事实指纹一致。", "The surface is discoverable and matches the fingerprint."),
+                text(language, "调用结果包含结构化证据或明确 blocker。", "The invocation result contains structured evidence or an explicit blocker."),
             ],
         )
     )
@@ -257,17 +546,18 @@ def build_cases(surface: dict[str, object], case_start: int) -> list[dict[str, o
             f"TC-{case_start + 1:03d}",
             surface,
             f"{surface_id}-NEG",
+            "TD-06",
             "negative",
-            f"{surface['label']} negative path",
-            "Verify invalid input or a non-matching request does not silently pass.",
+            text(language, f"{surface['label']} 逆向路径", f"{surface['label']} negative path"),
+            text(language, "验证无效输入或不匹配请求不会被静默判通过。", "Verify invalid input or a non-matching request does not silently pass."),
             [
-                "Construct a non-matching or invalid invocation for the same surface.",
-                "Run the invocation with the same evidence requirements.",
-                "Record whether the product rejects, blocks, or misroutes the request.",
+                text(language, "为同一表面构造不匹配或无效调用。", "Construct a non-matching or invalid invocation for the same surface."),
+                text(language, "使用同样的证据要求执行。", "Run the invocation with the same evidence requirements."),
+                text(language, "记录产品是拒绝、阻塞还是误路由。", "Record whether the product rejects, blocks, or misroutes the request."),
             ],
             [
-                "A non-matching request does not produce a false success.",
-                "The system returns an explicit rejection, validation error, or blocker.",
+                text(language, "不匹配请求不会产生假成功。", "A non-matching request does not produce a false success."),
+                text(language, "系统返回显式拒绝、校验错误或 blocker。", "The system returns an explicit rejection, validation error, or blocker."),
             ],
         )
     )
@@ -276,55 +566,40 @@ def build_cases(surface: dict[str, object], case_start: int) -> list[dict[str, o
             f"TC-{case_start + 2:03d}",
             surface,
             f"{surface_id}-BOUNDARY",
+            "TD-07",
             "boundary",
-            f"{surface['label']} boundary and evidence path",
-            "Verify the edge path still returns auditable evidence.",
+            text(language, f"{surface['label']} 边界与证据路径", f"{surface['label']} boundary and evidence path"),
+            text(language, "验证边界路径仍能返回可审计证据。", "Verify the edge path still returns auditable evidence."),
             [
-                f"Exercise one edge condition derived from {', '.join(surface['focusAreas'][:2])}.",
-                "Repeat the run with explicit evidence capture enabled.",
-                "Check that output, delivery, registration, or load evidence remains inspectable.",
+                text(language, f"覆盖一个由 {', '.join(surface['focusAreas'][:2])} 派生的边界条件。", f"Exercise one edge condition derived from {', '.join(surface['focusAreas'][:2])}."),
+                text(language, "开启显式证据采集后重复执行。", "Repeat the run with explicit evidence capture enabled."),
+                text(language, "确认输出、送达、注册或加载证据仍可检查。", "Check that output, delivery, registration, or load evidence remains inspectable."),
             ],
             [
-                "The edge case does not collapse into an unverified prose-only success.",
-                "Structured evidence is still available, or the case is marked blocked.",
+                text(language, "边界用例不会退化成仅靠描述的未验证成功。", "The edge case does not collapse into an unverified prose-only success."),
+                text(language, "仍可获取结构化证据，否则必须标记 blocked。", "Structured evidence is still available, or the case is marked blocked."),
             ],
         )
     )
 
     next_case = case_start + 3
-    for capability_index, capability in enumerate(surface["linkedCapabilities"], start=1):
-        cap_name = str(capability.get("name", f"capability-{capability_index}"))
-        cases.append(
-            build_case(
-                f"TC-{next_case:03d}",
-                surface,
-                f"{surface_id}-CAP-{capability_index:02d}",
-                "capability",
-                f"{surface['label']} capability `{cap_name}`",
-                f"Verify capability `{cap_name}` is backed by a real executable surface instead of prose.",
-                [
-                    f"Target capability `{cap_name}` from surface `{identifier}`.",
-                    "Run the smallest real invocation that should trigger this capability.",
-                    "Capture structured evidence for trigger, tools, output, or runtime load behavior.",
-                ],
-                [
-                    f"Capability `{cap_name}` is observable from the declared real surface.",
-                    "The result can be traced back to the fingerprint source.",
-                ],
-            )
-        )
-        next_case += 1
+    for capability in surface["linkedCapabilities"]:
+        capability_cases = build_capability_cases(language, surface, capability, next_case)
+        cases.extend(capability_cases)
+        next_case += len(capability_cases)
 
     return cases
 
 
 def build_execution_plan(
-    fingerprint: dict[str, object], surface_inventory: list[dict[str, object]]
+    fingerprint: dict[str, object],
+    surface_inventory: list[dict[str, object]],
+    language: str,
 ) -> dict[str, object]:
     surfaces: list[dict[str, object]] = []
     case_counter = 1
     for surface in surface_inventory:
-        cases = build_cases(surface, case_counter)
+        cases = build_cases(surface, case_counter, language)
         case_counter += len(cases)
         surfaces.append(
             {
@@ -343,6 +618,7 @@ def build_execution_plan(
                     str(item.get("name", "unknown")) for item in surface["linkedCapabilities"]
                 ],
                 "testCaseIds": [case["caseId"] for case in cases],
+                "testCaseCount": len(cases),
                 "source": surface.get("source"),
             }
         )
@@ -352,14 +628,16 @@ def build_execution_plan(
         "packageName": fingerprint.get("packageName", "unknown"),
         "productType": list(fingerprint.get("productType", [])),
         "parallelRoles": ["skill-tester", "security-tester"],
+        "totalCaseCount": case_counter - 1,
+        "designWarnings": inventory_warnings(surface_inventory, language),
         "surfaces": surfaces,
     }
 
 
-def render_surface_inventory(surface_inventory: list[dict[str, object]]) -> str:
+def render_surface_inventory(surface_inventory: list[dict[str, object]], language: str) -> str:
     lines = [
-        "| Surface ID | Kind | Identifier | Minimum Mode | Primary Executor |",
-        "|------------|------|------------|--------------|------------------|",
+        text(language, "| Surface ID | 类型 | 标识 | 最低模式 | 主执行角色 |", "| Surface ID | Kind | Identifier | Minimum Mode | Primary Executor |"),
+        text(language, "|------------|------|------|----------|------------|", "|------------|------|------------|--------------|------------------|"),
     ]
     for surface in surface_inventory:
         lines.append(
@@ -368,101 +646,121 @@ def render_surface_inventory(surface_inventory: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
-def render_branch_matrix(surface_inventory: list[dict[str, object]]) -> str:
+def render_branch_matrix(surface_inventory: list[dict[str, object]], language: str) -> str:
     lines = [
-        "| Surface ID | Positive | Negative | Boundary | Capability |",
-        "|------------|----------|----------|----------|------------|",
+        text(language, "| Surface ID | 正向 | 逆向 | 边界 | 能力展开 |", "| Surface ID | Positive | Negative | Boundary | Capability |"),
+        text(language, "|------------|------|------|------|----------|", "|------------|----------|----------|----------|------------|"),
     ]
     for surface in surface_inventory:
         cases = list(surface.get("generatedCases", []))
         counts = {"positive": 0, "negative": 0, "boundary": 0, "capability": 0}
         for case in cases:
-            counts[str(case["category"])] += 1
+            category = str(case["category"])
+            if category.startswith("rule") or category.startswith("decision") or category.startswith("check") or category == "scenario":
+                counts["capability"] += 1
+            else:
+                counts[category] += 1
         lines.append(
             f"| {surface['surfaceId']} | {counts['positive']} | {counts['negative']} | {counts['boundary']} | {counts['capability']} |"
         )
     return "\n".join(lines)
 
 
-def render_capability_matrix(surface_inventory: list[dict[str, object]]) -> str:
+def render_capability_matrix(surface_inventory: list[dict[str, object]], language: str) -> str:
     lines = [
-        "| Surface ID | Linked Capabilities | Case Count |",
-        "|------------|---------------------|------------|",
+        text(language, "| Surface ID | 关联能力 | 用例数 |", "| Surface ID | Linked Capabilities | Case Count |"),
+        text(language, "|------------|----------|--------|", "|------------|---------------------|------------|"),
     ]
     for surface in surface_inventory:
         capability_names = ", ".join(
             str(item.get("name", "unknown")) for item in surface["linkedCapabilities"]
-        ) or "(none)"
+        ) or text(language, "(无)", "(none)")
         lines.append(
             f"| {surface['surfaceId']} | {capability_names} | {len(surface.get('generatedCases', []))} |"
         )
     return "\n".join(lines)
 
 
-def render_case(case: dict[str, object]) -> str:
+def render_case(case: dict[str, object], language: str) -> str:
     lines = [
         f"#### {case['caseId']}: {case['title']}",
         f"- surface-id: `{case['surfaceId']}`",
         f"- capability-id: `{case['capabilityId']}`",
+        f"- test-dimension: `{case['testDimension']}`",
         f"- category: `{case['category']}`",
-        f"- execution-environment: `{case['minimumMode']}`",
-        f"- primary-executor: `{case['primaryExecutor']}`",
-        f"- objective: {case['objective']}",
-        "- steps:",
+        f"- {text(language, '执行环境', 'execution-environment')}: `{case['minimumMode']}`",
+        f"- {text(language, '主执行角色', 'primary-executor')}: `{case['primaryExecutor']}`",
+        f"- {text(language, '目标', 'objective')}: {case['objective']}",
+        f"- {text(language, 'steps', 'steps')}:",
     ]
     lines.extend(f"  - {step}" for step in case["steps"])
-    lines.append("- expected-results:")
+    lines.append(f"- {text(language, '预期结果', 'expected-results')}:")
     lines.extend(f"  - {item}" for item in case["expected"])
     return "\n".join(lines)
 
 
 def build_test_design_markdown(
-    fingerprint: dict[str, object], surface_inventory: list[dict[str, object]]
+    fingerprint: dict[str, object],
+    surface_inventory: list[dict[str, object]],
+    execution_plan: dict[str, object],
+    language: str,
 ) -> str:
     title = str(fingerprint.get("packageName", "unknown"))
     lines = [
         f"# TEST-DESIGN - {title}",
         "",
-        "## Test Strategy",
+        text(language, "## 测试策略", "## Test Strategy"),
         "",
-        "- Flow A must split execution by real product surfaces instead of flattening a mixed target into one skill.",
-        "- Every surface must include positive, negative, and boundary coverage at minimum.",
-        "- `SURFACE-EXECUTION-PLAN.json` is the stage-five execution input; no surface may be skipped silently.",
+        text(language, "- Flow A 必须按真实产品表面拆分执行，不能把混合目标压扁成单一 skill。", "- Flow A must split execution by real product surfaces instead of flattening a mixed target into one skill."),
+        text(language, "- 每个表面至少覆盖正向、逆向和边界路径。", "- Every surface must include positive, negative, and boundary coverage at minimum."),
+        text(language, "- `SURFACE-EXECUTION-PLAN.json` 是阶段五执行输入；任何 surface 都不得被静默跳过。", "- `SURFACE-EXECUTION-PLAN.json` is the stage-five execution input; no surface may be skipped silently."),
+        text(language, f"- 当前自动生成用例数：`{execution_plan.get('totalCaseCount', 0)}`。", f"- Current auto-generated case count: `{execution_plan.get('totalCaseCount', 0)}`."),
         "",
-        "## Surface Inventory",
+        text(language, "## 表面清单", "## Surface Inventory"),
         "",
-        render_surface_inventory(surface_inventory),
+        render_surface_inventory(surface_inventory, language),
         "",
-        "## Branch Coverage Matrix",
+        text(language, "## 分支覆盖矩阵", "## Branch Coverage Matrix"),
         "",
-        render_branch_matrix(surface_inventory),
+        render_branch_matrix(surface_inventory, language),
         "",
-        "## Test Cases",
+        text(language, "## 测试用例", "## Test Cases"),
         "",
     ]
+
+    warnings = list(execution_plan.get("designWarnings", []))
+    if warnings:
+        lines.extend(
+            [
+                text(language, "## 设计告警", "## Design Warnings"),
+                "",
+            ]
+        )
+        lines.extend(f"- {warning}" for warning in warnings)
+        lines.append("")
 
     for surface in surface_inventory:
         lines.append(f"### {surface['surfaceId']} - {surface['label']} (`{surface['identifier']}`)")
         lines.append("")
-        lines.append(f"- source: {render_source(surface.get('source'))}")
-        lines.append(f"- focus-areas: {', '.join(surface['focusAreas'])}")
-        lines.append(f"- security-focus: {', '.join(surface['securityFocus'])}")
+        lines.append(f"- {text(language, 'source', 'source')}: {render_source(surface.get('source'))}")
+        lines.append(f"- {text(language, 'focus-areas', 'focus-areas')}: {', '.join(surface['focusAreas'])}")
+        lines.append(f"- {text(language, 'security-focus', 'security-focus')}: {', '.join(surface['securityFocus'])}")
         lines.append("")
         for case in surface.get("generatedCases", []):
-            lines.append(render_case(case))
+            lines.append(render_case(case, language))
             lines.append("")
 
     lines.extend(
         [
-            "## Capability x Surface Coverage Matrix",
+            text(language, "## 能力 × 表面覆盖矩阵", "## Capability x Surface Coverage Matrix"),
             "",
-            render_capability_matrix(surface_inventory),
+            render_capability_matrix(surface_inventory, language),
             "",
-            "## Stage-Five Execution Requirements",
+            text(language, "## 阶段五执行要求", "## Stage-Five Execution Requirements"),
             "",
-            "- `skill-tester` must execute every surface listed in `SURFACE-EXECUTION-PLAN.json`.",
-            "- `security-tester` must review each surface against its `securityFocus`, not just repository prose.",
-            "- Any surface that only reaches trace or probe-only evidence must not be reported as a functional pass.",
+            text(language, "- `skill-tester` 必须执行 `SURFACE-EXECUTION-PLAN.json` 中列出的每个 surface。", "- `skill-tester` must execute every surface listed in `SURFACE-EXECUTION-PLAN.json`."),
+            text(language, "- `security-tester` 必须按 `securityFocus` 审查每个 surface，而不是只看仓库文档。", "- `security-tester` must review each surface against its `securityFocus`, not just repository prose."),
+            text(language, "- 只拿到 trace 或 probe-only 证据的 surface 不得写成功能通过。", "- Any surface that only reaches trace or probe-only evidence must not be reported as a functional pass."),
             "",
         ]
     )
@@ -475,6 +773,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--spec", required=True, help="Path to SPEC.md")
     parser.add_argument("--consistency-review", required=True, help="Path to SPEC-CONSISTENCY-REVIEW.md")
     parser.add_argument("--output-dir", required=True, help="Directory for stage-three artifacts")
+    add_output_language_argument(parser)
     return parser.parse_args(argv)
 
 
@@ -498,9 +797,9 @@ def main(argv: list[str] | None = None) -> int:
     ensure_passed_review(review_path)
     fingerprint = load_json(fingerprint_path)
 
-    surface_inventory = build_surface_inventory(fingerprint)
-    execution_plan = build_execution_plan(fingerprint, surface_inventory)
-    test_design = build_test_design_markdown(fingerprint, surface_inventory)
+    surface_inventory = build_surface_inventory(fingerprint, args.language)
+    execution_plan = build_execution_plan(fingerprint, surface_inventory, args.language)
+    test_design = build_test_design_markdown(fingerprint, surface_inventory, execution_plan, args.language)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     write_text(output_dir / "TEST-DESIGN.md", test_design + "\n")

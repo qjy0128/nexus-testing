@@ -75,6 +75,15 @@ def validate(surface_plan: dict[str, object], skill_results: str) -> list[str]:
                 issues.append(
                     f"{surface_id} cannot pass as openclaw-extension without registered-hooks evidence notes"
                 )
+            if execution_level == "live":
+                if "runtime-verified=true" not in notes:
+                    issues.append(
+                        f"{surface_id} cannot pass as live openclaw-extension without runtime-verified=true notes"
+                    )
+                if "runtime-transport=" not in notes:
+                    issues.append(
+                        f"{surface_id} cannot pass as live openclaw-extension without runtime-transport notes"
+                    )
         if surface_kind == "mcp" and status == "passed":
             if "protocol-verified=true" not in notes:
                 issues.append(

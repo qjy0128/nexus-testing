@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import shutil
 import subprocess
 import sys
@@ -63,6 +65,11 @@ def build_runner_fixture(base_dir: Path) -> tuple[Path, Path]:
                     "cwd": ".",
                 },
                 "supportsMultiTurn": True,
+                "openclawExtensionRuntimeHarness": {
+                    "command": [sys.executable, "scripts/runtime-harness.py"],
+                    "cwd": ".",
+                    "timeoutSeconds": 15,
+                },
                 "openclawExtensionHarness": {
                     "command": [sys.executable, "scripts/extension-harness.py"],
                     "cwd": ".",
@@ -233,6 +240,46 @@ def build_runner_fixture(base_dir: Path) -> tuple[Path, Path]:
         ),
     )
     write_text(
+        skill_dir / "scripts" / "runtime-harness.py",
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "from __future__ import annotations",
+                "",
+                "import importlib.util",
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "",
+                "skill_root = Path.cwd()",
+                "surface_path = Path(os.environ.get('NEXUS_SURFACE_PATH', ''))",
+                "target = (skill_root / surface_path).resolve()",
+                "result_file = Path(os.environ['NEXUS_SURFACE_RESULT_FILE'])",
+                "artifacts_dir = Path(os.environ['NEXUS_ARTIFACTS_DIR'])",
+                "artifacts_dir.mkdir(parents=True, exist_ok=True)",
+                "spec = importlib.util.spec_from_file_location('runner_hooks', target)",
+                "assert spec and spec.loader",
+                "module = importlib.util.module_from_spec(spec)",
+                "spec.loader.exec_module(module)",
+                "registered_hooks = list(getattr(module, 'REGISTERED_HOOKS', []))",
+                "registration = module.register()",
+                "behavior_verified = registered_hooks == registration.get('hooks') and bool(registered_hooks)",
+                "evidence_path = artifacts_dir / 'runtime-extension.log'",
+                "evidence_path.write_text(','.join(registered_hooks) + '\\n', encoding='utf-8')",
+                "payload = {",
+                "    'behaviorVerified': behavior_verified,",
+                "    'runtimeVerified': True,",
+                "    'runtimeTransport': 'openclaw-subagent',",
+                "    'registeredHooks': registered_hooks,",
+                "    'notes': 'verified extension hook registration through runtime harness',",
+                "    'evidence': [str(evidence_path)],",
+                "}",
+                "result_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\\n', encoding='utf-8')",
+            ]
+        )
+        + "\n",
+    )
+    write_text(
         skill_dir / "scripts" / "extension-harness.py",
         "\n".join(
             [
@@ -307,6 +354,66 @@ def build_runner_fixture(base_dir: Path) -> tuple[Path, Path]:
     return skill_dir, verifier_dir / "verifier.json"
 
 
+def build_mock_openclaw(bin_dir: Path) -> Path:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    driver = bin_dir / "mock_openclaw_driver.py"
+    write_text(
+        driver,
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "from __future__ import annotations",
+                "",
+                "import json",
+                "import os",
+                "import sys",
+                "from pathlib import Path",
+                "",
+                "args = sys.argv[1:]",
+                "message = ''",
+                "for index, item in enumerate(args):",
+                "    if item == '--message' and index + 1 < len(args):",
+                "        message = args[index + 1]",
+                "output_file = Path(os.environ['NEXUS_OUTPUT_FILE'])",
+                "result_file = Path(os.environ['NEXUS_RESULT_JSON_FILE'])",
+                "artifacts_dir = Path(os.environ['NEXUS_ARTIFACTS_DIR'])",
+                "artifacts_dir.mkdir(parents=True, exist_ok=True)",
+                "proof_file = artifacts_dir / 'live-proof.txt'",
+                "proof_file.write_text('delivered\\n', encoding='utf-8')",
+                "payload = {",
+                "    'telemetryProtocolVersion': os.environ.get('NEXUS_TELEMETRY_PROTOCOL_VERSION', ''),",
+                "    'telemetrySource': os.environ.get('NEXUS_TELEMETRY_SOURCE', ''),",
+                "    'triggerMatched': True,",
+                "    'toolsCalled': ['runner_tool'],",
+                "    'contextReferences': [],",
+                "    'assistantMessage': f'OpenClaw handled: {message}',",
+                "    'deliveryStatus': 'delivered',",
+                "    'deliveryReceipts': ['live-receipt-001'],",
+                "    'deliveryEvidence': [str(proof_file)],",
+                "}",
+                "output_file.write_text(payload['assistantMessage'] + '\\n', encoding='utf-8')",
+                "result_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\\n', encoding='utf-8')",
+                "print(json.dumps(payload, ensure_ascii=False))",
+            ]
+        )
+        + "\n",
+    )
+    wrapper = bin_dir / "openclaw"
+    write_text(
+        wrapper,
+        "#!/usr/bin/env bash\n"
+        f"\"{sys.executable}\" \"{driver}\" \"$@\"\n",
+    )
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+    if os.name == "nt":
+        write_text(
+            bin_dir / "openclaw.cmd",
+            "@echo off\r\n"
+            f"\"{sys.executable}\" \"{driver}\" %*\r\n",
+        )
+    return wrapper
+
+
 def test_surface_runner() -> None:
     temp_root = make_temp_root("flowa-runner-")
     try:
@@ -324,6 +431,8 @@ def test_surface_runner() -> None:
                 str(skill_dir),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             [
                 sys.executable,
@@ -336,6 +445,8 @@ def test_surface_runner() -> None:
                 str(reports_dir / "SPEC-CONSISTENCY-REVIEW.md"),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             [
                 sys.executable,
@@ -344,6 +455,8 @@ def test_surface_runner() -> None:
                 str(reports_dir / "SURFACE-EXECUTION-PLAN.json"),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             [
                 sys.executable,
@@ -361,6 +474,8 @@ def test_surface_runner() -> None:
                 "--strict-real",
                 "--verification-manifest",
                 str(verifier_manifest),
+                "--language",
+                "en",
             ],
         )
         runner_output: dict[str, str] = {}
@@ -384,6 +499,8 @@ def test_surface_runner() -> None:
         assert_contains(skill_results, "plugin-manifest", "plugin manifest surface recorded")
         assert_contains(skill_results, "registered-hooks=2", "extension hook count recorded")
         assert_contains(skill_results, "behavior-verified=true", "extension verification note recorded")
+        assert_contains(skill_results, "runtime-verified=true", "extension runtime verification note recorded")
+        assert_contains(skill_results, "runtime-transport=openclaw-subagent", "extension runtime transport recorded")
         assert_contains(skill_results, "protocol-version=", "mcp protocol version recorded")
         assert_contains(skill_results, "tools=1", "mcp tools count recorded")
         assert_contains(skill_results, "tool-call=called:ping", "mcp tool call recorded")
@@ -433,8 +550,8 @@ def test_surface_runner_misconfigured_harnesses() -> None:
         skill_dir, verifier_manifest = build_runner_fixture(temp_root)
         testing_path = skill_dir / "testing.json"
         testing = json.loads(read_text(testing_path))
-        testing["openclawExtensionHarness"] = {
-            "command": ["missing-extension-harness-command"],
+        testing["openclawExtensionRuntimeHarness"] = {
+            "command": ["missing-extension-runtime-command"],
             "cwd": ".",
             "timeoutSeconds": 15,
         }
@@ -458,6 +575,8 @@ def test_surface_runner_misconfigured_harnesses() -> None:
                 str(skill_dir),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             [
                 sys.executable,
@@ -470,6 +589,8 @@ def test_surface_runner_misconfigured_harnesses() -> None:
                 str(reports_dir / "SPEC-CONSISTENCY-REVIEW.md"),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             [
                 sys.executable,
@@ -478,6 +599,8 @@ def test_surface_runner_misconfigured_harnesses() -> None:
                 str(reports_dir / "SURFACE-EXECUTION-PLAN.json"),
                 "--output-dir",
                 str(reports_dir),
+                "--language",
+                "en",
             ],
             [
                 sys.executable,
@@ -495,6 +618,8 @@ def test_surface_runner_misconfigured_harnesses() -> None:
                 "--strict-real",
                 "--verification-manifest",
                 str(verifier_manifest),
+                "--language",
+                "en",
             ],
         )
 
@@ -530,6 +655,129 @@ def test_surface_runner_misconfigured_harnesses() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_surface_runner_live_probe_without_runtime_harness() -> None:
+    if not find_runnable_bash():
+        print("  [SKIP] test_surface_runner_live_probe_without_runtime_harness: runnable bash unavailable")
+        return
+
+    temp_root = make_temp_root("flowa-runner-live-probe-")
+    try:
+        skill_dir, verifier_manifest = build_runner_fixture(temp_root)
+        testing_path = skill_dir / "testing.json"
+        testing = json.loads(read_text(testing_path))
+        testing.pop("openclawExtensionRuntimeHarness", None)
+        testing.pop("openclawExtensionHarness", None)
+        write_text(testing_path, json.dumps(testing, ensure_ascii=False, indent=2) + "\n")
+        write_text(
+            skill_dir / "hooks" / "hooks.json",
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo ok"}]}],
+                        "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo ok"}]}],
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+        )
+
+        reports_dir = temp_root / "reports"
+        sandbox_root = temp_root / "sandbox"
+        sandbox_root.mkdir(parents=True, exist_ok=True)
+        create_session(sandbox_root, "runner-live-probe", extra_dirs=("workspace/skills",))
+        mock_openclaw = build_mock_openclaw(temp_root / "mock-openclaw")
+        env = os.environ.copy()
+        env["PATH"] = str(mock_openclaw.parent) + os.pathsep + env.get("PATH", "")
+
+        commands = (
+            [
+                sys.executable,
+                str(STAGE1),
+                "--target",
+                str(skill_dir),
+                "--output-dir",
+                str(reports_dir),
+                "--language",
+                "en",
+            ],
+            [
+                sys.executable,
+                str(STAGE3),
+                "--fingerprint",
+                str(reports_dir / "PRODUCT-FINGERPRINT.json"),
+                "--spec",
+                str(reports_dir / "SPEC.md"),
+                "--consistency-review",
+                str(reports_dir / "SPEC-CONSISTENCY-REVIEW.md"),
+                "--output-dir",
+                str(reports_dir),
+                "--language",
+                "en",
+            ],
+            [
+                sys.executable,
+                str(STAGE5),
+                "--surface-plan",
+                str(reports_dir / "SURFACE-EXECUTION-PLAN.json"),
+                "--output-dir",
+                str(reports_dir),
+                "--language",
+                "en",
+            ],
+            [
+                sys.executable,
+                str(RUNNER),
+                "--surface-plan",
+                str(reports_dir / "SURFACE-EXECUTION-PLAN.json"),
+                "--skill-path",
+                str(skill_dir),
+                "--session-id",
+                "runner-live-probe",
+                "--sandbox-root",
+                str(sandbox_root),
+                "--output-dir",
+                str(reports_dir),
+                "--strict-real",
+                "--verification-manifest",
+                str(verifier_manifest),
+                "--language",
+                "en",
+            ],
+        )
+
+        runner_output: dict[str, str] = {}
+        for command in commands:
+            proc = subprocess.run(
+                command,
+                cwd=str(PROJECT_DIR),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+            )
+            assert_equal(proc.returncode, 0, f"command exit code: {' '.join(command[1:3])}")
+            if command[1] == str(RUNNER):
+                runner_output = parse_kv_output(proc.stdout)
+
+        skill_results = read_text(Path(runner_output["SKILL_RESULTS"]))
+        assert_contains(skill_results, "runtime-probed=true", "live probe note recorded")
+        assert_contains(skill_results, "runtime-transport=openclaw-live", "live probe transport recorded")
+        assert_contains(skill_results, "registered-hooks=2", "live probe hook count recorded")
+
+        coverage = json.loads(read_text(Path(runner_output["SURFACE_COVERAGE"])))
+        extension_entry = next(
+            surface for surface in coverage.get("surfaces", []) if str(surface.get("kind")) == "openclaw-extension"
+        )
+        assert_equal(extension_entry.get("status"), "incomplete", "extension live probe status")
+        assert_equal(extension_entry.get("executionLevel"), "live", "extension live probe level")
+        print("  [PASS] test_surface_runner_live_probe_without_runtime_harness")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -551,6 +799,12 @@ def main() -> int:
         passed += 1
     except AssertionError as exc:
         print(f"  [FAIL] test_surface_runner_misconfigured_harnesses: {exc}")
+        failed += 1
+    try:
+        test_surface_runner_live_probe_without_runtime_harness()
+        passed += 1
+    except AssertionError as exc:
+        print(f"  [FAIL] test_surface_runner_live_probe_without_runtime_harness: {exc}")
         failed += 1
     print("=" * 40)
     print(f"{passed} passed, {failed} failed")

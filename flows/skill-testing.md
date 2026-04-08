@@ -23,6 +23,7 @@
   - `live`：OpenClaw CLI 可用。
   - `shim-live`：Skill 提供 `testing.json` 或 `scripts/test-entry.*`。
   - `trace`：仅剩静态追踪，**不能支撑功能通过结论**。
+- 若当前测试运行时本身就是 OpenClaw / 可拉起 subagent，则不得仅因通用 runner 未接线就写“OpenClaw runtime unavailable”；必须先做实际探测，或通过 `testing.json` 的显式 harness 验证真实运行时行为。
 
 **需用户确认后才能进入阶段一。**
 
@@ -34,13 +35,14 @@
 阶段一必须先抽取事实，再写规格：
 
 - `PRODUCT-FINGERPRINT.json` 必须写出技术栈、版本、许可证、运行时要求、真实入口、能力表面、CLI/子命令/插件表面
+- 对复杂安全 Skill，阶段一不能只读 `SKILL.md`；还必须继续下钻伴随规则文件、策略文件、检查清单和相关源码（例如 `scan-rules.md`、`action-policies.md`、`patrol-checks.md` 这类 companion docs / source），把规则、决策路径、检查项 inventory 抽进 `PRODUCT-FINGERPRINT.json`
 - 推荐直接使用 `scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir>` 生成阶段一三件套，减少手写 `SPEC.md` 时的幻觉空间
 - 每个关键字段都必须附证据来源（文件路径 + 行号或键路径）
 - `SPEC.md` 只能基于 `PRODUCT-FINGERPRINT.json` 已验证字段展开，未知项写“待验证”
 - `SPEC-CONSISTENCY-REVIEW.md` 必须校验版本、许可证、技术栈、入口能力和关键接口是否与仓库事实一致
 - 若一致性校验结论不是 `passed`，不得进入阶段二
 
-**主 agent 动作**：阶段一完成后立即发送 `SPEC.md` 和一致性结论摘要；`PRODUCT-FINGERPRINT.json` 作为阶段事实附件保存在报告目录。
+**主 agent 动作**：阶段一完成后先用 `prepare_report_delivery.py` 把阶段文件镜像到 `files/...`，再立即发送 `SPEC.md` 和一致性结论摘要；`PRODUCT-FINGERPRINT.json` 作为阶段事实附件保存在报告目录。
 
 ### 阶段二：质量评估
 
@@ -69,6 +71,13 @@
 - 是否需要显式断言：`triggerMatched` / `contextReferences` / `deliveryStatus`
 - 引用的产品表面：来自 `PRODUCT-FINGERPRINT.json` 的真实入口（如 `SKILL.md`、CLI、plugin、MCP、hooks）
 
+复杂 Skill / 安全工具的测试设计必须数据驱动展开：
+
+- 规则清单：每条规则至少覆盖“能检出”和“不误报”
+- 决策路径：每条路径（如 `DENY` / `CONFIRM`）至少 1 个独立用例
+- 检查项：每项 patrol / runtime / monitor 检查至少 1 个真实执行用例
+- 若事实指纹未抽取到规则、决策路径、检查项 inventory，不得把 1 条泛化 capability 用例写成“覆盖完成”
+
 禁止行为：
 
 - 从行业经验脑补 HTTP API、SDK、Go library、Guard.Scan() 等仓库中不存在的表面
@@ -93,7 +102,8 @@
 阶段五开始前，主 agent 必须先基于 `SURFACE-EXECUTION-PLAN.json` 生成：
 - `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md`
 - `TEST-EXECUTION/SURFACE-COVERAGE.json`
-- 然后由 `skill-tester` 使用 `scripts/run_flow_a_skill_execution.py` 逐 surface 执行；runner 需要真实处理 `skill/bin`，对 `package/plugin-manifest` 输出结构化校验结果，并在存在显式 harness 时验证 `openclaw-extension` hook 行为与 `mcp` 协议交互，只有 probe-only 证据时才保守记为 `incomplete`
+- 然后由 `skill-tester` 使用 `scripts/run_flow_a_skill_execution.py` 逐 surface 执行；runner 需要真实处理 `skill/bin`，对 `package/plugin-manifest` 输出结构化校验结果；`openclaw-extension` 优先走 `testing.json.openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若两者都没有但当前环境可用 OpenClaw runtime / subagent，则至少先做 live probe，再决定是否降为 `incomplete`
+- 若当前环境可用 OpenClaw runtime / subagent，则 `openclaw-extension` 相关用例不得仅写“缺少通用 runner”；要么提供 `openclawExtensionRuntimeHarness` 真正跑 runtime/subagent，要么留下 `runtime-probed=true` 的 live probe 证据
 
 #### Skill 执行门禁
 

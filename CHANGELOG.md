@@ -1,3 +1,29 @@
+### v0.9.38（2026-04-08）
+**Flow A companion inventory 深挖 + OpenClaw runtime harness / live probe**
+
+- 更新：`scripts/extract_product_fingerprint.py`，阶段一不再只从 `SKILL.md` 抽 capability；现在会继续扫描伴随规则文件、策略文件、检查清单和相关源码，把规则、决策路径、检查项 inventory 合并进 `scenarioGroups`
+- 新增：`scripts/test_product_fingerprint.py` 的 companion-inventory fixture，覆盖 `scan-rules.md`、`action-policies.md`、`patrol-checks.md` 和源码回退 inventory 抽取
+- 更新：`scripts/generate_flow_a_test_design.py` 的上游输入质量，复杂安全 Skill 可以从 companion inventory 自动展开出更接近真实规则数量的 case 设计
+- 更新：`scripts/run_flow_a_skill_execution.py`，`openclaw-extension` 新增 `testing.json.openclawExtensionRuntimeHarness` 支持；通过时会记录 `runtime-verified=true`、`runtime-transport=...`
+- 更新：`scripts/run_flow_a_skill_execution.py`，当 `openclaw-extension` 没有 harness 但 OpenClaw live runtime 可用时，会先做 live probe 并写出 `runtime-probed=true`，不再直接退回纯 module probe
+- 更新：`scripts/validate_flow_a_skill_results.py`，`openclaw-extension` 若以 `live` 级别写成 `passed`，必须同时带 `runtime-verified=true` 与 `runtime-transport=...`
+- 更新：`scripts/test_flow_a_surface_runner.py`、`scripts/test_flow_a_skill_execution.py`，补 runtime harness、live probe、live-pass 缺失 runtime notes 的回归
+- 更新：`SKILL.md`、`README.md`、`DEFINITIONS.md`、`flows/skill-testing.md`、`reference-flow-skill.md`、`roles/requirement-analyst.md`、`roles/skill-tester.md`，把 companion inventory 抽取和 `openclawExtensionRuntimeHarness` 写成正式契约
+- 更新：`scripts/validate_contracts.py`、`scripts/validate-framework.py`，新增 Flow A runtime-harness / companion-inventory contract 校验
+
+### v0.9.37（2026-04-08）
+**Flow A 交付物发送、语言一致性与数据驱动用例扩展**
+
+- 新增：`scripts/prepare_report_delivery.py`，把 `memory/nexus-reports/...` 交付物镜像到工作区 `files/...`，输出可直接用于平台发送的相对 `filePath`
+- 新增：`scripts/test_prepare_report_delivery.py`，验证交付物中转路径和文件内容镜像
+- 新增：`scripts/flow_a_localization.py`，统一 Flow A 生成器 / runner 的输出语言参数
+- 更新：`scripts/generate_flow_a_stage1.py`、`scripts/generate_flow_a_test_design.py`、`scripts/generate_flow_a_skill_execution.py`、`scripts/run_flow_a_skill_execution.py`，支持 `--language <request-language>`，让阶段产出物的描述性内容跟随用户发起测试请求的语言
+- 更新：`scripts/extract_product_fingerprint.py`，为 Skill capability 补充规则、决策路径、检查项 inventory 提取能力
+- 更新：`scripts/generate_flow_a_test_design.py`，按规则/决策路径/检查项做数据驱动展开；规则默认生成“能检出 + 不误报”双用例，并在 inventory 缺失时写出设计告警
+- 更新：`scripts/test_product_fingerprint.py`、`scripts/test_flow_a_test_design.py`、`scripts/test_flow_a_stage1.py`、`scripts/test_flow_a_skill_execution.py`、`scripts/test_flow_a_surface_runner.py`，覆盖多语言输出和 rule-dense capability 展开
+- 更新：`SKILL.md`、`DEFINITIONS.md`、`flows/skill-testing.md`、`reference-flow-skill.md`、`reference-report-format.md`、`reference-approval-mechanism.md`、`roles/requirement-analyst.md`、`roles/test-designer.md`、`roles/test-case-evaluator.md`、`roles/report-integrator.md`、`README.md`，写死 `files/...` 中转、请求语言一致性、复杂安全 Skill 的数据驱动设计要求，以及 OpenClaw runtime 不得因“未接线”被误判 unavailable
+- 更新：`scripts/validate_contracts.py`、`scripts/validate-framework.py`，新增 `files/...` 中转、请求语言、Flow A 数据驱动 case-depth 合约校验
+
 ### v0.9.36（2026-04-08）
 **代码质量优化与 Bug 修复**
 

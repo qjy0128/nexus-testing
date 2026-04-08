@@ -29,6 +29,8 @@ def test_stage1_generation() -> None:
                 str(target),
                 "--output-dir",
                 str(output_dir),
+                "--language",
+                "en",
             ],
             cwd=str(PROJECT_DIR),
             capture_output=True,

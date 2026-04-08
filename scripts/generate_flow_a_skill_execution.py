@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 
+from flow_a_localization import add_output_language_argument
 from sandbox_skill_invoke.core import read_text, write_text
 
 
@@ -15,7 +16,11 @@ def load_json(path: Path) -> dict[str, object]:
     return json.loads(read_text(path))
 
 
-def render_surface(surface: dict[str, object]) -> str:
+def text(language: str, zh: str, en: str) -> str:
+    return zh if language == "zh-CN" else en
+
+
+def render_surface(surface: dict[str, object], language: str) -> str:
     source = surface.get("source", {})
     source_path = source.get("path", "unknown")
     source_key = source.get("key", "unknown")
@@ -25,21 +30,21 @@ def render_surface(surface: dict[str, object]) -> str:
     case_ids = ", ".join(str(item) for item in surface.get("testCaseIds", []))
     lines = [
         f"### {surface.get('surfaceId')} - {surface.get('kind')} (`{surface.get('identifier')}`)",
-        f"- minimum-mode: `{surface.get('minimumMode')}`",
-        f"- primary-executor: `{surface.get('primaryExecutor')}`",
-        f"- secondary-executor: `{surface.get('secondaryExecutor')}`",
-        f"- execution-target: `{target}`",
-        f"- focus-areas: {', '.join(str(item) for item in surface.get('focusAreas', []))}",
-        f"- security-focus: {', '.join(str(item) for item in surface.get('securityFocus', []))}",
-        f"- linked-capabilities: {', '.join(str(item) for item in surface.get('linkedCapabilityNames', [])) or '(none)'}",
-        f"- source: `{source_path}{source_suffix} ({source_key})`",
-        f"- required-test-cases: {case_ids or '(none)'}",
-        "- execution-template:",
+        f"- {text(language, 'minimum-mode', 'minimum-mode')}: `{surface.get('minimumMode')}`",
+        f"- {text(language, 'primary-executor', 'primary-executor')}: `{surface.get('primaryExecutor')}`",
+        f"- {text(language, 'secondary-executor', 'secondary-executor')}: `{surface.get('secondaryExecutor')}`",
+        f"- {text(language, 'execution-target', 'execution-target')}: `{target}`",
+        f"- {text(language, 'focus-areas', 'focus-areas')}: {', '.join(str(item) for item in surface.get('focusAreas', []))}",
+        f"- {text(language, 'security-focus', 'security-focus')}: {', '.join(str(item) for item in surface.get('securityFocus', []))}",
+        f"- {text(language, 'linked-capabilities', 'linked-capabilities')}: {', '.join(str(item) for item in surface.get('linkedCapabilityNames', [])) or text(language, '(无)', '(none)')}",
+        f"- {text(language, 'source', 'source')}: `{source_path}{source_suffix} ({source_key})`",
+        f"- {text(language, 'required-test-cases', 'required-test-cases')}: {case_ids or text(language, '(无)', '(none)')}",
+        f"- {text(language, 'execution-template', 'execution-template')}:",
         f"  - surface-id: `{surface.get('surfaceId')}`",
-        f"  - execution-level: `{surface.get('minimumMode')}`",
-        "  - status: `passed|blocked|incomplete`",
-        "  - evidence: `<trace/output/log path>`",
-        "  - notes: `<brief outcome>`",
+        f"  - {text(language, 'execution-level', 'execution-level')}: `{surface.get('minimumMode')}`",
+        f"  - {text(language, 'status', 'status')}: `passed|blocked|incomplete`",
+        f"  - {text(language, 'evidence', 'evidence')}: `<trace/output/log path>`",
+        f"  - {text(language, 'notes', 'notes')}: <{text(language, '简要结论', 'brief outcome')}>",
         "",
     ]
     return "\n".join(lines)
@@ -71,36 +76,36 @@ def build_coverage(plan: dict[str, object]) -> dict[str, object]:
     }
 
 
-def build_worklist(plan: dict[str, object]) -> str:
+def build_worklist(plan: dict[str, object], language: str) -> str:
     title = str(plan.get("packageName", "unknown"))
     surfaces = list(plan.get("surfaces", []))
     lines = [
         f"# SKILL-SURFACE-WORKLIST - {title}",
         "",
-        "## Stage-Five Rules",
+        text(language, "## 阶段五规则", "## Stage-Five Rules"),
         "",
-        "- Execute surfaces in order; do not cherry-pick a single entry point.",
-        "- Every surface must produce one structured block in `skill-results.md`.",
-        "- Each block must include `surface-id`, `execution-level`, `status`, `evidence`, and `notes`.",
-        "- If a surface only reached trace or probe-only evidence, the final conclusion must not treat it as a functional pass.",
+        text(language, "- 按顺序执行各个 surface；禁止只挑单一入口。", "- Execute surfaces in order; do not cherry-pick a single entry point."),
+        text(language, "- 每个 surface 都必须在 `skill-results.md` 中生成一个结构化区块。", "- Every surface must produce one structured block in `skill-results.md`."),
+        text(language, "- 每个区块都必须包含 `surface-id`、`execution-level`、`status`、`evidence` 和 `notes`。", "- Each block must include `surface-id`, `execution-level`, `status`, `evidence`, and `notes`."),
+        text(language, "- 只拿到 trace 或 probe-only 证据的 surface，最终结论不得当成功能通过。", "- If a surface only reached trace or probe-only evidence, the final conclusion must not treat it as a functional pass."),
         "",
-        "## Ordered Surface Worklist",
+        text(language, "## 有序 Surface 工单", "## Ordered Surface Worklist"),
         "",
     ]
     for surface in surfaces:
-        lines.append(render_surface(surface))
+        lines.append(render_surface(surface, language))
 
     lines.extend(
         [
-            "## skill-results.md Required Shape",
+            text(language, "## skill-results.md 必备结构", "## skill-results.md Required Shape"),
             "",
             "```text",
             "### SURFACE-XX - <kind> (`<identifier>`)",
             "- surface-id: `SURFACE-XX`",
-            "- execution-level: `live|shim-live|trace`",
-            "- status: `passed|blocked|incomplete`",
-            "- evidence: `<path1>, <path2>`",
-            "- notes: <brief outcome>",
+            f"- {text(language, 'execution-level', 'execution-level')}: `live|shim-live|trace`",
+            f"- {text(language, 'status', 'status')}: `passed|blocked|incomplete`",
+            f"- {text(language, 'evidence', 'evidence')}: `<path1>, <path2>`",
+            f"- {text(language, 'notes', 'notes')}: <{text(language, '简要结论', 'brief outcome')}>",
             "```",
             "",
         ]
@@ -112,6 +117,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--surface-plan", required=True, help="Path to SURFACE-EXECUTION-PLAN.json")
     parser.add_argument("--output-dir", required=True, help="Report root directory")
+    add_output_language_argument(parser)
     return parser.parse_args(argv)
 
 
@@ -133,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
 
     worklist_path = execution_dir / "SKILL-SURFACE-WORKLIST.md"
     coverage_path = execution_dir / "SURFACE-COVERAGE.json"
-    write_text(worklist_path, build_worklist(plan) + "\n")
+    write_text(worklist_path, build_worklist(plan, args.language) + "\n")
     write_text(coverage_path, json.dumps(build_coverage(plan), ensure_ascii=False, indent=2) + "\n")
 
     print(f"OUTPUT_DIR={output_dir}")
