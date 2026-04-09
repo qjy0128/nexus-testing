@@ -9,6 +9,13 @@ import os
 import sys
 from pathlib import Path
 
+from mock_role_runtime import (
+    write_quality_assessor_output,
+    write_report_integrator_output,
+    write_skill_tester_outputs,
+    write_test_designer_outputs,
+)
+
 
 def create_artifact(report_dir: Path, role_id: str, pattern: str) -> str | None:
     if not pattern or pattern.startswith("("):
@@ -50,19 +57,32 @@ def main(argv: list[str] | None = None) -> int:
     created_file = None
     if report_dir:
         report_root = Path(report_dir)
-        missing_raw = os.environ.get("NEXUS_MISSING_DELIVERABLES", "[]")
-        try:
-            missing_deliverables = json.loads(missing_raw)
-        except json.JSONDecodeError:
-            missing_deliverables = []
-        if not isinstance(missing_deliverables, list):
-            missing_deliverables = []
-        for item in missing_deliverables:
-            created = create_artifact(report_root, role_id, str(item))
-            if created and not created_file:
-                created_file = created
-        if not created_file:
-            created_file = create_artifact(report_root, role_id, "TEST-DESIGN.md")
+        if role_id == "quality-assessor":
+            created = write_quality_assessor_output(report_root, "openclaw-demo")
+            created_file = created[0] if created else None
+        elif role_id == "test-designer":
+            created = write_test_designer_outputs(report_root, "openclaw-demo")
+            created_file = created[0] if created else None
+        elif role_id == "skill-tester":
+            created = write_skill_tester_outputs(report_root, "openclaw-demo")
+            created_file = created[0] if created else None
+        elif role_id == "report-integrator":
+            created = write_report_integrator_output(report_root, "openclaw-demo")
+            created_file = created[0] if created else None
+        else:
+            missing_raw = os.environ.get("NEXUS_MISSING_DELIVERABLES", "[]")
+            try:
+                missing_deliverables = json.loads(missing_raw)
+            except json.JSONDecodeError:
+                missing_deliverables = []
+            if not isinstance(missing_deliverables, list):
+                missing_deliverables = []
+            for item in missing_deliverables:
+                created = create_artifact(report_root, role_id, str(item))
+                if created and not created_file:
+                    created_file = created
+            if not created_file:
+                created_file = create_artifact(report_root, role_id, "TEST-DESIGN.md")
 
     payload = {
         "status": "ok",

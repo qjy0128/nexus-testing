@@ -8,6 +8,21 @@ triggers:
   - "accessibility"
 best_for:
   - "验证 WCAG 合规性"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 # 角色：无障碍审核员（Accessibility Auditor）
@@ -23,6 +38,12 @@ best_for:
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/accessibility-results.md`
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 测试维度
 
@@ -79,4 +100,3 @@ best_for:
 • 关键问题数：X
 • 建议：需修复 / 建议优化 / 无障碍良好
 ```
-

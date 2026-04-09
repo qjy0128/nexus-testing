@@ -34,7 +34,14 @@ def run_json(script: Path, *args: str) -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
-def write_runtime_config(path: Path, fail_role: str | None = None) -> None:
+def write_runtime_config(
+    path: Path,
+    fail_role: str | None = None,
+    takeover_role: str | None = None,
+    fallback_role: str | None = None,
+    blocked_role: str | None = None,
+    weak_role: str | None = None,
+) -> None:
     command = [
         sys.executable,
         str(MOCK_RUNTIME),
@@ -51,15 +58,45 @@ def write_runtime_config(path: Path, fail_role: str | None = None) -> None:
             "timeoutSeconds": 30,
         }
     }
+    roles: dict[str, object] = {}
     if fail_role:
-        config["roles"] = {
-            fail_role: {
-                "name": "mock-runtime",
-                "command": command + ["--fail-role", fail_role],
+        role_config: dict[str, object] = {
+            "name": "mock-runtime",
+            "command": command + ["--fail-role", fail_role],
+            "cwd": "{workspace_root}",
+            "timeoutSeconds": 30,
+        }
+        if fallback_role and fallback_role == fail_role:
+            role_config["fallback"] = {
+                "name": "mock-runtime-fallback",
+                "command": command,
                 "cwd": "{workspace_root}",
                 "timeoutSeconds": 30,
             }
+        roles[fail_role] = role_config
+    if takeover_role:
+        roles[takeover_role] = {
+            "name": "mock-runtime",
+            "command": command + ["--takeover-role", takeover_role],
+            "cwd": "{workspace_root}",
+            "timeoutSeconds": 30,
         }
+    if blocked_role:
+        roles[blocked_role] = {
+            "name": "mock-runtime",
+            "command": command + ["--blocked-role", blocked_role],
+            "cwd": "{workspace_root}",
+            "timeoutSeconds": 30,
+        }
+    if weak_role:
+        roles[weak_role] = {
+            "name": "mock-runtime",
+            "command": command + ["--weak-role", weak_role],
+            "cwd": "{workspace_root}",
+            "timeoutSeconds": 30,
+        }
+    if roles:
+        config["roles"] = roles
     write_text(path, json.dumps(config, ensure_ascii=False, indent=2) + "\n")
 
 
@@ -179,6 +216,141 @@ def test_missing_runtime_command_marks_failure() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_invalid_runtime_config_rejected_before_execution() -> None:
+    temp_root = make_temp_root("runtime-bridge-invalid-config-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_text(
+            config_path,
+            json.dumps(
+                {
+                    "name": "broken-runtime",
+                    "default": {
+                        "command": [],
+                        "cwd": "{workspace_root}",
+                        "timeoutSeconds": 30,
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+        )
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        proc = subprocess.run(
+            [sys.executable, str(BRIDGE), "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path)],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert_equal(proc.returncode == 0, False, "invalid config should fail fast")
+        assert_equal("ERROR: invalid runtime config:" in proc.stderr, True, "invalid config error surfaced")
+        print("  [PASS] test_invalid_runtime_config_rejected_before_execution")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_role_takeover_stops_runtime_bridge() -> None:
+    temp_root = make_temp_root("runtime-bridge-takeover-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, takeover_role="environment-checker")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        takeover = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(takeover["status"], "takeover-required", "takeover bridge status")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-0" / "environment-checker.state.json"))
+        assert_equal(state["status"], "takeover-required", "takeover role state file")
+        assert_equal((report_dir / "RUNS" / "stage-0" / "environment-checker.takeover.json").exists(), True, "takeover file exists")
+        print("  [PASS] test_role_takeover_stops_runtime_bridge")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_fallback_runtime_recovers_failed_role() -> None:
+    temp_root = make_temp_root("runtime-bridge-fallback-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, fail_role="environment-checker", fallback_role="environment-checker")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        recovered = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(recovered["status"], "stage-run-finished", "fallback recovers bridge status")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-0" / "environment-checker.state.json"))
+        assert_equal(state["status"], "completed", "fallback role state file")
+        print("  [PASS] test_fallback_runtime_recovers_failed_role")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_blocked_skill_tester_becomes_takeover_required() -> None:
+    temp_root = make_temp_root("runtime-bridge-blocked-skill-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, blocked_role="skill-tester")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        first = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(first["status"], "await-approval", "first gate status")
+        approve_stage(report_dir, "stage-0")
+        second = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(second["status"], "await-approval", "second gate status")
+        approve_stage(report_dir, "stage-2")
+        third = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(third["status"], "await-approval", "third gate status")
+        approve_stage(report_dir, "stage-4")
+        final = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(final["status"], "takeover-required", "blocked skill tester becomes takeover")
+        print("  [PASS] test_blocked_skill_tester_becomes_takeover_required")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_blocked_environment_checker_remains_failure() -> None:
+    temp_root = make_temp_root("runtime-bridge-blocked-env-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, blocked_role="environment-checker")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        final = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(final["status"], "role-failed", "blocked environment checker stays failed")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-0" / "environment-checker.state.json"))
+        assert_equal(state["status"], "failed", "blocked environment checker state file")
+        print("  [PASS] test_blocked_environment_checker_remains_failure")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_quality_assessor_missing_required_sections_fails() -> None:
+    temp_root = make_temp_root("runtime-bridge-weak-quality-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, weak_role="quality-assessor")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        first = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(first["status"], "await-approval", "first gate status")
+        approve_stage(report_dir, "stage-0")
+        second = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(second["status"], "role-failed", "weak quality assessor should fail validation")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-2" / "quality-assessor.state.json"))
+        assert_equal(state["status"], "failed", "weak quality assessor state file")
+        assert_equal("missing required sections" in str(state["note"]), True, "validator note recorded")
+        print("  [PASS] test_quality_assessor_missing_required_sections_fails")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -194,6 +366,12 @@ def main() -> int:
         test_role_failure_stops_runtime_bridge,
         test_missing_stage_outputs_trigger_rerun,
         test_missing_runtime_command_marks_failure,
+        test_invalid_runtime_config_rejected_before_execution,
+        test_role_takeover_stops_runtime_bridge,
+        test_fallback_runtime_recovers_failed_role,
+        test_blocked_skill_tester_becomes_takeover_required,
+        test_blocked_environment_checker_remains_failure,
+        test_quality_assessor_missing_required_sections_fails,
     ):
         try:
             test()

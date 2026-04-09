@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import threading
 import time
 from pathlib import Path
 
+from dispatch_payload_schema import validate_bundle_files, validate_bundle_manifest, validate_dispatch_payload_list
 from generate_stage_subagent_plan import build_plan, normalize_flow, normalize_mode
+from role_metadata import parse_role_doc as load_role_doc_metadata
 from sandbox_skill_invoke.core import read_text, write_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,66 +83,8 @@ def has_stage_complete_event(stage_log: list[object], stage_id: str) -> bool:
     return False
 
 
-FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
-SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
-
-
-def parse_frontmatter(text: str) -> dict[str, object]:
-    match = FRONTMATTER_RE.match(text)
-    if not match:
-        return {}
-    lines = match.group(1).splitlines()
-    result: dict[str, object] = {}
-    current_list_key: str | None = None
-    for raw_line in lines:
-        line = raw_line.rstrip()
-        if not line.strip():
-            continue
-        if line.startswith("  - ") and current_list_key:
-            result.setdefault(current_list_key, [])
-            casted = result[current_list_key]
-            if isinstance(casted, list):
-                casted.append(line[4:].strip().strip('"'))
-            continue
-        current_list_key = None
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-        if not value:
-            result[key] = []
-            current_list_key = key
-        else:
-            result[key] = value.strip('"')
-    return result
-
-
-def section_lines(text: str, heading: str) -> list[str]:
-    markers = list(SECTION_RE.finditer(text))
-    for index, marker in enumerate(markers):
-        if marker.group(1).strip() != heading:
-            continue
-        start = marker.end()
-        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
-        body = text[start:end]
-        return [line.strip()[2:].strip() for line in body.splitlines() if line.strip().startswith("- ")]
-    return []
-
-
 def parse_role_doc(role_file: Path) -> dict[str, object]:
-    text = read_text(role_file)
-    frontmatter = parse_frontmatter(text)
-    return {
-        "name": frontmatter.get("name"),
-        "type": frontmatter.get("type"),
-        "description": frontmatter.get("description"),
-        "bestFor": frontmatter.get("best_for", []),
-        "inputSources": section_lines(text, "输入来源"),
-        "inputs": section_lines(text, "输入"),
-        "outputs": section_lines(text, "输出"),
-        "consumers": section_lines(text, "下游消费者"),
-    }
+    return load_role_doc_metadata(role_file)
 
 
 def next_action(
@@ -238,6 +181,15 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
                 "inputs": role_meta.get("inputs", []),
                 "outputs": role_meta.get("outputs", []),
                 "consumers": role_meta.get("consumers", []),
+                "responsibilities": role_meta.get("responsibilities", []),
+                "executionRules": role_meta.get("executionRules", []),
+                "evidenceRequirements": role_meta.get("evidenceRequirements", []),
+                "antiPatterns": role_meta.get("antiPatterns", []),
+                "hardBoundaries": role_meta.get("hardBoundaries", []),
+                "minimumOutput": role_meta.get("minimumOutput", []),
+                "validateMarkdownStructure": role_meta.get("validateMarkdownStructure", False),
+                "minimumOutputAliases": role_meta.get("minimumOutputAliases", {}),
+                "mainAgentTakeoverPolicy": role_meta.get("mainAgentTakeoverPolicy", {}),
                 "description": role_meta.get("description"),
                 "bestFor": role_meta.get("bestFor", []),
                 "launchPrompt": (
@@ -251,7 +203,7 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
         )
 
     result = dict(action)
-    result["dispatchPayloads"] = payloads
+    result["dispatchPayloads"] = validate_dispatch_payload_list(payloads)
     return result
 
 
@@ -287,6 +239,44 @@ def render_dispatch_prompt(payload: dict[str, object]) -> str:
     consumers = list(payload.get("consumers", []))
     if consumers:
         lines.extend(["", "## Downstream Consumers", ""] + [f"- {item}" for item in consumers])
+    responsibilities = list(payload.get("responsibilities", []))
+    if responsibilities:
+        lines.extend(["", "## Responsibilities", ""] + [f"- {item}" for item in responsibilities])
+    hard_boundaries = list(payload.get("hardBoundaries", []))
+    if hard_boundaries:
+        lines.extend(["", "## Hard Boundaries", ""] + [f"- {item}" for item in hard_boundaries])
+    execution_rules = list(payload.get("executionRules", []))
+    if execution_rules:
+        lines.extend(["", "## Execution Rules", ""] + [f"- {item}" for item in execution_rules])
+    evidence_requirements = list(payload.get("evidenceRequirements", []))
+    if evidence_requirements:
+        lines.extend(["", "## Evidence Requirements", ""] + [f"- {item}" for item in evidence_requirements])
+    anti_patterns = list(payload.get("antiPatterns", []))
+    if anti_patterns:
+        lines.extend(["", "## Anti-Patterns", ""] + [f"- {item}" for item in anti_patterns])
+    minimum_output = list(payload.get("minimumOutput", []))
+    if minimum_output:
+        lines.extend(["", "## Minimum Output Structure", ""] + [f"- {item}" for item in minimum_output])
+    if payload.get("validateMarkdownStructure"):
+        lines.extend(["", "## Output Validation", "", "- markdown-headings"])
+    minimum_output_aliases = payload.get("minimumOutputAliases", {})
+    if isinstance(minimum_output_aliases, dict) and minimum_output_aliases:
+        lines.extend(
+            ["", "## Minimum Output Aliases", ""]
+            + [f"- {key} => {value}" for key, value in minimum_output_aliases.items()]
+        )
+    takeover_policy = payload.get("mainAgentTakeoverPolicy", {})
+    if isinstance(takeover_policy, dict) and takeover_policy:
+        lines.extend(["", "## Main Agent Takeover Policy", ""])
+        for key in ("enabled", "statuses", "patterns", "onProcessFailure"):
+            if key not in takeover_policy:
+                continue
+            value = takeover_policy[key]
+            if isinstance(value, list):
+                rendered = ", ".join(str(item) for item in value)
+            else:
+                rendered = str(value)
+            lines.append(f"- {key}: {rendered}")
     lines.extend(["", "## Launch Prompt", "", str(payload["launchPrompt"]), ""])
     return "\n".join(lines)
 
@@ -310,7 +300,7 @@ def bundle_dispatch(report_dir: Path, payload_result: dict[str, object]) -> dict
         "roles": [],
     }
 
-    dispatch_payloads_list = list(payload_result.get("dispatchPayloads", []))
+    dispatch_payloads_list = validate_dispatch_payload_list(payload_result.get("dispatchPayloads", []))
     for payload in dispatch_payloads_list:
         role_id = str(payload["roleId"])
         order = int(payload["order"])
@@ -329,7 +319,9 @@ def bundle_dispatch(report_dir: Path, payload_result: dict[str, object]) -> dict
         )
 
     manifest_path = bundle_root / "manifest.json"
-    save_json(manifest_path, manifest)
+    validated_manifest = validate_bundle_manifest(manifest)
+    validate_bundle_files(bundle_root, validated_manifest, dispatch_payloads_list)
+    save_json(manifest_path, validated_manifest)
     result = dict(payload_result)
     result["bundleDir"] = str(bundle_root)
     result["manifestFile"] = str(manifest_path)

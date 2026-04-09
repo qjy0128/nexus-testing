@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 
+from runtime_config_schema import validate_runtime_config
 from sandbox_skill_invoke.core import write_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         raise SystemExit(f"ERROR: unsupported preset {args.preset}")
+
+    config = validate_runtime_config(config)
 
     output_path = Path(args.output_file).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)

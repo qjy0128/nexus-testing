@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import nexus_stage_executor as executor_module
 from test_helpers import assert_equal, make_temp_root, read_text, write_text
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -145,6 +146,141 @@ def test_bundle_dispatch() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_parse_role_doc_minimum_output_structure() -> None:
+    roles_dir = PROJECT_DIR / "roles"
+    expectations = {
+        "quality-assessor.md": {
+            "minimumOutput": [
+                "规格完整性",
+                "可测试性",
+                "主要风险",
+                "测试设计建议",
+                "结论与是否需要重新进入前一阶段",
+            ],
+            "aliases": {
+                "结论与是否需要重新进入前一阶段": "结论",
+            },
+        },
+        "test-designer.md": {
+            "minimumOutput": [
+                "测试策略",
+                "测试用例集",
+                "逻辑分支覆盖矩阵",
+                "能力 × 维度覆盖矩阵（Flow A）",
+                "测试数据方案（正常/异常/边界）",
+                "测试夹具方案（如适用）",
+                "风险与备注",
+            ],
+            "aliases": {
+                "测试用例集": "测试用例",
+                "风险与备注": "风险",
+            },
+        },
+        "report-integrator.md": {
+            "minimumOutput": [
+                "测试概览",
+                "各维度结果",
+                "缺陷摘要",
+                "未覆盖范围与残余风险",
+                "发布建议",
+            ],
+            "aliases": {
+                "未覆盖范围与残余风险": "残余风险",
+            },
+        },
+    }
+    for filename, expected in expectations.items():
+        parsed = executor_module.parse_role_doc(roles_dir / filename)
+        assert_equal(parsed["minimumOutput"], expected["minimumOutput"], f"{filename} minimumOutput")
+        assert_equal(parsed["validateMarkdownStructure"], True, f"{filename} validateMarkdownStructure")
+        assert_equal(parsed["minimumOutputAliases"], expected["aliases"], f"{filename} minimumOutputAliases")
+    print("  [PASS] test_parse_role_doc_minimum_output_structure")
+
+
+def test_parse_role_doc_takeover_policy() -> None:
+    parsed = executor_module.parse_role_doc(PROJECT_DIR / "roles" / "skill-tester.md")
+    assert_equal(parsed["mainAgentTakeoverPolicy"], {
+        "enabled": True,
+        "statuses": ["blocked"],
+        "patterns": [
+            "blocked-no-openclaw",
+            "blocked-live-telemetry",
+            "blocked-no-real-exec",
+            "blocked-no-adapter",
+            "runtime unavailable",
+            "gateway",
+            "webreader",
+            "mcp__",
+            "environment limitation",
+            "requires main-agent takeover",
+        ],
+        "onProcessFailure": False,
+    }, "skill-tester takeover policy")
+    print("  [PASS] test_parse_role_doc_takeover_policy")
+
+
+def test_frontmatter_metadata_overrides_sections() -> None:
+    temp_root = make_temp_root("stage-exec-role-frontmatter-")
+    try:
+        role_file = temp_root / "role.md"
+        write_text(
+            role_file,
+            "\n".join(
+                [
+                    "---",
+                    "name: temp-role",
+                    "type: executor",
+                    "description: temp",
+                    "output_validation:",
+                    '  - "markdown-headings"',
+                    "minimum_output:",
+                    '  - "Frontmatter A"',
+                    '  - "Frontmatter B"',
+                    "minimum_output_aliases:",
+                    '  - "Frontmatter B => Alias B"',
+                    "takeover_enabled: true",
+                    "takeover_statuses:",
+                    '  - "blocked"',
+                    "takeover_patterns:",
+                    '  - "gateway"',
+                    "takeover_on_process_failure: false",
+                    "---",
+                    "",
+                    "## 最低输出结构",
+                    "```text",
+                    "## Section Only",
+                    "```",
+                    "",
+                    "## 输出结构校验",
+                    "- markdown-headings",
+                    "",
+                    "## 输出结构校验别名",
+                    "- Section Only => Section Alias",
+                    "",
+                    "## 主Agent接管策略",
+                    "- enabled: false",
+                    "- statuses: failed",
+                    "- patterns: runtime unavailable",
+                    "- onProcessFailure: true",
+                    "",
+                ]
+            )
+            + "\n",
+        )
+        parsed = executor_module.parse_role_doc(role_file)
+        assert_equal(parsed["minimumOutput"], ["Frontmatter A", "Frontmatter B"], "frontmatter minimumOutput wins")
+        assert_equal(parsed["minimumOutputAliases"], {"Frontmatter B": "Alias B"}, "frontmatter aliases win")
+        assert_equal(parsed["mainAgentTakeoverPolicy"], {
+            "enabled": True,
+            "statuses": ["blocked"],
+            "patterns": ["gateway"],
+            "onProcessFailure": False,
+        }, "frontmatter takeover policy wins")
+        print("  [PASS] test_frontmatter_metadata_overrides_sections")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -162,6 +298,9 @@ def main() -> int:
         test_approval_stage_must_match_current_gate,
         test_dispatch_payloads,
         test_bundle_dispatch,
+        test_parse_role_doc_minimum_output_structure,
+        test_parse_role_doc_takeover_policy,
+        test_frontmatter_metadata_overrides_sections,
     ):
         try:
             test()

@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from dispatch_payload_schema import validate_bundle_manifest, validate_dispatch_payload_list
 from nexus_dispatch_runner import (
     complete_role,
     fail_role,
@@ -20,11 +22,14 @@ from nexus_dispatch_runner import (
     runner_root,
     stage_run_status,
     start_role,
+    takeover_role,
 )
 from nexus_stage_executor import resolve_path
+from runtime_config_schema import validate_runtime_config
 from sandbox_skill_invoke.core import read_text, write_text
 
 ROOT = Path(__file__).resolve().parents[1]
+FLOW_A_SKILL_VALIDATOR = ROOT / "scripts" / "validate_flow_a_skill_results.py"
 
 
 def load_runtime_config(path_value: str | None) -> dict[str, object]:
@@ -34,9 +39,10 @@ def load_runtime_config(path_value: str | None) -> dict[str, object]:
     if not path.exists():
         raise SystemExit(f"ERROR: runtime config does not exist: {path}")
     payload = json.loads(read_text(path))
-    if not isinstance(payload, dict):
-        raise SystemExit("ERROR: runtime config must be a JSON object")
-    return payload
+    try:
+        return validate_runtime_config(payload)
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: invalid runtime config: {exc}") from exc
 
 
 class SafeDict(dict[str, str]):
@@ -57,9 +63,10 @@ def render_list(values: list[object], context: dict[str, str]) -> list[str]:
 
 def role_bundle_info(bundle: dict[str, object], role_id: str) -> dict[str, object]:
     manifest_file = Path(str(bundle["manifestFile"]))
-    bundle_manifest = load_json(manifest_file, {})
-    if not isinstance(bundle_manifest, dict):
-        raise SystemExit("ERROR: invalid bundle manifest")
+    try:
+        bundle_manifest = validate_bundle_manifest(load_json(manifest_file, {}))
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: invalid bundle manifest: {exc}") from exc
     for item in bundle_manifest.get("roles", []):
         if isinstance(item, dict) and str(item.get("roleId")) == role_id:
             return item
@@ -101,27 +108,62 @@ def runtime_spec(config: dict[str, object], role_id: str) -> dict[str, object]:
     raise SystemExit(f"ERROR: runtime config missing default command for role {role_id}")
 
 
-def parse_role_stdout(stdout: str) -> tuple[str | None, str | None]:
+def parse_role_stdout(stdout: str) -> dict[str, object]:
     text = stdout.strip()
     if not text:
-        return None, None
+        return {
+            "resultFile": None,
+            "note": None,
+            "status": None,
+            "needsMainAgentTakeover": False,
+            "blockers": [],
+            "rawText": "",
+        }
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        return None, text
+        return {
+            "resultFile": None,
+            "note": text,
+            "status": None,
+            "needsMainAgentTakeover": False,
+            "blockers": [],
+            "rawText": text,
+        }
     if not isinstance(parsed, dict):
-        return None, text
+        return {
+            "resultFile": None,
+            "note": text,
+            "status": None,
+            "needsMainAgentTakeover": False,
+            "blockers": [],
+            "rawText": text,
+        }
     result_file = parsed.get("resultFile")
-    note = parsed.get("note")
-    return (str(result_file) if result_file else None), (str(note) if note else None)
+    blockers = parsed.get("blockers", [])
+    return {
+        "resultFile": str(result_file) if result_file else None,
+        "note": str(parsed.get("note")) if parsed.get("note") else None,
+        "status": str(parsed.get("status")) if parsed.get("status") else None,
+        "needsMainAgentTakeover": bool(parsed.get("needsMainAgentTakeover", False)),
+        "blockers": [str(item) for item in blockers] if isinstance(blockers, list) else [],
+        "rawText": text,
+    }
 
 
 def log_file_prefix(report_dir: Path, stage_id: str, role_id: str) -> Path:
     return runner_root(report_dir, stage_id) / role_id
 
 
-def save_process_logs(report_dir: Path, stage_id: str, role_id: str, stdout: str, stderr: str) -> tuple[str, str]:
-    prefix = log_file_prefix(report_dir, stage_id, role_id)
+def save_process_logs(
+    report_dir: Path,
+    stage_id: str,
+    role_id: str,
+    stdout: str,
+    stderr: str,
+    label: str = "runtime",
+) -> tuple[str, str]:
+    prefix = runner_root(report_dir, stage_id) / f"{role_id}.{label}"
     stdout_path = prefix.with_suffix(".stdout.log")
     stderr_path = prefix.with_suffix(".stderr.log")
     write_text(stdout_path, stdout)
@@ -129,35 +171,51 @@ def save_process_logs(report_dir: Path, stage_id: str, role_id: str, stdout: str
     return str(stdout_path), str(stderr_path)
 
 
-def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str, object], config: dict[str, object]) -> dict[str, object]:
-    role_id = str(payload["roleId"])
-    stage_id = str(payload["stageId"])
-    context = payload_context(report_dir, bundle, payload)
-    spec = runtime_spec(config, role_id)
-    command_value = spec.get("command")
+def render_env_map(env_value: object, context: dict[str, str]) -> dict[str, str] | None:
+    if not isinstance(env_value, dict):
+        return None
+    env = dict(os.environ)
+    env.update({key: render_value(str(value), context) for key, value in env_value.items()})
+    return env
+
+
+def resolved_runtime_spec(
+    runtime_name: str,
+    raw_spec: dict[str, object],
+    context: dict[str, str],
+    fallback_to_root: str,
+) -> dict[str, object]:
+    command_value = raw_spec.get("command")
     if not isinstance(command_value, list) or not command_value:
-        raise SystemExit(f"ERROR: runtime config for role {role_id} must provide a non-empty command list")
-    command = render_list(command_value, context)
+        raise SystemExit(f"ERROR: runtime config for {runtime_name} must provide a non-empty command list")
+    cwd_value = raw_spec.get("cwd")
+    timeout_value = raw_spec.get("timeoutSeconds", 900)
+    return {
+        "name": str(raw_spec.get("name") or runtime_name),
+        "command": render_list(command_value, context),
+        "cwd": render_value(str(cwd_value), context) if cwd_value else fallback_to_root,
+        "env": render_env_map(raw_spec.get("env"), context),
+        "timeoutSeconds": int(timeout_value),
+    }
 
-    cwd_value = spec.get("cwd")
-    cwd = render_value(str(cwd_value), context) if cwd_value else str(ROOT)
 
-    env = None
-    env_value = spec.get("env")
-    if isinstance(env_value, dict):
-        env = dict(os.environ)
-        env.update({key: render_value(str(value), context) for key, value in env_value.items()})
-
-    timeout_value = spec.get("timeoutSeconds", config.get("timeoutSeconds", 900))
-    timeout_seconds = int(timeout_value)
-    runtime_name = str(spec.get("name") or config.get("name") or "external-runtime")
-
-    start_role(report_dir, stage_id, role_id, runtime_name)
+def invoke_runtime_command(
+    report_dir: Path,
+    stage_id: str,
+    role_id: str,
+    spec: dict[str, object],
+    *,
+    label: str,
+) -> dict[str, object]:
+    command = list(spec["command"])
+    cwd = str(spec["cwd"])
+    env = spec.get("env")
+    timeout_seconds = int(spec["timeoutSeconds"])
     try:
         proc = subprocess.run(
             command,
             cwd=cwd,
-            env=env,
+            env=env if isinstance(env, dict) else None,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -165,38 +223,388 @@ def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str,
             timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired:
-        stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, "", f"timeout after {timeout_seconds} seconds\n")
-        failed = fail_role(report_dir, stage_id, role_id, f"timeout after {timeout_seconds} seconds; logs={stdout_path},{stderr_path}")
-        return {"roleId": role_id, "status": "failed", "detail": failed}
+        stdout_path, stderr_path = save_process_logs(
+            report_dir,
+            stage_id,
+            role_id,
+            "",
+            f"timeout after {timeout_seconds} seconds\n",
+            label,
+        )
+        return {
+            "ok": False,
+            "returnCode": None,
+            "stdout": "",
+            "stderr": "",
+            "stdoutPath": stdout_path,
+            "stderrPath": stderr_path,
+            "note": f"timeout after {timeout_seconds} seconds; logs={stdout_path},{stderr_path}",
+            "runtimeName": spec["name"],
+            "command": command,
+        }
     except Exception as exc:
-        stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, "", f"{type(exc).__name__}: {exc}\n")
+        stdout_path, stderr_path = save_process_logs(
+            report_dir,
+            stage_id,
+            role_id,
+            "",
+            f"{type(exc).__name__}: {exc}\n",
+            label,
+        )
+        return {
+            "ok": False,
+            "returnCode": None,
+            "stdout": "",
+            "stderr": "",
+            "stdoutPath": stdout_path,
+            "stderrPath": stderr_path,
+            "note": f"runtime exception {type(exc).__name__}: {exc}; logs={stdout_path},{stderr_path}",
+            "runtimeName": spec["name"],
+            "command": command,
+        }
+
+    stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, proc.stdout, proc.stderr, label)
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "returnCode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "stdoutPath": stdout_path,
+            "stderrPath": stderr_path,
+            "note": f"exit={proc.returncode}; logs={stdout_path},{stderr_path}",
+            "runtimeName": spec["name"],
+            "command": command,
+        }
+    return {
+        "ok": True,
+        "returnCode": proc.returncode,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+        "stdoutPath": stdout_path,
+        "stderrPath": stderr_path,
+        "note": f"logs={stdout_path},{stderr_path}",
+        "runtimeName": spec["name"],
+        "command": command,
+    }
+
+
+def merge_takeover_policy(base: dict[str, object], overrides: object) -> dict[str, object]:
+    result = {
+        "enabled": bool(base.get("enabled", False)),
+        "statuses": [str(item).lower() for item in base.get("statuses", []) if str(item).strip()],
+        "patterns": [str(item).lower() for item in base.get("patterns", []) if str(item).strip()],
+        "onProcessFailure": bool(base.get("onProcessFailure", False)),
+    }
+    if not isinstance(overrides, dict):
+        return result
+    if "enabled" in overrides:
+        result["enabled"] = bool(overrides.get("enabled"))
+    if isinstance(overrides.get("statuses"), list):
+        result["statuses"] = [str(item).lower() for item in overrides.get("statuses", []) if str(item).strip()]
+    if isinstance(overrides.get("patterns"), list):
+        result["patterns"] = [str(item).lower() for item in overrides.get("patterns", []) if str(item).strip()]
+    if "onProcessFailure" in overrides:
+        result["onProcessFailure"] = bool(overrides.get("onProcessFailure"))
+    return result
+
+
+def resolved_takeover_policy(payload: dict[str, object], config: dict[str, object], spec: dict[str, object]) -> dict[str, object]:
+    policy = merge_takeover_policy(payload.get("mainAgentTakeoverPolicy", {}), config.get("mainAgentTakeoverPolicy"))
+    policy = merge_takeover_policy(policy, spec.get("mainAgentTakeoverPolicy"))
+    if isinstance(config.get("mainAgentTakeoverPatterns"), list):
+        policy["patterns"] = list(policy.get("patterns", [])) + [
+            str(item).lower() for item in config.get("mainAgentTakeoverPatterns", []) if str(item).strip()
+        ]
+    if isinstance(spec.get("mainAgentTakeoverPatterns"), list):
+        policy["patterns"] = list(policy.get("patterns", [])) + [
+            str(item).lower() for item in spec.get("mainAgentTakeoverPatterns", []) if str(item).strip()
+        ]
+    policy["patterns"] = list(dict.fromkeys(str(item) for item in policy.get("patterns", [])))
+    policy["statuses"] = list(dict.fromkeys(str(item) for item in policy.get("statuses", [])))
+    return policy
+
+
+def should_request_takeover(
+    payload: dict[str, object],
+    config: dict[str, object],
+    spec: dict[str, object],
+    parsed_stdout: dict[str, object],
+    attempt: dict[str, object],
+) -> bool:
+    if bool(parsed_stdout.get("needsMainAgentTakeover")):
+        return True
+    if bool(spec.get("mainAgentTakeover")) or bool(config.get("mainAgentTakeover")):
+        return True
+    policy = resolved_takeover_policy(payload, config, spec)
+    if not bool(policy.get("enabled", False)):
+        return False
+    parsed_status = str(parsed_stdout.get("status") or "").lower()
+    statuses = {str(item).lower() for item in policy.get("statuses", []) if str(item).strip()}
+    patterns = tuple(str(item).lower() for item in policy.get("patterns", []) if str(item).strip())
+    if not attempt.get("ok") and not bool(policy.get("onProcessFailure", False)):
+        return False
+    if statuses and parsed_status not in statuses:
+        return False
+    haystack = "\n".join(
+        str(item or "")
+        for item in (
+            parsed_stdout.get("note"),
+            parsed_stdout.get("status"),
+            " ".join(str(item) for item in parsed_stdout.get("blockers", [])),
+            attempt.get("note"),
+            attempt.get("stdout"),
+            attempt.get("stderr"),
+        )
+    ).lower()
+    return any(pattern in haystack for pattern in patterns)
+
+
+def write_takeover_file(
+    report_dir: Path,
+    bundle: dict[str, object],
+    payload: dict[str, object],
+    context: dict[str, str],
+    parsed_stdout: dict[str, object],
+    attempts: list[dict[str, object]],
+    reason: str,
+) -> Path:
+    stage_id = str(payload["stageId"])
+    role_id = str(payload["roleId"])
+    takeover_path = runner_root(report_dir, stage_id) / f"{role_id}.takeover.json"
+    attempt_rows = []
+    for attempt in attempts:
+        attempt_rows.append(
+            {
+                "runtimeName": attempt.get("runtimeName"),
+                "command": attempt.get("command"),
+                "returnCode": attempt.get("returnCode"),
+                "stdoutLog": attempt.get("stdoutPath"),
+                "stderrLog": attempt.get("stderrPath"),
+                "note": attempt.get("note"),
+            }
+        )
+    payload_data = {
+        "status": "takeover-required",
+        "stageId": stage_id,
+        "stageLabel": payload.get("stageLabel"),
+        "stageName": payload.get("stageName"),
+        "roleId": role_id,
+        "roleFile": payload.get("roleFile"),
+        "reportDir": str(report_dir),
+        "missingDeliverables": payload.get("missingDeliverables", []),
+        "reason": reason,
+        "parsedStdout": {
+            "status": parsed_stdout.get("status"),
+            "note": parsed_stdout.get("note"),
+            "blockers": parsed_stdout.get("blockers", []),
+        },
+        "attempts": attempt_rows,
+        "promptFile": context.get("prompt_file"),
+        "payloadFile": context.get("payload_file"),
+        "bundleManifest": context.get("manifest_file"),
+        "instruction": "Main agent should take over this role in the current host session and continue writing the missing deliverables in the report directory.",
+    }
+    write_text(takeover_path, json.dumps(payload_data, ensure_ascii=False, indent=2) + "\n")
+    return takeover_path
+
+
+def normalize_heading_marker(text: str) -> str:
+    normalized = str(text).strip()
+    normalized = re.sub(r"^[#\s]+", "", normalized)
+    normalized = re.sub(r"[（(].*?[）)]", "", normalized)
+    normalized = re.sub(r"^[0-9一二三四五六七八九十百千]+[、.．\s]*", "", normalized)
+    normalized = re.sub(r"\s+", "", normalized)
+    return normalized
+
+
+def markdown_paths_to_validate(report_dir: Path, payload: dict[str, object]) -> list[Path]:
+    paths: list[Path] = []
+    for item in payload.get("missingDeliverables", []):
+        relative = str(item).strip()
+        if not relative.endswith(".md"):
+            continue
+        path = report_dir / relative
+        if path.exists():
+            paths.append(path)
+    return paths
+
+
+def validate_markdown_structure(report_dir: Path, payload: dict[str, object]) -> str | None:
+    if not bool(payload.get("validateMarkdownStructure", False)):
+        return None
+    required_headings = [str(item).strip() for item in payload.get("minimumOutput", []) if str(item).strip()]
+    if not required_headings:
+        return None
+    aliases = payload.get("minimumOutputAliases", {})
+    if not isinstance(aliases, dict):
+        aliases = {}
+    for path in markdown_paths_to_validate(report_dir, payload):
+        content = read_text(path)
+        actual_markers = [normalize_heading_marker(match.group(1)) for match in re.finditer(r"^#{2,6}\s+(.+?)\s*$", content, re.MULTILINE)]
+        missing: list[str] = []
+        for heading in required_headings:
+            marker = normalize_heading_marker(aliases.get(heading, heading))
+            if marker and not any(marker in actual for actual in actual_markers):
+                missing.append(heading)
+        if missing:
+            return f"{path.name} is missing required sections: {', '.join(missing)}"
+    return None
+
+
+def blocking_note(parsed_stdout: dict[str, object], fallback_note: str) -> str:
+    parts: list[str] = []
+    status = str(parsed_stdout.get("status") or "").strip()
+    note = str(parsed_stdout.get("note") or "").strip()
+    blockers = [str(item).strip() for item in parsed_stdout.get("blockers", []) if str(item).strip()]
+    if status:
+        parts.append(f"runtime-status={status}")
+    if note:
+        parts.append(note)
+    if blockers:
+        parts.append("blockers=" + "; ".join(blockers))
+    if not parts:
+        parts.append(fallback_note)
+    return "; ".join(parts)
+
+
+def validate_role_outputs(report_dir: Path, payload: dict[str, object]) -> str | None:
+    role_id = str(payload["roleId"])
+    structure_error = validate_markdown_structure(report_dir, payload)
+    if structure_error:
+        return structure_error
+    if role_id != "skill-tester":
+        return None
+    surface_plan = report_dir / "SURFACE-EXECUTION-PLAN.json"
+    skill_results = report_dir / "TEST-EXECUTION" / "skill-results.md"
+    surface_coverage = report_dir / "TEST-EXECUTION" / "SURFACE-COVERAGE.json"
+    command = [
+        sys.executable,
+        str(FLOW_A_SKILL_VALIDATOR),
+        "--surface-plan",
+        str(surface_plan),
+        "--skill-results",
+        str(skill_results),
+        "--surface-coverage",
+        str(surface_coverage),
+    ]
+    proc = subprocess.run(
+        command,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    stage_id = str(payload["stageId"])
+    role_id = str(payload["roleId"])
+    stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, proc.stdout, proc.stderr, "validator")
+    if proc.returncode == 0:
+        return None
+    summary = proc.stdout.strip().splitlines()[:3]
+    summary_text = " | ".join(summary) if summary else "validator returned non-zero"
+    return f"post-run validator failed: {summary_text}; logs={stdout_path},{stderr_path}"
+
+
+def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str, object], config: dict[str, object]) -> dict[str, object]:
+    role_id = str(payload["roleId"])
+    stage_id = str(payload["stageId"])
+    context = payload_context(report_dir, bundle, payload)
+    raw_spec = runtime_spec(config, role_id)
+    primary_spec = resolved_runtime_spec(
+        str(raw_spec.get("name") or config.get("name") or "external-runtime"),
+        raw_spec,
+        context,
+        str(ROOT),
+    )
+    fallback_spec: dict[str, object] | None = None
+    raw_fallback = raw_spec.get("fallback")
+    if isinstance(raw_fallback, dict):
+        fallback_spec = resolved_runtime_spec(
+            str(raw_fallback.get("name") or f"{primary_spec['name']}-fallback"),
+            raw_fallback,
+            context,
+            str(primary_spec["cwd"]),
+        )
+
+    start_role(report_dir, stage_id, role_id, str(primary_spec["name"]))
+    attempts: list[dict[str, object]] = []
+
+    primary_attempt = invoke_runtime_command(report_dir, stage_id, role_id, primary_spec, label="runtime")
+    attempts.append(primary_attempt)
+    final_attempt = primary_attempt
+
+    if not primary_attempt["ok"] and fallback_spec is not None:
+        fallback_attempt = invoke_runtime_command(report_dir, stage_id, role_id, fallback_spec, label="fallback")
+        attempts.append(fallback_attempt)
+        final_attempt = fallback_attempt
+
+    parsed_stdout = parse_role_stdout(str(final_attempt.get("stdout", "")))
+    takeover_note = str(parsed_stdout.get("note") or final_attempt.get("note") or "")
+    if should_request_takeover(payload, config, raw_spec, parsed_stdout, final_attempt):
+        takeover_file = write_takeover_file(
+            report_dir,
+            bundle,
+            payload,
+            context,
+            parsed_stdout,
+            attempts,
+            takeover_note or "runtime requested main-agent takeover",
+        )
+        takeover_state = takeover_role(
+            report_dir,
+            stage_id,
+            role_id,
+            takeover_note or "runtime requested main-agent takeover",
+            str(takeover_file),
+        )
+        return {
+            "roleId": role_id,
+            "status": "takeover-required",
+            "detail": takeover_state,
+            "takeoverFile": str(takeover_file),
+        }
+
+    if not final_attempt["ok"]:
+        failed = fail_role(report_dir, stage_id, role_id, str(final_attempt["note"]))
+        return {"roleId": role_id, "status": "failed", "detail": failed}
+
+    parsed_status = str(parsed_stdout.get("status") or "").lower()
+    if parsed_status in {"blocked", "failed"}:
         failed = fail_role(
             report_dir,
             stage_id,
             role_id,
-            f"runtime exception {type(exc).__name__}: {exc}; logs={stdout_path},{stderr_path}",
+            blocking_note(parsed_stdout, str(final_attempt.get("note") or "runtime returned blocked status")),
         )
         return {"roleId": role_id, "status": "failed", "detail": failed}
 
-    stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, proc.stdout, proc.stderr)
-    if proc.returncode != 0:
-        note = f"exit={proc.returncode}; logs={stdout_path},{stderr_path}"
-        failed = fail_role(report_dir, stage_id, role_id, note)
-        return {"roleId": role_id, "status": "failed", "detail": failed}
-
-    result_file, note = parse_role_stdout(proc.stdout)
+    result_file = parsed_stdout.get("resultFile")
     if result_file:
-        result_path = Path(result_file)
+        result_path = Path(str(result_file))
         if not result_path.is_absolute():
             result_file = str((report_dir / result_path).resolve())
-    success_note = note or f"logs={stdout_path},{stderr_path}"
-    completed = complete_role(report_dir, stage_id, role_id, result_file, success_note)
+    validation_error = validate_role_outputs(report_dir, payload)
+    if validation_error:
+        failed = fail_role(report_dir, stage_id, role_id, validation_error)
+        return {"roleId": role_id, "status": "failed", "detail": failed}
+
+    success_note = str(parsed_stdout.get("note") or final_attempt.get("note") or "")
+    completed = complete_role(
+        report_dir,
+        stage_id,
+        role_id,
+        str(result_file) if result_file else None,
+        success_note,
+    )
     return {"roleId": role_id, "status": "completed", "detail": completed}
 
 
 def actionable_payloads(bundle: dict[str, object]) -> list[dict[str, object]]:
-    items = bundle.get("dispatchPayloads", [])
-    return [item for item in items if isinstance(item, dict)]
+    try:
+        return validate_dispatch_payload_list(bundle.get("dispatchPayloads", []))
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: invalid dispatch payloads: {exc}") from exc
 
 
 def run_stage_once(report_dir: Path, config: dict[str, object]) -> dict[str, object]:
@@ -219,6 +627,15 @@ def run_stage_once(report_dir: Path, config: dict[str, object]) -> dict[str, obj
             results.append(execute_role(report_dir, bundle, payload, config))
 
     run_status = stage_run_status(report_dir, str(bundle["stageId"]))
+    takeover_results = [item for item in results if item.get("status") == "takeover-required"]
+    if takeover_results:
+        return {
+            "status": "takeover-required",
+            "stageId": bundle["stageId"],
+            "roleResults": results,
+            "runStatus": run_status,
+            "takeovers": takeover_results,
+        }
     failed_results = [item for item in results if item.get("status") == "failed"]
     if failed_results:
         return {
@@ -244,7 +661,7 @@ def run_until_gate(report_dir: Path, config: dict[str, object], max_cycles: int)
         step = run_stage_once(report_dir, config)
         cycles.append(step)
         status = str(step.get("status"))
-        if status in {"await-approval", "no-go", "complete", "role-failed"}:
+        if status in {"await-approval", "no-go", "complete", "role-failed", "takeover-required"}:
             return {"status": status, "cycles": cycles, "final": step, "gateAction": step}
         if status != "stage-run-finished":
             return {"status": status, "cycles": cycles, "final": step}

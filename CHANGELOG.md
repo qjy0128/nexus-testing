@@ -1,3 +1,23 @@
+### v0.9.40（2026-04-09）
+**runtime takeover + prompt 硬约束**
+
+- 更新：`scripts/nexus_runtime_bridge.py`，角色失败时先支持 per-role `fallback` runtime，再区分普通失败与 `takeover-required`，并为主 agent 生成 `RUNS/<stage>/<role>.takeover.json` 接管工单
+- 更新：`scripts/nexus_runtime_bridge.py`，将 takeover 触发收紧为“角色级内建策略 + 显式 `blocked` 状态/marker”，并把 runtime 返回的 `status=blocked|failed` 视为失败而不是误记为 `completed`
+- 更新：`scripts/nexus_stage_executor.py` 与 `scripts/nexus_runtime_bridge.py`，把角色文档“最低输出结构”里的 markdown 标题解析出来，并对阶段二/三/七关键 markdown 交付物做结构校验
+- 更新：`roles/quality-assessor.md`、`roles/test-designer.md`、`roles/report-integrator.md`、`scripts/nexus_stage_executor.py` 与 `scripts/nexus_runtime_bridge.py`，把 markdown 结构校验开关和标题别名声明下沉到 role 文档，去掉 bridge 内部对关键角色的硬编码名单/别名映射
+- 更新：`roles/skill-tester.md`、`roles/security-tester.md`、`roles/functional-tester.md`、`roles/compatibility-tester.md`、`roles/performance-tester.md`、`roles/accessibility-auditor.md`、`roles/mcp-tester.md`、`roles/reality-checker.md`、`scripts/nexus_stage_executor.py` 与 `scripts/nexus_runtime_bridge.py`，把 `takeover-required` 触发条件下沉到 role 文档 `主Agent接管策略`，去掉 bridge 内部对真实执行角色的硬编码接管白名单
+- 更新：`scripts/nexus_stage_executor.py` 与相关 role 文档 frontmatter，统一引入 `output_validation` / `minimum_output` / `minimum_output_aliases` / `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure` 元数据 schema，并保留对旧章节声明的兼容
+- 新增：`scripts/role_metadata.py` 与 `scripts/test_role_metadata.py`，把 role frontmatter / 章节兼容解析独立成共享模块，降低 `nexus_stage_executor.py` 的职责耦合
+- 更新：`scripts/role_metadata.py` 与 `scripts/test_role_metadata.py`，新增 role frontmatter schema 校验和全角色可解析 smoke，提前拦截无效 `minimum_output_aliases`、不受支持的 `output_validation` 规则以及缺失 `takeover_enabled` 的接管策略配置
+- 新增：`scripts/dispatch_payload_schema.py` 与 `scripts/test_dispatch_payload_schema.py`，把 dispatch payload / bundle manifest 校验抽成共享 schema，并在 `nexus_stage_executor.py`、`nexus_dispatch_runner.py`、`nexus_runtime_bridge.py` 三处接入，提前拦截损坏的 dispatch bundle
+- 新增：`scripts/runtime_config_schema.py` 与 `scripts/test_runtime_config_schema.py`，把 runtime-config 校验抽成共享 schema，并在 `generate_runtime_bridge_config.py` 与 `nexus_runtime_bridge.py` 两端接入，提前拦截坏的 default/role/fallback 配置
+- 更新：`scripts/nexus_dispatch_runner.py` 与 `scripts/test_nexus_dispatch_runner.py`，新增 `takeover-role` 状态流转与 `takeoverRequiredCount` 统计，避免把“需主 agent 接管”混同为普通失败
+- 更新：`scripts/nexus_stage_executor.py`，从角色文档提取职责、执行规则、证据要求、反模式和最低输出结构，并写入 dispatch payload / prompt bundle
+- 更新：`scripts/nexus_claude_role_runtime.py` 与 `scripts/nexus_openclaw_role_runtime.py`，把角色级约束直接提升到 runtime prompt 中，并允许 runtime 显式返回 `needsMainAgentTakeover` / `blockers`
+- 更新：`scripts/nexus_runtime_bridge.py`，对 Flow A `skill-tester` 结果自动执行 `validate_flow_a_skill_results.py`，拦截只产出空壳文件或 case/surface 覆盖不完整的懒惰执行结果
+- 更新：`scripts/fixtures/mock_role_runtime.py` 与 `scripts/test_nexus_runtime_bridge.py`，补齐 fallback、takeover 和阶段五自动校验的 smoke tests
+- 更新：`README.md` 与 `flows/skill-testing.md`，补充 fallback runtime、`takeover-required`、主 agent 接管和阶段五自动校验说明
+
 ### v0.9.39（2026-04-09）
 **阶段角色 subagent 化**
 

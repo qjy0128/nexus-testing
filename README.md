@@ -59,6 +59,7 @@
 - 串行阶段一次只启动当前阶段角色
 - 阶段五和 Flow B 体验阶段按 Flow 模板并行启动多个 subagent
 - `evidence-collector` 只在所有执行角色完成后独立启动
+- subagent 因宿主环境不足无法继续时，runtime bridge 应先尝试该角色的 fallback runtime；仍无法完成时生成 `takeover-required` 工单，由主 agent 在当前 host session 接管
 
 ## 标准执行流程
 
@@ -117,10 +118,14 @@ python scripts/nexus_stage_executor.py init --report-dir <report-dir> --flow <sk
 python scripts/nexus_stage_executor.py next --report-dir <report-dir> # 读取调度计划、交付物和审批状态，给出下一步该启动的阶段角色
 python scripts/nexus_stage_executor.py dispatch --report-dir <report-dir> # 输出当前阶段每个 subagent 的 dispatch payload（角色文件、输入、输出、启动提示）
 python scripts/nexus_stage_executor.py bundle-dispatch --report-dir <report-dir> # 将当前阶段 dispatch payload 落成 DISPATCH/ 目录下的 manifest、payload.json 和 prompt.md 文件
+python scripts/test_role_metadata.py   # 校验 role frontmatter / 章节兼容解析是否正确
+python scripts/test_dispatch_payload_schema.py # 校验 dispatch payload / bundle manifest schema 是否正确并能拦截坏配置
+python scripts/test_runtime_config_schema.py # 校验 runtime-config schema 是否正确并能拦截坏配置
 python scripts/nexus_dispatch_runner.py prepare --report-dir <report-dir> # 将当前 DISPATCH bundle 转成 RUNS/ 目录下的运行清单
 python scripts/nexus_dispatch_runner.py start-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> # 标记某个角色已开始执行
 python scripts/nexus_dispatch_runner.py complete-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --result-file <artifact> # 标记角色完成并记录结果文件
 python scripts/nexus_dispatch_runner.py fail-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --note <reason> # 标记某个角色执行失败，供恢复/重试使用
+python scripts/nexus_dispatch_runner.py takeover-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --note <reason> --takeover-file <handoff.json> # 标记该角色需要主 agent 接管
 python scripts/nexus_dispatch_runner.py advance --report-dir <report-dir> # 当当前 RUNS 里的角色都完成后，自动补写 stage-complete 并推进到下一步调度动作
 python scripts/generate_runtime_bridge_config.py --preset mock --output-file <runtime.json> # 生成 mock runtime-config
 python scripts/generate_runtime_bridge_config.py --preset openclaw --output-file <runtime.json> --openclaw-command openclaw --channel telegram --skill-path <repo-root> # 生成 OpenClaw CLI 运行配置
@@ -153,6 +158,9 @@ python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke 
 - Python 辅助脚本是否能通过 `py_compile`
 - `reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
 - 阶段调度、dispatch runner 和 runtime bridge 是否都接入文档与脚本契约
+- runtime bridge 是否能在角色失败时区分 `role-failed` 与 `takeover-required`，并为主 agent 留下可执行的接管工单
+- runtime bridge 是否会按 role frontmatter 里的 `output_validation` / `minimum_output` / `minimum_output_aliases` 规则，对阶段二/三/七等关键 markdown 交付物执行结构校验，拦截只有占位标题或缺章的懒惰输出
+- runtime bridge 是否会按 role frontmatter 里的 `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure` 自动触发 `takeover-required`，而不是在 bridge 代码里硬编码某几个角色
 - Flow A 的产品事实指纹与阶段一生成链是否存在，并可通过 smoke test 生成 `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`
 - Flow A 的阶段三是否会把复杂目标拆成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
 - Flow A 的规则/决策/检查项 inventory 是否能从 `SKILL.md`、伴随规则文件、以及相关源码中被抽取并数据驱动展开，而不是每个 capability 只有 1 条泛化用例
@@ -177,19 +185,38 @@ CI 也会在 GitHub Actions 中自动执行上述校验和全部 smoke tests。
   "default": {
     "command": ["python", "my_runner.py", "--payload-file", "{payload_file}", "--prompt-file", "{prompt_file}"],
     "cwd": "{workspace_root}",
-    "timeoutSeconds": 900
+    "timeoutSeconds": 900,
+    "mainAgentTakeoverPatterns": ["gateway", "blocked-no-real-exec"]
   },
   "roles": {
     "security-tester": {
       "command": ["python", "security_runner.py", "--payload-file", "{payload_file}"],
       "cwd": "{workspace_root}",
       "timeoutSeconds": 900
+    },
+    "skill-tester": {
+      "command": ["python", "subagent_runner.py", "--payload-file", "{payload_file}", "--prompt-file", "{prompt_file}"],
+      "cwd": "{workspace_root}",
+      "timeoutSeconds": 900,
+      "fallback": {
+        "name": "host-takeover-probe",
+        "command": ["python", "host_runner.py", "--payload-file", "{payload_file}", "--prompt-file", "{prompt_file}"],
+        "cwd": "{workspace_root}",
+        "timeoutSeconds": 900
+      }
     }
   }
 }
 ```
 
 可用模板变量包括：`{workspace_root}`、`{report_dir}`、`{bundle_dir}`、`{run_dir}`、`{manifest_file}`、`{payload_file}`、`{prompt_file}`、`{stage_id}`、`{stage_name}`、`{stage_label}`、`{role_id}`、`{role_type}`、`{role_file}`。外部命令若 stdout 输出 `{"resultFile":"...", "note":"..."}`，bridge 会自动回写到 `RUNS/<stage>/<role>.state.json`。
+
+可选输出字段：
+- `status`: 例如 `completed` / `blocked`
+- `needsMainAgentTakeover`: `true` 时 bridge 直接转成 `takeover-required`
+- `blockers`: 简短 blocker 列表
+
+当 runtime bridge 命中 takeover 规则时，会写出 `RUNS/<stage>/<role>.takeover.json`，并以 `takeover-required` 终止当前轮，让主 agent 拿着完整的 payload、prompt、日志和缺失交付物清单接管执行。默认只有需要真实环境的执行角色会启用这套内建策略；像 `environment-checker` 这类基础阶段角色，如果 runtime 只返回 `status=blocked`，会保持普通失败而不是误触发主 agent 接管。
 
 如果宿主 runtime 是 Claude Code CLI，可直接这样起步：
 
@@ -198,7 +225,13 @@ python scripts/generate_runtime_bridge_config.py --preset claude --output-file r
 python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config runtime-config.claude.json
 ```
 
-`nexus_claude_role_runtime.py` 会读取 `payload.json` 和 `prompt.md`，拼出当前阶段角色的完整执行 prompt，然后用 `claude --print --output-format json --json-schema ...` 非交互执行，并把 Claude 返回的 `resultFile/note` 交回 runtime bridge。
+`nexus_claude_role_runtime.py` 会读取 `payload.json` 和 `prompt.md`，拼出当前阶段角色的完整执行 prompt，然后用 `claude --print --output-format json --json-schema ...` 非交互执行，并把 Claude 返回的 `resultFile/note` 交回 runtime bridge。prompt 会显式携带角色职责、执行规则、证据要求和反模式，减少 subagent 只交空壳文件的概率。
+
+现在 role metadata 统一优先从 frontmatter 读取。对 markdown 结构校验，使用 `output_validation`、`minimum_output`、`minimum_output_aliases`；对主 agent 接管，使用 `takeover_enabled`、`takeover_statuses`、`takeover_patterns`、`takeover_on_process_failure`。`scripts/role_metadata.py` 负责解析这些字段并兼容旧章节写法；`nexus_stage_executor.py` 只负责把解析结果写进 dispatch payload。若旧角色还保留 `输出结构校验` / `输出结构校验别名` / `主Agent接管策略` 章节，parser 仍兼容，但新角色应优先使用 frontmatter schema。`role_metadata.py` 还会在解析阶段校验 frontmatter key/type/组合是否合法，提前拦截无效 alias、无效 takeover 配置和不受支持的 validation rule。
+
+dispatch payload 现在也有独立 schema。`scripts/dispatch_payload_schema.py` 会校验 `nexus_stage_executor.py` 产出的 payload 和 `DISPATCH/.../manifest.json` 的字段、类型、角色顺序、别名映射与 takeover policy 结构；`nexus_dispatch_runner.py` / `nexus_runtime_bridge.py` 在消费前会再次校验，避免损坏的 dispatch bundle 混入运行阶段。
+
+`runtime-config` 现在也有独立 schema。`scripts/runtime_config_schema.py` 会校验 root/default/roles/fallback 的字段、命令数组、超时、环境变量和 takeover 配置；`generate_runtime_bridge_config.py` 生成后会先自校验，`nexus_runtime_bridge.py` 读取时也会再次校验，避免坏 config 直到真正起外部命令时才失败。
 
 如果宿主 runtime 是 OpenClaw CLI，更符合这个 Skill 的主目标定位，可直接这样起步：
 
@@ -207,7 +240,7 @@ python scripts/generate_runtime_bridge_config.py --preset openclaw --output-file
 python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config runtime-config.openclaw.json
 ```
 
-`nexus_openclaw_role_runtime.py` 会调用 `openclaw invoke --skill <repo> --message <prompt> --channel <channel> --output <...> --result <...>`。如果 OpenClaw 结果 JSON 里没有直接给出 `resultFile`，适配器会回到报告目录里按当前阶段缺失交付物去探测新产物并回写给 runtime bridge。
+`nexus_openclaw_role_runtime.py` 会调用 `openclaw invoke --skill <repo> --message <prompt> --channel <channel> --output <...> --result <...>`。如果 OpenClaw 结果 JSON 里没有直接给出 `resultFile`，适配器会回到报告目录里按当前阶段缺失交付物去探测新产物并回写给 runtime bridge。若结果里声明 `needsMainAgentTakeover=true`，bridge 会自动生成 takeover 工单。
 
 如果要直接按 OpenClaw 主路径做端到端演练，可使用：
 

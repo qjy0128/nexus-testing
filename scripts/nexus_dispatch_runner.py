@@ -9,6 +9,7 @@ import sys
 import threading
 from pathlib import Path
 
+from dispatch_payload_schema import validate_dispatch_payload_list
 from nexus_stage_executor import (
     append_stage_log,
     bundle_dispatch,
@@ -58,6 +59,7 @@ def prepare_bundle(report_dir: Path) -> dict[str, object]:
     status = str(bundle.get("status"))
     if status not in {"run-stage", "run-post-stage"}:
         return bundle
+    bundle["dispatchPayloads"] = validate_dispatch_payload_list(bundle.get("dispatchPayloads", []))
 
     stage_id = str(bundle["stageId"])
     run_dir = runner_root(report_dir, stage_id)
@@ -90,6 +92,8 @@ def prepare_bundle(report_dir: Path) -> dict[str, object]:
                     "startedAt": None,
                     "completedAt": None,
                     "failedAt": None,
+                    "takeoverAt": None,
+                    "takeoverFile": None,
                     "resultFile": None,
                     "note": None,
                     "runtime": None,
@@ -137,6 +141,8 @@ def start_role(report_dir: Path, stage_id: str, role_id: str, runtime: str) -> d
                 "startedAt": now_text(),
                 "completedAt": None,
                 "failedAt": None,
+                "takeoverAt": None,
+                "takeoverFile": None,
                 "resultFile": None,
                 "note": None,
                 "runtime": runtime,
@@ -179,6 +185,8 @@ def complete_role(report_dir: Path, stage_id: str, role_id: str, result_file: st
                 "status": "completed",
                 "completedAt": now_text(),
                 "failedAt": None,
+                "takeoverAt": None,
+                "takeoverFile": None,
                 "resultFile": resolved_result,
                 "note": note,
             }
@@ -210,6 +218,8 @@ def fail_role(report_dir: Path, stage_id: str, role_id: str, note: str | None) -
                 "status": "failed",
                 "completedAt": None,
                 "failedAt": now_text(),
+                "takeoverAt": None,
+                "takeoverFile": None,
                 "note": note,
             }
         ),
@@ -231,6 +241,55 @@ def fail_role(report_dir: Path, stage_id: str, role_id: str, note: str | None) -
     return state
 
 
+def takeover_role(
+    report_dir: Path,
+    stage_id: str,
+    role_id: str,
+    note: str | None,
+    takeover_file: str | None,
+) -> dict[str, object]:
+    resolved_takeover: str | None = None
+    if takeover_file:
+        path = resolve_path(takeover_file)
+        if not path.exists():
+            raise SystemExit(f"ERROR: takeover file does not exist: {path}")
+        try:
+            resolved_takeover = str(path.relative_to(report_dir))
+        except ValueError:
+            resolved_takeover = str(path)
+
+    state = update_role_state(
+        report_dir,
+        stage_id,
+        role_id,
+        lambda data: data.update(
+            {
+                "status": "takeover-required",
+                "completedAt": None,
+                "failedAt": None,
+                "takeoverAt": now_text(),
+                "takeoverFile": resolved_takeover,
+                "note": note,
+            }
+        ),
+    )
+    append_stage_log(
+        report_dir,
+        {
+            "from_stage": stage_id,
+            "to_stage": stage_id,
+            "timestamp": now_text(),
+            "deliverable_file": resolved_takeover,
+            "approval_required": False,
+            "gate_check_passed": False,
+            "event": "role-takeover-required",
+            "role_id": role_id,
+            "reason": note,
+        },
+    )
+    return state
+
+
 def stage_run_status(report_dir: Path, stage_id: str) -> dict[str, object]:
     run_dir = runner_root(report_dir, stage_id)
     role_states = []
@@ -240,6 +299,7 @@ def stage_run_status(report_dir: Path, stage_id: str) -> dict[str, object]:
             role_states.append(payload)
     completed = [item for item in role_states if item.get("status") == "completed"]
     failed = [item for item in role_states if item.get("status") == "failed"]
+    takeover_required = [item for item in role_states if item.get("status") == "takeover-required"]
     running = [item for item in role_states if item.get("status") == "running"]
     pending = [item for item in role_states if item.get("status") == "pending"]
     return {
@@ -247,6 +307,7 @@ def stage_run_status(report_dir: Path, stage_id: str) -> dict[str, object]:
         "roleStates": role_states,
         "completedCount": len(completed),
         "failedCount": len(failed),
+        "takeoverRequiredCount": len(takeover_required),
         "runningCount": len(running),
         "pendingCount": len(pending),
         "totalCount": len(role_states),
@@ -343,6 +404,13 @@ def build_parser() -> argparse.ArgumentParser:
     fail_parser.add_argument("--role-id", required=True)
     fail_parser.add_argument("--note")
 
+    takeover_parser = sub.add_parser("takeover-role", help="Mark a role as requiring main-agent takeover")
+    takeover_parser.add_argument("--report-dir", required=True)
+    takeover_parser.add_argument("--stage-id", required=True)
+    takeover_parser.add_argument("--role-id", required=True)
+    takeover_parser.add_argument("--note")
+    takeover_parser.add_argument("--takeover-file")
+
     advance_parser = sub.add_parser("advance", help="Advance if all roles in current RUNS bundle are completed")
     advance_parser.add_argument("--report-dir", required=True)
     return parser
@@ -371,6 +439,8 @@ def main(argv: list[str] | None = None) -> int:
         result = complete_role(report_dir, args.stage_id, args.role_id, args.result_file, args.note)
     elif args.command == "fail-role":
         result = fail_role(report_dir, args.stage_id, args.role_id, args.note)
+    elif args.command == "takeover-role":
+        result = takeover_role(report_dir, args.stage_id, args.role_id, args.note, args.takeover_file)
     elif args.command == "advance":
         result = advance(report_dir)
     else:

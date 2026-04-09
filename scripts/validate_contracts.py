@@ -84,15 +84,35 @@ def validate_stage_executor_contract() -> list[str]:
     recovery_text = read_text(ROOT / "reference-recovery.md")
 
     executor = ROOT / "scripts" / "nexus_stage_executor.py"
+    metadata = ROOT / "scripts" / "role_metadata.py"
+    dispatch_schema = ROOT / "scripts" / "dispatch_payload_schema.py"
+    metadata_test = ROOT / "scripts" / "test_role_metadata.py"
+    dispatch_schema_test = ROOT / "scripts" / "test_dispatch_payload_schema.py"
     test_script = ROOT / "scripts" / "test_nexus_stage_executor.py"
     if not executor.exists():
         issues.append("scripts/nexus_stage_executor.py is missing")
+    if not metadata.exists():
+        issues.append("scripts/role_metadata.py is missing")
+    if not dispatch_schema.exists():
+        issues.append("scripts/dispatch_payload_schema.py is missing")
+    if not metadata_test.exists():
+        issues.append("scripts/test_role_metadata.py is missing")
+    if not dispatch_schema_test.exists():
+        issues.append("scripts/test_dispatch_payload_schema.py is missing")
     if not test_script.exists():
         issues.append("scripts/test_nexus_stage_executor.py is missing")
     if "nexus_stage_executor.py" not in readme_text:
         issues.append("README.md is missing nexus_stage_executor.py guidance")
+    if "role_metadata.py" not in readme_text:
+        issues.append("README.md is missing role_metadata.py guidance")
+    if "dispatch_payload_schema.py" not in readme_text:
+        issues.append("README.md is missing dispatch_payload_schema.py guidance")
     if "nexus_stage_executor.py" not in skill_text:
         issues.append("SKILL.md is missing nexus_stage_executor.py guidance")
+    if "role_metadata.py" not in skill_text:
+        issues.append("SKILL.md is missing role_metadata.py guidance")
+    if "dispatch_payload_schema.py" not in skill_text:
+        issues.append("SKILL.md is missing dispatch_payload_schema.py guidance")
     if "dispatch" not in readme_text:
         issues.append("README.md is missing dispatch guidance for nexus_stage_executor.py")
     if "dispatch" not in skill_text:
@@ -114,15 +134,25 @@ def validate_dispatch_runner_contract() -> list[str]:
     skill_text = read_text(ROOT / "SKILL.md")
 
     runner = ROOT / "scripts" / "nexus_dispatch_runner.py"
+    schema = ROOT / "scripts" / "dispatch_payload_schema.py"
+    schema_test = ROOT / "scripts" / "test_dispatch_payload_schema.py"
     test_script = ROOT / "scripts" / "test_nexus_dispatch_runner.py"
     if not runner.exists():
         issues.append("scripts/nexus_dispatch_runner.py is missing")
+    if not schema.exists():
+        issues.append("scripts/dispatch_payload_schema.py is missing")
+    if not schema_test.exists():
+        issues.append("scripts/test_dispatch_payload_schema.py is missing")
     if not test_script.exists():
         issues.append("scripts/test_nexus_dispatch_runner.py is missing")
     if "nexus_dispatch_runner.py" not in readme_text:
         issues.append("README.md is missing nexus_dispatch_runner.py guidance")
     if "nexus_dispatch_runner.py" not in skill_text:
         issues.append("SKILL.md is missing nexus_dispatch_runner.py guidance")
+    if "dispatch_payload_schema.py" not in readme_text:
+        issues.append("README.md is missing dispatch_payload_schema.py guidance for dispatch bundles")
+    if "dispatch_payload_schema.py" not in skill_text:
+        issues.append("SKILL.md is missing dispatch_payload_schema.py guidance for dispatch bundles")
     if "bundle-dispatch" not in skill_text:
         issues.append("SKILL.md is missing bundle-dispatch bridge guidance")
     return issues
@@ -132,21 +162,66 @@ def validate_runtime_bridge_contract() -> list[str]:
     issues: list[str] = []
     readme_text = read_text(ROOT / "README.md")
     skill_text = read_text(ROOT / "SKILL.md")
+    quality_text = read_text(ROOT / "roles" / "quality-assessor.md")
+    designer_text = read_text(ROOT / "roles" / "test-designer.md")
+    report_text = read_text(ROOT / "roles" / "report-integrator.md")
+    takeover_role_texts = {
+        "roles/skill-tester.md": read_text(ROOT / "roles" / "skill-tester.md"),
+        "roles/security-tester.md": read_text(ROOT / "roles" / "security-tester.md"),
+        "roles/functional-tester.md": read_text(ROOT / "roles" / "functional-tester.md"),
+        "roles/compatibility-tester.md": read_text(ROOT / "roles" / "compatibility-tester.md"),
+        "roles/performance-tester.md": read_text(ROOT / "roles" / "performance-tester.md"),
+        "roles/accessibility-auditor.md": read_text(ROOT / "roles" / "accessibility-auditor.md"),
+        "roles/mcp-tester.md": read_text(ROOT / "roles" / "mcp-tester.md"),
+        "roles/reality-checker.md": read_text(ROOT / "roles" / "reality-checker.md"),
+    }
 
     runner = ROOT / "scripts" / "nexus_runtime_bridge.py"
+    config_schema = ROOT / "scripts" / "runtime_config_schema.py"
+    config_schema_test = ROOT / "scripts" / "test_runtime_config_schema.py"
     test_script = ROOT / "scripts" / "test_nexus_runtime_bridge.py"
     if not runner.exists():
         issues.append("scripts/nexus_runtime_bridge.py is missing")
+    if not config_schema.exists():
+        issues.append("scripts/runtime_config_schema.py is missing")
+    if not config_schema_test.exists():
+        issues.append("scripts/test_runtime_config_schema.py is missing")
     if not test_script.exists():
         issues.append("scripts/test_nexus_runtime_bridge.py is missing")
     if "nexus_runtime_bridge.py" not in readme_text:
         issues.append("README.md is missing nexus_runtime_bridge.py guidance")
+    if "runtime_config_schema.py" not in readme_text:
+        issues.append("README.md is missing runtime_config_schema.py guidance")
     if "nexus_runtime_bridge.py" not in skill_text:
         issues.append("SKILL.md is missing nexus_runtime_bridge.py guidance")
+    if "runtime_config_schema.py" not in skill_text:
+        issues.append("SKILL.md is missing runtime_config_schema.py guidance")
     if "runtime-config" not in readme_text:
         issues.append("README.md is missing runtime-config guidance for nexus_runtime_bridge.py")
     if "runtime-config" not in skill_text:
         issues.append("SKILL.md is missing runtime-config guidance for nexus_runtime_bridge.py")
+    if "output_validation" not in readme_text or "minimum_output_aliases" not in readme_text:
+        issues.append("README.md is missing frontmatter-based markdown output validation guidance")
+    if "takeover_enabled" not in readme_text or "takeover_statuses" not in readme_text:
+        issues.append("README.md is missing frontmatter-based main-agent takeover guidance")
+    for relative_path, text in (
+        ("roles/quality-assessor.md", quality_text),
+        ("roles/test-designer.md", designer_text),
+        ("roles/report-integrator.md", report_text),
+    ):
+        if "output_validation:" not in text or "minimum_output:" not in text:
+            issues.append(f"{relative_path} is missing frontmatter output-validation metadata")
+        if "minimum_output_aliases:" not in text:
+            issues.append(f"{relative_path} is missing frontmatter output-alias metadata")
+        if "输出结构校验" not in text:
+            issues.append(f"{relative_path} is missing the output-structure validation section")
+        if "输出结构校验别名" not in text:
+            issues.append(f"{relative_path} is missing the output-structure alias section")
+    for relative_path, text in takeover_role_texts.items():
+        if "takeover_enabled:" not in text or "takeover_statuses:" not in text:
+            issues.append(f"{relative_path} is missing frontmatter main-agent takeover metadata")
+        if "主Agent接管策略" not in text:
+            issues.append(f"{relative_path} is missing the main-agent takeover policy section")
     return issues
 
 

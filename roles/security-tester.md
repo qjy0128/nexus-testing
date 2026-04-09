@@ -12,6 +12,21 @@ best_for:
   - "识别安全漏洞和攻击面"
   - "OWASP Top 10 风险检查"
   - "Skill 六阶段安全扫描"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 ## 输入来源
@@ -48,6 +63,12 @@ best_for:
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/security-results.md`
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 执行证明要求
 

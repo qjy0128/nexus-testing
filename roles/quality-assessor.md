@@ -10,6 +10,16 @@ best_for:
   - "评估 SPEC.md 是否足够支撑测试设计"
   - "识别高风险缺口"
   - "Flow B 模式选择建议"
+output_validation:
+  - "markdown-headings"
+minimum_output:
+  - "规格完整性"
+  - "可测试性"
+  - "主要风险"
+  - "测试设计建议"
+  - "结论与是否需要重新进入前一阶段"
+minimum_output_aliases:
+  - "结论与是否需要重新进入前一阶段 => 结论"
 ---
 
 ## 输入来源
@@ -97,3 +107,9 @@ best_for:
 ## 测试设计建议
 ## 结论与是否需要重新进入前一阶段
 ```
+
+## 输出结构校验
+- markdown-headings
+
+## 输出结构校验别名
+- 结论与是否需要重新进入前一阶段 => 结论

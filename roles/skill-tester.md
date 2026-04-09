@@ -9,6 +9,21 @@ triggers:
 best_for:
   - "Flow A 中实际安装并调用目标 Skill"
   - "验证触发、能力、边界、错误处理和输出"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 ## 输入来源
@@ -125,6 +140,12 @@ best_for:
 - 触发/上下文/送达断言结果
 - 判定
 - 证据路径
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 边界与反模式
 

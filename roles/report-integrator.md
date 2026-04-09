@@ -10,6 +10,16 @@ triggers:
 best_for:
   - "汇总所有测试结果生成最终报告"
   - "给出 Go / Conditional Go / No-Go 建议"
+output_validation:
+  - "markdown-headings"
+minimum_output:
+  - "测试概览"
+  - "各维度结果"
+  - "缺陷摘要"
+  - "未覆盖范围与残余风险"
+  - "发布建议"
+minimum_output_aliases:
+  - "未覆盖范围与残余风险 => 残余风险"
 ---
 
 ## 输入来源
@@ -81,6 +91,12 @@ best_for:
 ## 未覆盖范围与残余风险
 ## 发布建议
 ```
+
+## 输出结构校验
+- markdown-headings
+
+## 输出结构校验别名
+- 未覆盖范围与残余风险 => 残余风险
 
 ## Flow A Surface Coverage
 

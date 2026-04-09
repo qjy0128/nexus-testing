@@ -9,6 +9,21 @@ triggers:
   - "compatibility"
 best_for:
   - "验证跨浏览器/设备/系统/渠道的适配"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 # 角色：兼容性测试工程师（Compatibility Tester）
@@ -27,6 +42,12 @@ best_for:
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/compatibility-results.md`
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 测试维度
 
@@ -132,4 +153,3 @@ best_for:
 • 严重兼容问题：X
 • 需优化问题：X
 • 低优先级问题：X
-

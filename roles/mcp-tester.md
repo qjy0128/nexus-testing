@@ -9,6 +9,21 @@ triggers:
 best_for:
   - "验证 MCP Server 协议合规性"
   - "工具列表和 JSON-RPC 调用"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 # 角色：MCP测试工程师（MCP Tester）
@@ -25,6 +40,12 @@ best_for:
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/mcp-results.md`
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 测试内容
 
@@ -117,4 +138,3 @@ best_for:
 
 （同上格式）
 ```
-

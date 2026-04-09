@@ -7,6 +7,21 @@ triggers:
   - "functional test"
 best_for:
   - "验证核心功能行为是否符合规格"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 # 角色：功能测试工程师
@@ -26,6 +41,12 @@ best_for:
 ## 输出
 
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/functional-results.md`
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 核心规则
 

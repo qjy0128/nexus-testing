@@ -114,6 +114,38 @@ def test_failed_role_state() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_takeover_role_state() -> None:
+    temp_root = make_temp_root("dispatch-runner-takeover-")
+    try:
+        report_dir = temp_root / "reports"
+        takeover_file = report_dir / "RUNS" / "stage-0" / "environment-checker.takeover.json"
+        takeover_file.parent.mkdir(parents=True, exist_ok=True)
+        takeover_file.write_text('{"status":"takeover-required"}\n', encoding="utf-8")
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json(RUNNER, "prepare", "--report-dir", str(report_dir))
+        takeover = run_json(
+            RUNNER,
+            "takeover-role",
+            "--report-dir",
+            str(report_dir),
+            "--stage-id",
+            "stage-0",
+            "--role-id",
+            "environment-checker",
+            "--note",
+            "needs main-agent takeover",
+            "--takeover-file",
+            str(takeover_file),
+        )
+        assert_equal(takeover["status"], "takeover-required", "takeover role status")
+        status = run_json(RUNNER, "status", "--report-dir", str(report_dir))
+        assert_equal(status["takeoverRequiredCount"], 1, "takeover role count")
+        assert_equal(status["allCompleted"], False, "takeover role prevents advance")
+        print("  [PASS] test_takeover_role_state")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -129,6 +161,7 @@ def main() -> int:
         test_role_lifecycle_and_advance,
         test_waiting_for_completion,
         test_failed_role_state,
+        test_takeover_role_state,
     ):
         try:
             test()

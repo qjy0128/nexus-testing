@@ -10,6 +10,21 @@ triggers:
 best_for:
   - "建立性能基线和负载测试"
   - "P50/P95/P99 延迟数据"
+takeover_enabled: true
+takeover_statuses:
+  - "blocked"
+takeover_patterns:
+  - "blocked-no-openclaw"
+  - "blocked-live-telemetry"
+  - "blocked-no-real-exec"
+  - "blocked-no-adapter"
+  - "runtime unavailable"
+  - "gateway"
+  - "webreader"
+  - "mcp__"
+  - "environment limitation"
+  - "requires main-agent takeover"
+takeover_on_process_failure: false
 ---
 
 # 角色：性能测试工程师（Performance Tester）
@@ -26,6 +41,12 @@ best_for:
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/performance-results.md`
+
+## 主Agent接管策略
+- enabled: true
+- statuses: blocked
+- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
+- onProcessFailure: false
 
 ## 测试指标
 
@@ -118,4 +139,3 @@ best_for:
 • 建议扩容：支持 X QPS
 • 扩容方案：（具体建议）
 ```
-
