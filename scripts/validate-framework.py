@@ -22,6 +22,8 @@ from sandbox_skill_invoke.core import (
     read_text as _core_read_text,
 )
 from validate_contracts import (
+    validate_claude_runtime_contract,
+    validate_dispatch_runner_contract,
     validate_definition_consistency,
     validate_flow_a_case_depth_contract,
     validate_flow_a_fact_contract,
@@ -31,10 +33,15 @@ from validate_contracts import (
     validate_flow_role_consistency as _validate_flow_role_consistency,
     validate_message_send_contract,
     validate_output_language_contract,
+    validate_openclaw_runtime_contract,
+    validate_openclaw_demo_contract,
     validate_required_references,
     validate_role_definitions_ref,
     validate_role_references as _validate_role_references,
     validate_role_version_tags,
+    validate_runtime_bridge_contract,
+    validate_stage_executor_contract,
+    validate_stage_subagent_plan_contract,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +97,14 @@ REQUIRED_SHELL_SCRIPT_FILES = (
 
 REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/diagnose_bash_runtime.py",
+    "scripts/generate_runtime_bridge_config.py",
+    "scripts/generate_stage_subagent_plan.py",
+    "scripts/nexus_claude_role_runtime.py",
+    "scripts/nexus_openclaw_role_runtime.py",
+    "scripts/run_openclaw_stage_demo.py",
+    "scripts/nexus_stage_executor.py",
+    "scripts/nexus_dispatch_runner.py",
+    "scripts/nexus_runtime_bridge.py",
     "scripts/extract_product_fingerprint.py",
     "scripts/generate_flow_a_stage1.py",
     "scripts/generate_flow_a_test_design.py",
@@ -122,6 +137,14 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/test_sandbox_exec_container.py",
     "scripts/test_flow_a_integration.py",
     "scripts/test_prepare_report_delivery.py",
+    "scripts/test_stage_subagent_plan.py",
+    "scripts/test_nexus_stage_executor.py",
+    "scripts/test_nexus_dispatch_runner.py",
+    "scripts/test_nexus_claude_role_runtime.py",
+    "scripts/test_nexus_openclaw_role_runtime.py",
+    "scripts/test_run_openclaw_stage_demo.py",
+    "scripts/test_generate_runtime_bridge_config.py",
+    "scripts/test_nexus_runtime_bridge.py",
     "scripts/security-scanner.py",
     "scripts/test_sandbox_lifecycle.py",
     "scripts/validate_flow_a_skill_results.py",
@@ -145,8 +168,20 @@ RUNTIME_SMOKE_TEST_FILES = (
     "scripts/test_flow_a_integration.py",
     "scripts/test_sandbox_lifecycle.py",
     "scripts/test_prepare_report_delivery.py",
+    "scripts/test_stage_subagent_plan.py",
+    "scripts/test_nexus_stage_executor.py",
+    "scripts/test_nexus_dispatch_runner.py",
+    "scripts/test_nexus_claude_role_runtime.py",
+    "scripts/test_nexus_openclaw_role_runtime.py",
+    "scripts/test_run_openclaw_stage_demo.py",
+    "scripts/test_generate_runtime_bridge_config.py",
+    "scripts/test_nexus_runtime_bridge.py",
     "scripts/test_helpers.py",
 )
+
+RUNTIME_SMOKE_TEST_TIMEOUTS = {
+    "scripts/test_flow_a_surface_runner.py": 300,
+}
 
 FRONTMATTER_FILES = ("SKILL.md",)
 
@@ -569,6 +604,7 @@ def validate_runtime_smoke_tests() -> list[str]:
         path = ROOT / relative_path
         if not path.exists():
             continue
+        timeout_seconds = RUNTIME_SMOKE_TEST_TIMEOUTS.get(relative_path, 180)
         try:
             result = subprocess.run(
                 [sys.executable, str(path)],
@@ -577,10 +613,10 @@ def validate_runtime_smoke_tests() -> list[str]:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=180,
+                timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired:
-            issues.append(f"{relative_path} timed out after 180 seconds")
+            issues.append(f"{relative_path} timed out after {timeout_seconds} seconds")
             continue
         if result.returncode != 0:
             issues.append(
@@ -748,6 +784,13 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("python script syntax", validate_python_script_syntax()),
         ("runtime smoke tests", validate_runtime_smoke_tests()),
         ("definitions consistency", validate_definition_consistency()),
+        ("stage subagent plan contract", validate_stage_subagent_plan_contract()),
+        ("stage executor contract", validate_stage_executor_contract()),
+        ("dispatch runner contract", validate_dispatch_runner_contract()),
+        ("runtime bridge contract", validate_runtime_bridge_contract()),
+        ("claude runtime contract", validate_claude_runtime_contract()),
+        ("openclaw runtime contract", validate_openclaw_runtime_contract()),
+        ("openclaw demo contract", validate_openclaw_demo_contract()),
         ("flow a fact contract", validate_flow_a_fact_contract()),
         ("flow a surface plan contract", validate_flow_a_surface_plan_contract()),
         ("flow a surface execution contract", validate_flow_a_surface_execution_contract()),

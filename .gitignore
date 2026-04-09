@@ -10,6 +10,9 @@
 # Generic temp directories
 .tmp/
 
+# Local-only docs
+/项目介绍.md
+
 # Python cache
 __pycache__/
 *.py[cod]

@@ -1,0 +1,21 @@
+{
+  "name": "openclaw-role-runtime",
+  "default": {
+    "command": [
+      "C:\\Python314\\python.exe",
+      "D:\\GoPlus\\AI skill\\nexus-testing\\scripts\\nexus_openclaw_role_runtime.py",
+      "--payload-file",
+      "{payload_file}",
+      "--prompt-file",
+      "{prompt_file}",
+      "--openclaw-command",
+      "openclaw",
+      "--skill-path",
+      ".",
+      "--channel",
+      "telegram"
+    ],
+    "cwd": "{workspace_root}",
+    "timeoutSeconds": 900
+  }
+}

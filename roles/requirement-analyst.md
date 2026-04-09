@@ -1,6 +1,6 @@
 ---
 name: nexus-requirement-analyst
-type: orchestrator
+type: executor
 description: 需求解析师。将原始需求、截图、链接或 Skill 入口整理成结构化的 SPEC.md，为后续质量评估和测试设计提供基线。
 triggers:
   - "需求解析"
@@ -21,6 +21,8 @@ best_for:
 - `spec-consistency-validator`（校验规格是否真实来源于仓库事实）
 - `quality-assessor`（基于 SPEC 评估质量）
 - `test-designer`（基于 SPEC 设计测试用例）
+
+> 本角色默认由阶段一 subagent 执行；主 agent 只负责调度和发送阶段产物。
 
 ## 边界与反模式
 

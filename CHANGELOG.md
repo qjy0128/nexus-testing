@@ -1,3 +1,27 @@
+### v0.9.39（2026-04-09）
+**阶段角色 subagent 化**
+
+- 新增：`scripts/generate_stage_subagent_plan.py` 与 `scripts/test_stage_subagent_plan.py`，把阶段角色分配固化成机器可读的 `STAGE-SUBAGENT-PLAN.json`
+- 新增：`scripts/nexus_stage_executor.py` 与 `scripts/test_nexus_stage_executor.py`，实现基于计划文件、交付物、审批状态和阶段日志的执行状态机
+- 更新：`scripts/nexus_stage_executor.py`，新增 `dispatch` 子命令，直接输出当前阶段 subagent 的启动载荷
+- 更新：`scripts/nexus_stage_executor.py`，新增 `bundle-dispatch` 子命令，把当前阶段启动载荷落成 `DISPATCH/` 目录下的 manifest、payload 与 prompt 文件
+- 新增：`scripts/nexus_dispatch_runner.py` 与 `scripts/test_nexus_dispatch_runner.py`，把 dispatch bundle 转成运行清单，并跟踪角色开始、完成和阶段推进
+- 更新：`scripts/nexus_dispatch_runner.py` 的 `advance` 现在会在当前阶段角色全部完成后自动补写 `stage-complete`，避免 runtime 侧还要额外手动封口
+- 新增：`scripts/nexus_runtime_bridge.py` 与 `scripts/test_nexus_runtime_bridge.py`，支持基于 `runtime-config` 读取 `DISPATCH/RUNS` 并真正调用外部命令执行阶段角色，直到审批门或流程完成
+- 更新：`scripts/nexus_dispatch_runner.py` 新增 `fail-role`，让宿主 runtime 在角色执行失败时能留下可恢复的失败状态，而不是卡死在 `running`
+- 新增：`scripts/generate_runtime_bridge_config.py`，可一键生成 `mock` / `claude` 两类 `runtime-config`
+- 新增：`scripts/nexus_claude_role_runtime.py` 与 `scripts/test_nexus_claude_role_runtime.py`，支持把单个阶段角色通过 Claude CLI `--print` 非交互执行，并用 JSON Schema 约束返回 `resultFile/note`
+- 新增：`scripts/test_generate_runtime_bridge_config.py`，校验 runtime-config 生成器产物结构
+- 新增：`scripts/nexus_openclaw_role_runtime.py`、`scripts/test_nexus_openclaw_role_runtime.py` 与 `scripts/fixtures/mock_openclaw_cli.py`，支持把单个阶段角色通过 OpenClaw CLI `invoke` 执行并回收阶段主交付物
+- 更新：`scripts/generate_runtime_bridge_config.py` 新增 `openclaw` preset，并补充文档强调本 Skill 的主要目标平台仍是 OpenClaw
+- 新增：`roles/environment-checker.md`，补齐阶段零独立角色，环境检查不再默认由主 agent 直接代跑
+- 更新：`DEFINITIONS.md`，把阶段零到阶段七改成“主 agent 编排 + 阶段角色 subagent 执行”的正式契约；主 agent 只负责调度、审批、打回和对外发送
+- 更新：`roles/requirement-analyst.md`、`roles/quality-assessor.md`、`roles/test-designer.md`、`roles/report-integrator.md` 的角色类型定义，避免继续暗示阶段一到四、七应由主 agent 直接执行
+- 更新：`SKILL.md`、`README.md`、`flows/skill-testing.md`、`flows/web-api-testing.md`、`flows/mcp-testing.md`、`flows/android-testing.md`、`项目介绍.md`，统一阶段执行模型，明确只有主 agent 是 orchestrator，阶段角色默认走 subagent
+- 更新：`reference-recovery.md`、`reference-approval-mechanism.md` 以及多个阶段角色文档，补齐阶段角色恢复和批准交接语义，避免只在主定义文件里写新规则
+- 更新：`scripts/validate-framework.py`，为 `scripts/test_flow_a_surface_runner.py` 单独放宽 runtime smoke test 超时，避免总校验因现有长耗时用例误报失败
+- 更新：`scripts/validate-framework.py`、`DEFINITIONS.md` 与各 Flow 文档，把 `STAGE-SUBAGENT-PLAN.json` 接入主校验和阶段零执行契约
+
 ### v0.9.38（2026-04-08）
 **Flow A companion inventory 深挖 + OpenClaw runtime harness / live probe**
 
@@ -708,3 +732,9 @@
 - 更新：`scripts/test_flow_a_surface_runner.py` 与相关 smoke tests，同步新的 surface 判定语义，确保 `bin` / `package` / `plugin-manifest` / `mcp` 在结构化验证通过时可以稳定收敛到 `passed`
 - 更新：`.github/workflows/validate-framework.yml`，CI 改为单入口执行 `python scripts/validate-framework.py`，移除与校验器内部重复的 shell / py_compile / smoke test 步骤
 - 更新：`.gitignore`、`scripts/validate-framework.py`、`README.md`，不再忽略仓库内 helper 的 `package-lock.json`，并新增校验器规则，要求所有内置 JS helper 都有可追踪 lockfile
+### v0.9.40（2026-04-09）**OpenClaw demo runner**
+
+- 新增：`scripts/run_openclaw_stage_demo.py` 与 `scripts/test_run_openclaw_stage_demo.py`，提供从阶段零启动、运行到审批门、记录批准并继续推进的 OpenClaw 端到端演练入口
+- 更新：`scripts/fixtures/mock_openclaw_cli.py` 会按当前阶段缺失交付物自动补齐 mock 产物，避免 demo / smoke test 反复停在同一阶段
+- 更新：`scripts/nexus_openclaw_role_runtime.py` 向宿主 runtime 透出 `NEXUS_MISSING_DELIVERABLES`，让 mock / 适配层可按当前阶段上下文补产物
+- 更新：`scripts/validate_contracts.py`、`scripts/validate-framework.py`、`README.md`、`SKILL.md`，把 OpenClaw demo runner 接入契约校验、smoke test 和使用说明

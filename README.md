@@ -2,6 +2,8 @@
 
 基于 OpenClaw 的多类型 AI 测试编排框架。系统会识别用户的测试意图，并把任务分流到 Skill、网页+接口、安卓、MCP 四类流程，按阶段零到阶段七产出结构化测试文档和 Go/No-Go 结论。
 
+> 主要目标平台是 OpenClaw。Claude CLI runtime 适配仅作为宿主执行桥的可选后备方案，不改变本 Skill 面向 OpenClaw 的定位。
+
 > 主入口是 [SKILL.md](SKILL.md)。共享阶段、角色、输出文件、门禁和超时基线以 [DEFINITIONS.md](DEFINITIONS.md) 为准；具体 Flow/Reference 的场景化细化按文档优先级覆盖。
 
 ## 当前状态
@@ -50,6 +52,14 @@
 - 生成模式：从需求解析开始，完整执行阶段零到阶段七。
 - 评审模式：只审查已有测试报告或文档，不触发标准测试流程。
 
+## 执行模型
+
+- 主 agent 只负责测试类型路由、阶段推进、交付物发送、审批和打回
+- 阶段零到阶段七都应由对应阶段角色 subagent 执行
+- 串行阶段一次只启动当前阶段角色
+- 阶段五和 Flow B 体验阶段按 Flow 模板并行启动多个 subagent
+- `evidence-collector` 只在所有执行角色完成后独立启动
+
 ## 标准执行流程
 
 ```text
@@ -68,6 +78,23 @@ Flow B 支持双模式：
 - A 模式：文档完整时走标准 8 阶段。
 - B 模式：文档不全或需要深度体验时，插入双边体验、交叉核对、争议复检三个扩展阶段，总计 11 个阶段（B-阶段零~十）。
 
+简化调度示意：
+
+```text
+主 agent
+  -> 阶段零 environment-checker
+  -> 阶段一 requirement-analyst -> spec-consistency-validator
+  -> 阶段二 quality-assessor
+  -> 阶段三 test-designer
+  -> 阶段四 test-case-evaluator
+  -> 阶段五 并行测试角色
+  -> 阶段五后 evidence-collector
+  -> 阶段六 defect-analyst
+  -> 阶段七 report-integrator
+```
+
+阶段零建议先生成 `STAGE-SUBAGENT-PLAN.json`，作为后续阶段调度的唯一机器可读计划。
+
 ## 快速开始
 
 1. 把这个仓库作为 OpenClaw Skill 项目打开，入口文件为 [SKILL.md](SKILL.md)。
@@ -76,13 +103,34 @@ Flow B 支持双模式：
    - Web/API：URL、接口文档、页面截图
    - Android：`.apk` 路径
    - MCP：Server 地址、连接方式、JSON-RPC 信息
-3. 让主 agent 先执行阶段零环境就绪检查，确认输出目录、依赖环境和工具能力可用。
-4. 按阶段门禁推进。阶段二和阶段四必须等待用户显式批准。
+3. 先生成 `STAGE-SUBAGENT-PLAN.json`，明确本次测试每阶段要启动的 subagent。
+4. 让主 agent 启动 `environment-checker` 执行阶段零环境就绪检查，确认输出目录、依赖环境和工具能力可用。
+5. 从阶段一开始，按阶段为对应角色启动独立 subagent；主 agent 只负责调度、发文件、审批和打回。
+6. 按阶段门禁推进。阶段二和阶段四必须等待用户显式批准。
 
 ## 仓库自检
 
 ```bash
 python scripts/validate-framework.py        # 结构 + 语法 + 行为级 smoke test 校验
+python scripts/generate_stage_subagent_plan.py --flow <skill|web-api|android|mcp> --mode <standard|b> --output-file <report-dir>/STAGE-SUBAGENT-PLAN.json # 生成机器可读的阶段角色调度计划
+python scripts/nexus_stage_executor.py init --report-dir <report-dir> --flow <skill|web-api|android|mcp> --mode <standard|b> # 初始化阶段执行状态并生成调度计划
+python scripts/nexus_stage_executor.py next --report-dir <report-dir> # 读取调度计划、交付物和审批状态，给出下一步该启动的阶段角色
+python scripts/nexus_stage_executor.py dispatch --report-dir <report-dir> # 输出当前阶段每个 subagent 的 dispatch payload（角色文件、输入、输出、启动提示）
+python scripts/nexus_stage_executor.py bundle-dispatch --report-dir <report-dir> # 将当前阶段 dispatch payload 落成 DISPATCH/ 目录下的 manifest、payload.json 和 prompt.md 文件
+python scripts/nexus_dispatch_runner.py prepare --report-dir <report-dir> # 将当前 DISPATCH bundle 转成 RUNS/ 目录下的运行清单
+python scripts/nexus_dispatch_runner.py start-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> # 标记某个角色已开始执行
+python scripts/nexus_dispatch_runner.py complete-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --result-file <artifact> # 标记角色完成并记录结果文件
+python scripts/nexus_dispatch_runner.py fail-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --note <reason> # 标记某个角色执行失败，供恢复/重试使用
+python scripts/nexus_dispatch_runner.py advance --report-dir <report-dir> # 当当前 RUNS 里的角色都完成后，自动补写 stage-complete 并推进到下一步调度动作
+python scripts/generate_runtime_bridge_config.py --preset mock --output-file <runtime.json> # 生成 mock runtime-config
+python scripts/generate_runtime_bridge_config.py --preset openclaw --output-file <runtime.json> --openclaw-command openclaw --channel telegram --skill-path <repo-root> # 生成 OpenClaw CLI 运行配置
+python scripts/generate_runtime_bridge_config.py --preset claude --output-file <runtime.json> --claude-command claude --permission-mode bypassPermissions --allowed-tools Read Write Edit Bash # 生成 Claude CLI 运行配置
+python scripts/nexus_openclaw_role_runtime.py --payload-file <payload.json> --prompt-file <prompt.md> --openclaw-command openclaw --dry-run # 预览 OpenClaw 子角色运行命令和最终 prompt
+python scripts/run_openclaw_stage_demo.py start --report-dir <report-dir> --runtime-config runtime-config.openclaw.json # 初始化并运行到首个审批门
+python scripts/run_openclaw_stage_demo.py approve --report-dir <report-dir> --stage-id <stage-id> --runtime-config runtime-config.openclaw.json --continue-run # 记录批准并继续推进到下一个审批门
+python scripts/nexus_claude_role_runtime.py --payload-file <payload.json> --prompt-file <prompt.md> --claude-command claude --dry-run # 预览 Claude 子角色运行命令和最终 prompt
+python scripts/nexus_runtime_bridge.py run-once --report-dir <report-dir> --runtime-config <runtime.json> # 读取当前 DISPATCH/RUNS，并按 runtime-config 调起外部执行命令跑完当前阶段
+python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config <runtime.json> # 持续执行多个阶段，直到遇到审批门、No-Go、执行失败或流程完成
 python scripts/diagnose_bash_runtime.py     # 诊断为什么当前环境没有可运行 bash
 python scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir> # 生成 Flow A 阶段一三件套
 python scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language> # 生成多表面 TEST-DESIGN + SURFACE-EXECUTION-PLAN + CASE-EXECUTION-PLAN
@@ -104,6 +152,7 @@ python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke 
 - Flow 文件是否保留对 `DEFINITIONS.md` 的单一事实源声明
 - Python 辅助脚本是否能通过 `py_compile`
 - `reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
+- 阶段调度、dispatch runner 和 runtime bridge 是否都接入文档与脚本契约
 - Flow A 的产品事实指纹与阶段一生成链是否存在，并可通过 smoke test 生成 `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`
 - Flow A 的阶段三是否会把复杂目标拆成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
 - Flow A 的规则/决策/检查项 inventory 是否能从 `SKILL.md`、伴随规则文件、以及相关源码中被抽取并数据驱动展开，而不是每个 capability 只有 1 条泛化用例
@@ -120,6 +169,55 @@ python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke 
 
 CI 也会在 GitHub Actions 中自动执行上述校验和全部 smoke tests。
 
+`nexus_runtime_bridge.py` 的 `runtime-config` 为 JSON，至少包含：
+
+```json
+{
+  "name": "my-runtime",
+  "default": {
+    "command": ["python", "my_runner.py", "--payload-file", "{payload_file}", "--prompt-file", "{prompt_file}"],
+    "cwd": "{workspace_root}",
+    "timeoutSeconds": 900
+  },
+  "roles": {
+    "security-tester": {
+      "command": ["python", "security_runner.py", "--payload-file", "{payload_file}"],
+      "cwd": "{workspace_root}",
+      "timeoutSeconds": 900
+    }
+  }
+}
+```
+
+可用模板变量包括：`{workspace_root}`、`{report_dir}`、`{bundle_dir}`、`{run_dir}`、`{manifest_file}`、`{payload_file}`、`{prompt_file}`、`{stage_id}`、`{stage_name}`、`{stage_label}`、`{role_id}`、`{role_type}`、`{role_file}`。外部命令若 stdout 输出 `{"resultFile":"...", "note":"..."}`，bridge 会自动回写到 `RUNS/<stage>/<role>.state.json`。
+
+如果宿主 runtime 是 Claude Code CLI，可直接这样起步：
+
+```bash
+python scripts/generate_runtime_bridge_config.py --preset claude --output-file runtime-config.claude.json --claude-command claude --permission-mode bypassPermissions --allowed-tools Read Write Edit Bash
+python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config runtime-config.claude.json
+```
+
+`nexus_claude_role_runtime.py` 会读取 `payload.json` 和 `prompt.md`，拼出当前阶段角色的完整执行 prompt，然后用 `claude --print --output-format json --json-schema ...` 非交互执行，并把 Claude 返回的 `resultFile/note` 交回 runtime bridge。
+
+如果宿主 runtime 是 OpenClaw CLI，更符合这个 Skill 的主目标定位，可直接这样起步：
+
+```bash
+python scripts/generate_runtime_bridge_config.py --preset openclaw --output-file runtime-config.openclaw.json --openclaw-command openclaw --channel telegram --skill-path .
+python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config runtime-config.openclaw.json
+```
+
+`nexus_openclaw_role_runtime.py` 会调用 `openclaw invoke --skill <repo> --message <prompt> --channel <channel> --output <...> --result <...>`。如果 OpenClaw 结果 JSON 里没有直接给出 `resultFile`，适配器会回到报告目录里按当前阶段缺失交付物去探测新产物并回写给 runtime bridge。
+
+如果要直接按 OpenClaw 主路径做端到端演练，可使用：
+
+```bash
+python scripts/run_openclaw_stage_demo.py start --report-dir <report-dir> --runtime-config runtime-config.openclaw.json
+python scripts/run_openclaw_stage_demo.py approve --report-dir <report-dir> --stage-id stage-0 --runtime-config runtime-config.openclaw.json --continue-run
+```
+
+`run_openclaw_stage_demo.py` 会把初始化、运行到审批门、记录批准和继续推进串起来，适合验证 OpenClaw 宿主调度链路。
+
 ## 项目结构
 
 ```text
@@ -133,7 +231,7 @@ nexus-testing/
 │   ├── web-api-testing.md      #   Flow B — 网页+接口测试
 │   ├── android-testing.md      #   Flow C — 安卓测试
 │   └── mcp-testing.md          #   Flow D — MCP 测试
-├── roles/                      # 20 个活跃角色
+├── roles/                      # 21 个活跃角色
 ├── scripts/
 │   ├── sandbox-*.sh            # 沙箱执行脚本（invoke/exec/multi-turn/...）
 │   ├── extract_product_fingerprint.py # Flow A 产品事实指纹提取
@@ -162,13 +260,14 @@ nexus-testing/
 └── files/nexus-reports/        # 对外发送前的工作区中转附件（不入库）
 ```
 
-角色目录包含 20 个活跃角色和 1 个已归档模板（`archive/roles/compatibility-tester-skill.md`）。
+角色目录包含 21 个活跃角色和 1 个已归档模板（`archive/roles/compatibility-tester-skill.md`）。
 
 ## 报告输出
 
 所有测试报告输出到 `memory/nexus-reports/{date}-{test-type}-{flow}/`，其中核心交付物包括：
 
 - `PRODUCT-FINGERPRINT.json`
+- `STAGE-SUBAGENT-PLAN.json`
 - `SPEC.md`
 - `SPEC-CONSISTENCY-REVIEW.md`
 - `PRODUCT-QUALITY-REVIEW.md`
@@ -223,4 +322,4 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 
 ## 当前版本
 
-v0.9.39 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.40 — 详见 [CHANGELOG.md](CHANGELOG.md)

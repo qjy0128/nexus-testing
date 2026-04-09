@@ -11,11 +11,12 @@
 ## 执行步骤
 
 ### 阶段零：环境就绪检查
-**执行角色**：主 agent
+**执行角色**：`roles/environment-checker.md`
 
 输入：APK 文件路径
 输出：环境就绪报告（内存中）
 任务：
+- 主 agent 应先生成 `STAGE-SUBAGENT-PLAN.json`，再按该计划启动阶段零角色
 - 基础检查：APK 文件路径是否存在、文件是否可读取
 - 依赖环境检测：扫描需求文档，识别并验证所需的运行时依赖（adb/aapt/apksigner 等 Android 工具链）
 - 通用检查：输出目录可写性、渠道配置

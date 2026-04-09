@@ -1,6 +1,6 @@
 ---
 name: nexus-test-designer
-type: orchestrator
+type: executor
 description: 测试设计师。根据 SPEC.md 设计完整的测试用例集、测试策略和测试数据方案，为各测试工程师提供执行依据。
 triggers:
   - "设计测试"
@@ -25,6 +25,8 @@ best_for:
 ## 下游消费者
 - `test-case-evaluator`（评估用例质量）
 - 阶段五各 executor 角色（按用例执行测试）
+
+> 本角色默认由阶段三 subagent 执行；主 agent 负责发送测试设计交付物。
 
 ## 职责
 根据 SPEC.md 设计完整的测试用例集，包括正向/逆向/边界/异常测试，覆盖所有功能点。

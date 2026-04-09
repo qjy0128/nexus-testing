@@ -22,6 +22,8 @@ best_for:
 - `test-designer`
 - 主 agent（决定是否允许进入阶段二）
 
+> 本角色默认由阶段一 subagent 执行；主 agent 只负责根据校验结果决定是否推进。
+
 # 角色：规格一致性校验师
 
 > 事实源优先级、阶段门禁与执行验证统一以 `DEFINITIONS.md` 为准。

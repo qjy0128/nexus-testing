@@ -10,14 +10,14 @@
 
 | 阶段编号 | 阶段名称 | 执行者 | 输出文件 | 需批准 | 可打回 |
 |----------|----------|--------|---------|--------|--------|
-| 阶段零 | 环境就绪检查 | 主 agent | 环境就绪报告（内存中） | ✅ 需确认 | ❌ |
-| 阶段一 | 需求解析 + 规格一致性校验 | 主 agent（需求解析师角色）+ 规格一致性校验师 | `PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md` | ❌ | ❌ |
-| 阶段二 | 质量评估 | 主 agent（质量评估师角色） | `PRODUCT-QUALITY-REVIEW.md` | ✅ 需批准 | ✅ 打回阶段一 |
-| 阶段三 | 测试设计 | 主 agent（测试设计师角色） | `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json` | ❌ | ❌ |
-| 阶段四 | 用例评估 | 主 agent（用例评估师角色） | `TEST-CASE-REVIEW.md` | ✅ 需批准 | ✅ 打回阶段三 |
+| 阶段零 | 环境就绪检查 | `environment-checker` subagent（执行检查） + 主 agent（发送确认） | `STAGE-SUBAGENT-PLAN.json` + 环境就绪报告（内存中） | ✅ 需确认 | ❌ |
+| 阶段一 | 需求解析 + 规格一致性校验 | `requirement-analyst` subagent + `spec-consistency-validator` subagent | `PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md` | ❌ | ❌ |
+| 阶段二 | 质量评估 | `quality-assessor` subagent | `PRODUCT-QUALITY-REVIEW.md` | ✅ 需批准 | ✅ 打回阶段一 |
+| 阶段三 | 测试设计 | `test-designer` subagent | `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json` | ❌ | ❌ |
+| 阶段四 | 用例评估 | `test-case-evaluator` subagent | `TEST-CASE-REVIEW.md` | ✅ 需批准 | ✅ 打回阶段三 |
 | 阶段五 | 并行测试执行 | 各 Flow 并行角色 subagent | `TEST-EXECUTION/*.md` + `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md` + `TEST-EXECUTION/SURFACE-COVERAGE.json` | ❌ | ✅ 打回阶段三/五 |
-| 阶段六 | 缺陷分析 | 主 agent（缺陷分析师角色） | `DEFECTS/DEFECT-REPORT.md` | ❌ | ✅ 打回阶段三/五 |
-| 阶段七 | 报告整合 | 主 agent（报告整合师角色） | `FINAL-TEST-REPORT.md` | ❌ | ❌ |
+| 阶段六 | 缺陷分析 | `defect-analyst` subagent | `DEFECTS/DEFECT-REPORT.md` | ❌ | ✅ 打回阶段三/五 |
+| 阶段七 | 报告整合 | `report-integrator` subagent | `FINAL-TEST-REPORT.md` | ❌ | ❌ |
 
 **阶段零~七共 8 个阶段**。沟通时统一使用「阶段零」「阶段一」…「阶段七」。
 
@@ -26,6 +26,7 @@
 ## 二、阶段间上下文传递（唯一路径）
 
 ```
+阶段零 → STAGE-SUBAGENT-PLAN.json
 阶段一 → PRODUCT-FINGERPRINT.json + SPEC.md + SPEC-CONSISTENCY-REVIEW.md
 阶段二 → PRODUCT-QUALITY-REVIEW.md
 阶段三 → TEST-DESIGN.md + SURFACE-EXECUTION-PLAN.json
@@ -48,6 +49,7 @@
 
 ```
 {date}-{test-type}-{flow}/
+├── STAGE-SUBAGENT-PLAN.json         # 阶段零调度计划
 ├── PRODUCT-FINGERPRINT.json         # 阶段一事实指纹
 ├── SPEC.md                          # 阶段一规格文档
 ├── SPEC-CONSISTENCY-REVIEW.md       # 阶段一事实一致性门禁
@@ -115,17 +117,17 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 
 | B 模式阶段编号 | 对应主框架阶段 | 内容 | 执行者 | 需批准 |
 |--------------|-------------|------|--------|--------|
-| B-阶段零 | 阶段零 | 环境就绪检查 | 主 agent | ✅ 需确认 |
-| B-阶段一 | 阶段一 | 需求解析 | 主 agent（需求解析师） | ❌ |
-| B-阶段二 | 阶段二 | 质量评估 + 文档判定（判定走 A/B 模式） | 主 agent（质量评估师） | ✅ 需批准 |
+| B-阶段零 | 阶段零 | 环境就绪检查 | `environment-checker` subagent（执行检查） + 主 agent（发送确认） | ✅ 需确认 |
+| B-阶段一 | 阶段一 | 需求解析 | `requirement-analyst` subagent | ❌ |
+| B-阶段二 | 阶段二 | 质量评估 + 文档判定（判定走 A/B 模式） | `quality-assessor` subagent | ✅ 需批准 |
 | B-阶段三 | —（B 模式独有） | 双边深度体验 | experience-tester-a + experience-tester-b（并行） | ❌ |
 | B-阶段四 | —（B 模式独有） | 交叉核对 | experience-tester-a + experience-tester-b（交叉） | ❌ |
 | B-阶段五 | —（B 模式独有） | 争议复检 + 补充体验 | experience-tester-a + experience-tester-b | ❌ |
-| B-阶段六 | 阶段三 | 测试用例生成 | 主 agent（测试设计师） | ❌ |
-| B-阶段七 | 阶段四 | 用例评估 | 主 agent（用例评估师） | ✅ 需批准 |
+| B-阶段六 | 阶段三 | 测试用例生成 | `test-designer` subagent | ❌ |
+| B-阶段七 | 阶段四 | 用例评估 | `test-case-evaluator` subagent | ✅ 需批准 |
 | B-阶段八 | 阶段五 | 并行测试执行 + 证据收集 | 各 Flow B 并行角色 subagent | ❌ |
-| B-阶段九 | 阶段六 | 缺陷分析 | 主 agent（缺陷分析师） | ❌ |
-| B-阶段十 | 阶段七 | 报告整合 | 主 agent（报告整合师） | ❌ |
+| B-阶段九 | 阶段六 | 缺陷分析 | `defect-analyst` subagent | ❌ |
+| B-阶段十 | 阶段七 | 报告整合 | `report-integrator` subagent | ❌ |
 
 **B 模式门禁规则**：
 - B-阶段二（质量评估）和 B-阶段七（用例评估）适用标准批准/拒绝规则（第九节）
@@ -161,14 +163,15 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 
 | 类型 | 定义 | 可跨阶段 | 示例 |
 |------|------|---------|------|
-| `orchestrator` | 阶段推进、用户交互、批准请求 | ✅ | requirement-analyst, quality-assessor, report-integrator |
-| `executor` | 接收任务执行，不直接与用户交互 | ❌ | skill-tester, security-tester, functional-tester |
-| `validator` | 审计、评估、覆盖检查 | ❌ | spec-consistency-validator, test-case-evaluator, evidence-collector, defect-analyst |
+| `orchestrator` | 主流程调度、用户交互、批准请求 | ✅ | 主 agent（唯一） |
+| `executor` | 负责产出阶段交付物，不直接与用户交互 | ❌ | environment-checker, requirement-analyst, test-designer, skill-tester, report-integrator |
+| `validator` | 审计、评估、覆盖检查或缺陷归并 | ❌ | spec-consistency-validator, quality-assessor, test-case-evaluator, evidence-collector, defect-analyst |
 
 **调度规则**：
-- `orchestrator` 角色由主 agent 自身扮演，不启动 subagent
-- `executor` 角色作为 subagent 并行启动，互不依赖
-- `validator` 角色在对应阶段串行执行，需要读取前置交付物
+- 主 agent 是唯一 `orchestrator`，负责路由、阶段推进、批准请求、打回决策和对外发送
+- 除主 agent 外，阶段零到阶段七的角色默认都以对应 `subagent` 执行；串行阶段启动 1 个阶段角色，阶段五或 B 模式体验阶段按模板并行启动多个角色
+- `executor` / `validator` 都可以作为 subagent；区别在于前者偏生产交付物，后者偏审计评估
+- `evidence-collector` 不参与并行组，只在所有测试执行角色结束后再启动
 
 ### 角色依赖图
 
@@ -207,6 +210,57 @@ PRODUCT-QUALITY-REVIEW.md
 ```
 
 **数据契约**：每个角色的输入来源和输出消费者必须在角色文件中声明 `## 输入来源` 和 `## 下游消费者`。
+
+### 标准调度模板
+
+```text
+阶段零：
+  主 agent 路由测试类型
+    -> 生成 STAGE-SUBAGENT-PLAN.json
+    -> 启动 environment-checker subagent
+    -> 汇总环境就绪结果
+    -> 向用户请求确认
+
+阶段一：
+  启动 requirement-analyst subagent
+    -> 产出 PRODUCT-FINGERPRINT.json / SPEC.md
+  启动 spec-consistency-validator subagent
+    -> 产出 SPEC-CONSISTENCY-REVIEW.md
+  主 agent 发送阶段一交付物
+
+阶段二：
+  启动 quality-assessor subagent
+    -> 产出 PRODUCT-QUALITY-REVIEW.md
+  主 agent 发送交付物并请求批准
+
+阶段三：
+  启动 test-designer subagent
+    -> 产出 TEST-DESIGN.md / SURFACE-EXECUTION-PLAN.json
+  主 agent 发送阶段三交付物
+
+阶段四：
+  启动 test-case-evaluator subagent
+    -> 产出 TEST-CASE-REVIEW.md
+  主 agent 发送交付物并请求批准
+
+阶段五：
+  按 Flow 模板并行启动测试角色 subagent
+    -> 所有角色完成后
+    -> 启动 evidence-collector subagent
+
+阶段六：
+  启动 defect-analyst subagent
+    -> 产出 DEFECT-REPORT.md
+
+阶段七：
+  启动 report-integrator subagent
+    -> 产出 FINAL-TEST-REPORT.md
+```
+
+**硬规则**：
+- 主 agent 不能跳过阶段角色，直接代写对应阶段交付物
+- 阶段角色只负责产出本阶段结果，不直接向用户发起批准或选择题
+- 需批准阶段的批准动作只能由主 agent 发起和处理
 
 ---
 
@@ -252,7 +306,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
-## 六-D、角色输入/输出约定（阶段五 subagent）
+## 六-D、角色输入/输出约定（阶段角色 subagent）
 
 | 角色 | 读取文件 | 输出文件 | Flow |
 |------|---------|---------|------|
@@ -301,8 +355,8 @@ PRODUCT-QUALITY-REVIEW.md
 **Token 监控职责**：
 | 阶段 | 监控者 | 职责 |
 |------|--------|------|
-| 阶段一~四（主 agent 执行） | **主 agent 自身** | 每阶段完成后记录 Token 消耗到 `stage-transition-log.json` |
-| 阶段五（subagent 并行） | **主 agent 监控** | 主 agent 在 subagent 启动时记录起始点，完成/超时时记录终止点；总 Token = 各 subagent Token 之和 |
+| 主 agent 编排过程 | **主 agent 自身** | 记录阶段切换、批准交互、打回动作的 Token 消耗到 `stage-transition-log.json` |
+| 阶段零~七角色 subagent | **主 agent 监控** | 主 agent 在阶段角色 subagent 启动时记录起始点，完成/超时时记录终止点；阶段总 Token = 各阶段角色 Token 之和 |
 | 单个 subagent | **subagent 自身** | 在结果文件末尾追加 `Token 消耗：约 XXXK`（估算值即可） |
 | 90% 预警触发 | **主 agent** | 主 agent 检测到任一 subagent 接近预算时，向用户发送预警并确认是否继续 |
 | 100% 强制停止 | **主 agent** | 主 agent 发送停止指令（如平台支持），或标记该 subagent 为「Token 耗尽，部分完成」 |
@@ -376,9 +430,9 @@ PRODUCT-QUALITY-REVIEW.md
 
 ### 主/子 agent 交互边界
 
-- 主 agent 负责用户交互、批准、阶段推进
-- subagent 只负责执行、写结果、写 blocker，不直接要求用户做选择
-- subagent 遇阻时保留已产出文件并写明未完成范围，由主 agent 决定后续
+- 主 agent 负责用户交互、批准、阶段推进、打回与重跑决策
+- 阶段角色 subagent 只负责执行、写结果、写 blocker，不直接要求用户做选择
+- 阶段角色 subagent 遇阻时保留已产出文件并写明未完成范围，由主 agent 决定后续
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: nexus-report-integrator
-type: orchestrator
+type: executor
 description: 报告整合师。汇总阶段五结果和缺陷报告，生成最终测试报告，并给出 Go、Conditional Go 或 No-Go 建议。
 triggers:
   - "报告整合"
@@ -19,6 +19,8 @@ best_for:
 
 ## 下游消费者
 - 用户（最终报告的直接消费者）
+
+> 本角色默认由阶段七 subagent 执行；主 agent 负责把最终报告发送给用户。
 
 ## 边界与反模式
 

@@ -45,7 +45,177 @@ def validate_definition_consistency() -> list[str]:
         issues.append("DEFINITIONS.md is missing PRODUCT-FINGERPRINT.json in the stage outputs")
     if "SPEC-CONSISTENCY-REVIEW.md" not in definitions_text:
         issues.append("DEFINITIONS.md is missing SPEC-CONSISTENCY-REVIEW.md in the stage outputs")
+    if "STAGE-SUBAGENT-PLAN.json" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing STAGE-SUBAGENT-PLAN.json in the stage outputs")
 
+    return issues
+
+
+def validate_stage_subagent_plan_contract() -> list[str]:
+    issues: list[str] = []
+    definitions_text = read_text(ROOT / "DEFINITIONS.md")
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+    recovery_text = read_text(ROOT / "reference-recovery.md")
+
+    generator = ROOT / "scripts" / "generate_stage_subagent_plan.py"
+    test_script = ROOT / "scripts" / "test_stage_subagent_plan.py"
+    if not generator.exists():
+        issues.append("scripts/generate_stage_subagent_plan.py is missing")
+    if not test_script.exists():
+        issues.append("scripts/test_stage_subagent_plan.py is missing")
+    if "STAGE-SUBAGENT-PLAN.json" not in readme_text:
+        issues.append("README.md is missing STAGE-SUBAGENT-PLAN.json guidance")
+    if "generate_stage_subagent_plan.py" not in skill_text:
+        issues.append("SKILL.md is missing generate_stage_subagent_plan.py guidance")
+    if "STAGE-SUBAGENT-PLAN.json" not in recovery_text:
+        issues.append("reference-recovery.md is missing STAGE-SUBAGENT-PLAN.json recovery guidance")
+    if "generate STAGE-SUBAGENT-PLAN.json" not in definitions_text and "生成 STAGE-SUBAGENT-PLAN.json" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing the stage-zero stage-subagent-plan generation rule")
+
+    return issues
+
+
+def validate_stage_executor_contract() -> list[str]:
+    issues: list[str] = []
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+    definitions_text = read_text(ROOT / "DEFINITIONS.md")
+    recovery_text = read_text(ROOT / "reference-recovery.md")
+
+    executor = ROOT / "scripts" / "nexus_stage_executor.py"
+    test_script = ROOT / "scripts" / "test_nexus_stage_executor.py"
+    if not executor.exists():
+        issues.append("scripts/nexus_stage_executor.py is missing")
+    if not test_script.exists():
+        issues.append("scripts/test_nexus_stage_executor.py is missing")
+    if "nexus_stage_executor.py" not in readme_text:
+        issues.append("README.md is missing nexus_stage_executor.py guidance")
+    if "nexus_stage_executor.py" not in skill_text:
+        issues.append("SKILL.md is missing nexus_stage_executor.py guidance")
+    if "dispatch" not in readme_text:
+        issues.append("README.md is missing dispatch guidance for nexus_stage_executor.py")
+    if "dispatch" not in skill_text:
+        issues.append("SKILL.md is missing dispatch guidance for nexus_stage_executor.py")
+    if "bundle-dispatch" not in readme_text:
+        issues.append("README.md is missing bundle-dispatch guidance for nexus_stage_executor.py")
+    if "bundle-dispatch" not in skill_text:
+        issues.append("SKILL.md is missing bundle-dispatch guidance for nexus_stage_executor.py")
+    if "stage-transition-log.json" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing stage-transition-log.json contract")
+    if "approval-records.json" not in recovery_text:
+        issues.append("reference-recovery.md is missing approval-records.json recovery contract")
+    return issues
+
+
+def validate_dispatch_runner_contract() -> list[str]:
+    issues: list[str] = []
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+
+    runner = ROOT / "scripts" / "nexus_dispatch_runner.py"
+    test_script = ROOT / "scripts" / "test_nexus_dispatch_runner.py"
+    if not runner.exists():
+        issues.append("scripts/nexus_dispatch_runner.py is missing")
+    if not test_script.exists():
+        issues.append("scripts/test_nexus_dispatch_runner.py is missing")
+    if "nexus_dispatch_runner.py" not in readme_text:
+        issues.append("README.md is missing nexus_dispatch_runner.py guidance")
+    if "nexus_dispatch_runner.py" not in skill_text:
+        issues.append("SKILL.md is missing nexus_dispatch_runner.py guidance")
+    if "bundle-dispatch" not in skill_text:
+        issues.append("SKILL.md is missing bundle-dispatch bridge guidance")
+    return issues
+
+
+def validate_runtime_bridge_contract() -> list[str]:
+    issues: list[str] = []
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+
+    runner = ROOT / "scripts" / "nexus_runtime_bridge.py"
+    test_script = ROOT / "scripts" / "test_nexus_runtime_bridge.py"
+    if not runner.exists():
+        issues.append("scripts/nexus_runtime_bridge.py is missing")
+    if not test_script.exists():
+        issues.append("scripts/test_nexus_runtime_bridge.py is missing")
+    if "nexus_runtime_bridge.py" not in readme_text:
+        issues.append("README.md is missing nexus_runtime_bridge.py guidance")
+    if "nexus_runtime_bridge.py" not in skill_text:
+        issues.append("SKILL.md is missing nexus_runtime_bridge.py guidance")
+    if "runtime-config" not in readme_text:
+        issues.append("README.md is missing runtime-config guidance for nexus_runtime_bridge.py")
+    if "runtime-config" not in skill_text:
+        issues.append("SKILL.md is missing runtime-config guidance for nexus_runtime_bridge.py")
+    return issues
+
+
+def validate_claude_runtime_contract() -> list[str]:
+    issues: list[str] = []
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+
+    adapter = ROOT / "scripts" / "nexus_claude_role_runtime.py"
+    generator = ROOT / "scripts" / "generate_runtime_bridge_config.py"
+    adapter_test = ROOT / "scripts" / "test_nexus_claude_role_runtime.py"
+    generator_test = ROOT / "scripts" / "test_generate_runtime_bridge_config.py"
+    if not adapter.exists():
+        issues.append("scripts/nexus_claude_role_runtime.py is missing")
+    if not generator.exists():
+        issues.append("scripts/generate_runtime_bridge_config.py is missing")
+    if not adapter_test.exists():
+        issues.append("scripts/test_nexus_claude_role_runtime.py is missing")
+    if not generator_test.exists():
+        issues.append("scripts/test_generate_runtime_bridge_config.py is missing")
+    if "nexus_claude_role_runtime.py" not in readme_text:
+        issues.append("README.md is missing nexus_claude_role_runtime.py guidance")
+    if "generate_runtime_bridge_config.py" not in readme_text:
+        issues.append("README.md is missing generate_runtime_bridge_config.py guidance")
+    if "nexus_claude_role_runtime.py" not in skill_text:
+        issues.append("SKILL.md is missing nexus_claude_role_runtime.py guidance")
+    if "generate_runtime_bridge_config.py" not in skill_text:
+        issues.append("SKILL.md is missing generate_runtime_bridge_config.py guidance")
+    return issues
+
+
+def validate_openclaw_runtime_contract() -> list[str]:
+    issues: list[str] = []
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+
+    adapter = ROOT / "scripts" / "nexus_openclaw_role_runtime.py"
+    test_script = ROOT / "scripts" / "test_nexus_openclaw_role_runtime.py"
+    fixture = ROOT / "scripts" / "fixtures" / "mock_openclaw_cli.py"
+    if not adapter.exists():
+        issues.append("scripts/nexus_openclaw_role_runtime.py is missing")
+    if not test_script.exists():
+        issues.append("scripts/test_nexus_openclaw_role_runtime.py is missing")
+    if not fixture.exists():
+        issues.append("scripts/fixtures/mock_openclaw_cli.py is missing")
+    if "nexus_openclaw_role_runtime.py" not in readme_text:
+        issues.append("README.md is missing nexus_openclaw_role_runtime.py guidance")
+    if "nexus_openclaw_role_runtime.py" not in skill_text:
+        issues.append("SKILL.md is missing nexus_openclaw_role_runtime.py guidance")
+    if "OpenClaw" not in skill_text and "openclaw" not in skill_text:
+        issues.append("SKILL.md is missing explicit OpenClaw targeting guidance")
+    return issues
+
+
+def validate_openclaw_demo_contract() -> list[str]:
+    issues: list[str] = []
+    readme_text = read_text(ROOT / "README.md")
+    skill_text = read_text(ROOT / "SKILL.md")
+
+    demo = ROOT / "scripts" / "run_openclaw_stage_demo.py"
+    test_script = ROOT / "scripts" / "test_run_openclaw_stage_demo.py"
+    if not demo.exists():
+        issues.append("scripts/run_openclaw_stage_demo.py is missing")
+    if not test_script.exists():
+        issues.append("scripts/test_run_openclaw_stage_demo.py is missing")
+    if "run_openclaw_stage_demo.py" not in readme_text:
+        issues.append("README.md is missing run_openclaw_stage_demo.py guidance")
+    if "run_openclaw_stage_demo.py" not in skill_text:
+        issues.append("SKILL.md is missing run_openclaw_stage_demo.py guidance")
     return issues
 
 

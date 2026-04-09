@@ -14,8 +14,9 @@
 
 ### 阶段零：环境就绪检查
 
-**执行角色**：主 agent
+**执行角色**：`roles/environment-checker.md`
 
+- 主 agent 应先生成 `STAGE-SUBAGENT-PLAN.json`，再按该计划启动阶段零角色。
 - 基础检查：Skill 源码路径、`SKILL.md` 可读性、YAML frontmatter 完整性。
 - 依赖环境检测：识别 npm / Python / 系统命令依赖。
 - 沙箱能力检测：确认 `scripts/sandbox-create.sh`、`scripts/sandbox-skill-invoke.sh`、`scripts/sandbox-multi-turn.sh` 可用。

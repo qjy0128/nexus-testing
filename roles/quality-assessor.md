@@ -1,6 +1,6 @@
 ---
 name: nexus-quality-assessor
-type: orchestrator
+type: validator
 description: 质量评估师。评估产品规格本身是否清晰、完整、可测试，并为测试设计提供风险与模式选择建议。
 triggers:
   - "质量评估"
@@ -20,6 +20,8 @@ best_for:
 
 ## 下游消费者
 - `test-designer`（参考质量评估的风险和策略建议）
+
+> 本角色默认由阶段二 subagent 执行；主 agent 负责发送评估结果并请求批准。
 
 ## 边界与反模式
 

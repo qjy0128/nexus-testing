@@ -11,11 +11,12 @@
 ## 执行步骤
 
 ### 阶段零：环境就绪检查
-**执行角色**：主 agent
+**执行角色**：`roles/environment-checker.md`
 
 输入：MCP Server 地址 / 源码
 输出：环境就绪报告（内存中）
 任务：
+- 主 agent 应先生成 `STAGE-SUBAGENT-PLAN.json`，再按该计划启动阶段零角色
 - 基础检查：MCP Server 地址是否可连接、JSON-RPC 端口是否开放
 - 依赖环境检测：扫描 Server 实现文档或源码，识别所需的运行时依赖（Node.js / Python / Docker 等）
 - 通用检查：输出目录可写性、渠道配置

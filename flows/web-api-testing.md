@@ -32,6 +32,7 @@ Flow B 有两种模式：
 - 默认使用 `playwright-cli`
 - 需要连接用户正在使用的浏览器时使用 `chrome-cdp`
 - 两者都不可用时，退化为手动测试或受限沙箱验证
+- 主 agent 应在阶段零先生成 `STAGE-SUBAGENT-PLAN.json`，后续按计划启动阶段角色
 
 详细工具模板见 `reference-flow-web-api.md`。
 
@@ -39,7 +40,7 @@ Flow B 有两种模式：
 
 | 阶段 | 执行者 | 核心输出 |
 |------|--------|---------|
-| 阶段零 | 主 agent | 环境就绪报告 |
+| 阶段零 | `roles/environment-checker.md` | 环境就绪报告 |
 | 阶段一 | `roles/requirement-analyst.md` | `SPEC.md` |
 | 阶段二 | `roles/quality-assessor.md` | `PRODUCT-QUALITY-REVIEW.md` |
 | 阶段三 | `roles/test-designer.md` | `TEST-DESIGN.md` |
@@ -61,7 +62,7 @@ Flow B 有两种模式：
 
 | 阶段 | 执行者 | 核心输出 |
 |------|--------|---------|
-| B-阶段零 | 主 agent | 环境就绪报告 |
+| B-阶段零 | `roles/environment-checker.md` | 环境就绪报告 |
 | B-阶段一 | `roles/requirement-analyst.md` | `SPEC.md`（允许不完整） |
 | B-阶段二 | `roles/quality-assessor.md` | `PRODUCT-QUALITY-REVIEW.md` + 模式判定 |
 | B-阶段三 | `roles/experience-tester-a.md` + `roles/experience-tester-b.md` | `EXPERIENCE/experience-report-a.md` + `EXPERIENCE/experience-report-b.md` |

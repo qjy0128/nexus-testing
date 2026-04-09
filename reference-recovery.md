@@ -24,9 +24,10 @@
   │     └─ 找到最后一条 to_stage 记录
   │
   ├─ 3. 验证该阶段交付物文件存在
-  │     └─ 阶段一 → SPEC.md
+  │     └─ 阶段零 → STAGE-SUBAGENT-PLAN.json
+  │     └─ 阶段一 → PRODUCT-FINGERPRINT.json + SPEC.md + SPEC-CONSISTENCY-REVIEW.md
   │     ┘─ 阶段二 → PRODUCT-QUALITY-REVIEW.md
-  │     ┘─ 阶段三 → TEST-DESIGN.md
+  │     ┘─ 阶段三 → TEST-DESIGN.md + SURFACE-EXECUTION-PLAN.json
   │     ┘─ 阶段四 → TEST-CASE-REVIEW.md
   │     ┘─ 阶段五 → TEST-EXECUTION/*.md
   │     ┘─ 阶段六 → DEFECTS/DEFECT-REPORT.md
@@ -45,10 +46,10 @@
 
 | 阶段 | 交付物 | 存在则已完成 | 批准状态检查 |
 |------|--------|-------------|-------------|
-| 阶段零 | 环境就绪报告（内存中） | 无文件，需用户确认 | — |
-| 阶段一 | `SPEC.md` | ✅ | — |
+| 阶段零 | `STAGE-SUBAGENT-PLAN.json` + 环境就绪报告（内存中） | ✅（计划文件存在）且需用户确认 | — |
+| 阶段一 | `PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md` | ✅ | — |
 | 阶段二 | `PRODUCT-QUALITY-REVIEW.md` | ✅ | 检查 `approval-records.json` |
-| 阶段三 | `TEST-DESIGN.md` | ✅ | — |
+| 阶段三 | `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json` | ✅ | — |
 | 阶段四 | `TEST-CASE-REVIEW.md` | ✅ | 检查 `approval-records.json` |
 | 阶段五 | `TEST-EXECUTION/*.md` | ✅ 且文件数 ≥ 并行角色数 | — |
 | 阶段六 | `DEFECTS/DEFECT-REPORT.md` | ✅ | — |
@@ -72,9 +73,29 @@
 
 1. 读取 `TEST-EXECUTION/` 目录，列出已有结果文件
 2. 对比 `DEFINITIONS.md` 第四节该 Flow 的并行角色列表
-3. 缺失的角色重新启动 subagent
+3. 缺失的角色重新启动对应 subagent
 4. 保留已有的结果文件，不覆盖
-5. 所有角色完成后，启动 evidence-collector
+5. 所有角色完成后，启动 evidence-collector subagent
+
+若已启用 `RUNS/` 运行清单：
+- 读取 `RUNS/<stage>/<role>.state.json`
+- `status=completed` 的角色跳过
+- `status=failed` 的角色优先重试
+- `status=running` 但无新日志增长时，可按宿主 runtime 已中断处理并重新启动
+
+## 四-B、串行阶段恢复
+
+阶段零到阶段四、阶段六、阶段七虽然是串行推进，但每个阶段也默认由对应阶段角色 subagent 执行。
+
+| 阶段 | 默认恢复动作 |
+|------|-------------|
+| 阶段零 | 重启 `environment-checker` |
+| 阶段一 | 缺 `PRODUCT-FINGERPRINT.json` / `SPEC.md` 时重启 `requirement-analyst`；缺 `SPEC-CONSISTENCY-REVIEW.md` 时重启 `spec-consistency-validator` |
+| 阶段二 | 重启 `quality-assessor` |
+| 阶段三 | 重启 `test-designer` |
+| 阶段四 | 重启 `test-case-evaluator` |
+| 阶段六 | 重启 `defect-analyst` |
+| 阶段七 | 重启 `report-integrator` |
 
 ---
 
