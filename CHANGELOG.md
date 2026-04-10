@@ -1,7 +1,7 @@
 ### v0.9.41（2026-04-10）
 **合同对齐 + 共享解析收口**
 
-- 更新：`README.md` 与 `项目介绍.md`，补充“相比常规 Skill 测试多做了什么 / 现阶段明确不做什么”的定位说明，突出事实指纹、surface/case 结构化设计、严格执行分层、host takeover 和结果质量门
+- 更新：`README.md`，补充“相比常规 Skill 测试多做了什么 / 现阶段明确不做什么”的定位说明，突出事实指纹、surface/case 结构化设计、严格执行分层、host takeover 和结果质量门
 - 新增：`scripts/run_flow_a_takeover_execution.py`，为 Flow A `skill-tester` 提供 host-side takeover 执行器；当纯指令型 Skill 因真实运行时/工具环境限制进入 `takeover-required` 时，可按 `CASE-EXECUTION-PLAN.json` 的 `executionHints.hostTakeover` 自动补跑通用 HTTP 类真实调用 case
 - 更新：`scripts/generate_flow_a_test_design.py` 与相关测试，阶段三生成的 `CASE-EXECUTION-PLAN.json` 现在会额外写出 `hostTakeover.enabled/strategy/urls/providerAliases/strictReal`，供阶段五主 agent takeover 直接消费
 - 更新：`scripts/nexus_runtime_bridge.py` 与相关 smoke tests，`skill-tester` 命中 takeover 条件时会先尝试 Flow A host takeover executor；只有自动接管仍无法补完，才保留 `takeover-required`
@@ -55,7 +55,7 @@
 - 新增：`roles/environment-checker.md`，补齐阶段零独立角色，环境检查不再默认由主 agent 直接代跑
 - 更新：`DEFINITIONS.md`，把阶段零到阶段七改成“主 agent 编排 + 阶段角色 subagent 执行”的正式契约；主 agent 只负责调度、审批、打回和对外发送
 - 更新：`roles/requirement-analyst.md`、`roles/quality-assessor.md`、`roles/test-designer.md`、`roles/report-integrator.md` 的角色类型定义，避免继续暗示阶段一到四、七应由主 agent 直接执行
-- 更新：`SKILL.md`、`README.md`、`flows/skill-testing.md`、`flows/web-api-testing.md`、`flows/mcp-testing.md`、`flows/android-testing.md`、`项目介绍.md`，统一阶段执行模型，明确只有主 agent 是 orchestrator，阶段角色默认走 subagent
+- 更新：`SKILL.md`、`README.md`、`flows/skill-testing.md`、`flows/web-api-testing.md`、`flows/mcp-testing.md`、`flows/android-testing.md`，统一阶段执行模型，明确只有主 agent 是 orchestrator，阶段角色默认走 subagent
 - 更新：`reference-recovery.md`、`reference-approval-mechanism.md` 以及多个阶段角色文档，补齐阶段角色恢复和批准交接语义，避免只在主定义文件里写新规则
 - 更新：`scripts/validate-framework.py`，为 `scripts/test_flow_a_surface_runner.py` 单独放宽 runtime smoke test 超时，避免总校验因现有长耗时用例误报失败
 - 更新：`scripts/validate-framework.py`、`DEFINITIONS.md` 与各 Flow 文档，把 `STAGE-SUBAGENT-PLAN.json` 接入主校验和阶段零执行契约
@@ -104,10 +104,14 @@
 **Flow A hook / MCP harness hardening**
 
 - 更新：scripts/run_flow_a_skill_execution.py，显式 harness 与 MCP harness 启动失败时不再炸整轮，而是把对应 surface 标记为 locked
-- 更新：scripts/run_flow_a_skill_execution.py，显式 hook harness 若声明验证通过，必须同时提供 egisteredHooks 等结果证据；MCP harness 继续记录 protocol-version、	ools 与 	ool-call
-- 更新：scripts/validate_flow_a_skill_results.py，收紧 openclaw-extension / mcp 通过态门槛，分别要求 egistered-hooks 与 protocol-version/tools 证据 notes
+- 更新：scripts/run_flow_a_skill_execution.py，显式 hook harness 若声明验证通过，必须同时提供 
+egisteredHooks 等结果证据；MCP harness 继续记录 protocol-version、	ools 与 	ool-call
+- 更新：scripts/validate_flow_a_skill_results.py，收紧 openclaw-extension / mcp 通过态门槛，分别要求 
+egistered-hooks 与 protocol-version/tools 证据 notes
 - 更新：scripts/test_flow_a_surface_runner.py、scripts/test_flow_a_skill_execution.py，补充真实 hook/MCP harness 回归和坏 harness 启动失败回归
-- 更新：SKILL.md、lows/skill-testing.md、oles/skill-tester.md、eference-flow-skill.md、README.md，同步阶段五 runner 的真实执行语义
+- 更新：SKILL.md、lows/skill-testing.md、
+oles/skill-tester.md、
+eference-flow-skill.md、README.md，同步阶段五 runner 的真实执行语义
 ### v0.9.34（2026-04-07）
 **Bash 诊断脚本**
 
