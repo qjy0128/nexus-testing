@@ -7,6 +7,7 @@ from pathlib import Path
 
 ALLOWED_DISPATCH_MODES = {"serial", "parallel"}
 ALLOWED_ROLE_TYPES = {"executor", "validator"}
+ALLOWED_RUN_MODES = {"test", "repair"}
 
 
 def _non_empty_string(value: object, field: str) -> str:
@@ -86,7 +87,11 @@ def validate_dispatch_payload(payload: object, *, field: str = "dispatch payload
         raise ValueError(f"{field}.dispatchMode must be one of: {', '.join(sorted(ALLOWED_DISPATCH_MODES))}")
 
     report_dir = _non_empty_string(payload.get("reportDir"), f"{field}.reportDir")
+    run_mode = _non_empty_string(payload.get("runMode", "test"), f"{field}.runMode")
+    if run_mode not in ALLOWED_RUN_MODES:
+        raise ValueError(f"{field}.runMode must be one of: {', '.join(sorted(ALLOWED_RUN_MODES))}")
     missing_deliverables = _string_list(payload.get("missingDeliverables", []), f"{field}.missingDeliverables")
+    available_artifacts = _string_list(payload.get("availableArtifacts", []), f"{field}.availableArtifacts")
     input_sources = _string_list(payload.get("inputSources", []), f"{field}.inputSources")
     inputs = _string_list(payload.get("inputs", []), f"{field}.inputs")
     outputs = _string_list(payload.get("outputs", []), f"{field}.outputs")
@@ -131,7 +136,9 @@ def validate_dispatch_payload(payload: object, *, field: str = "dispatch payload
         "stageName": stage_name,
         "dispatchMode": dispatch_mode,
         "reportDir": report_dir,
+        "runMode": run_mode,
         "missingDeliverables": missing_deliverables,
+        "availableArtifacts": available_artifacts,
         "inputSources": input_sources,
         "inputs": inputs,
         "outputs": outputs,

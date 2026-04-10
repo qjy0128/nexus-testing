@@ -605,6 +605,9 @@ def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str,
             note = str(host_takeover.get("note") or "").strip()
             if note:
                 takeover_note = f"{takeover_note}; {note}".strip("; ")
+            remaining_file = str(host_takeover.get("remainingCasesMarkdown") or host_takeover.get("remainingCasesFile") or "").strip()
+            if remaining_file:
+                takeover_note = f"{takeover_note}; remaining-cases={remaining_file}".strip("; ")
         takeover_file = write_takeover_file(
             report_dir,
             bundle,

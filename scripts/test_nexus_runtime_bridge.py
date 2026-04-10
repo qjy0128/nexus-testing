@@ -449,6 +449,66 @@ def test_blocked_skill_tester_auto_takeover_completes() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_blocked_skill_tester_auto_takeover_partial_stays_takeover_required() -> None:
+    temp_root = make_temp_root("runtime-bridge-partial-takeover-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, blocked_role="skill-tester")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        first = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(first["status"], "await-approval", "first gate status")
+        approve_stage(report_dir, "stage-0")
+        second = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(second["status"], "await-approval", "second gate status")
+        approve_stage(report_dir, "stage-2")
+        third = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(third["status"], "await-approval", "third gate status")
+        approve_stage(report_dir, "stage-4")
+        with LocalServer() as server:
+            seed_host_takeover_case_plan(report_dir, server.url)
+            case_plan = json.loads(read_text(report_dir / "CASE-EXECUTION-PLAN.json"))
+            case_plan["cases"].append(
+                {
+                    "caseId": "TC-02",
+                    "surfaceId": "SURFACE-01",
+                    "surfaceKind": "skill",
+                    "title": "Manual negative review",
+                    "objective": "Requires manual negative review.",
+                    "steps": [f"Fetch `{server.url}` and manually inspect the negative path."],
+                    "expected": ["Should remain incomplete."],
+                    "executionHints": {
+                        "message": "case-id=TC-02; surface-id=SURFACE-01",
+                        "mode": "shim-live",
+                        "verificationPolicy": "manual-negative-review",
+                        "expectedKeywords": [],
+                        "hostTakeover": {
+                            "enabled": True,
+                            "strategy": "http-probe",
+                            "strictReal": True,
+                            "urls": [server.url],
+                            "providerAliases": [],
+                            "expectedKeywords": [],
+                        },
+                    },
+                }
+            )
+            write_text(report_dir / "CASE-EXECUTION-PLAN.json", json.dumps(case_plan, ensure_ascii=False, indent=2) + "\n")
+            surface_plan = json.loads(read_text(report_dir / "SURFACE-EXECUTION-PLAN.json"))
+            surface_plan["surfaces"][0]["testCaseIds"] = ["TC-01", "TC-02"]
+            write_text(report_dir / "SURFACE-EXECUTION-PLAN.json", json.dumps(surface_plan, ensure_ascii=False, indent=2) + "\n")
+            final = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(final["status"], "takeover-required", "partial auto takeover must still require takeover")
+        takeover_file = report_dir / "RUNS" / "stage-5" / "skill-tester.takeover.json"
+        assert_equal(takeover_file.exists(), True, "takeover file should be written for partial takeover")
+        remaining_cases = json.loads(read_text(report_dir / "TEST-EXECUTION" / "REMAINING-CASES.json"))
+        assert_equal(remaining_cases["remainingIncompleteCases"], ["TC-02"], "remaining incomplete case list preserved")
+        print("  [PASS] test_blocked_skill_tester_auto_takeover_partial_stays_takeover_required")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_blocked_environment_checker_remains_failure() -> None:
     temp_root = make_temp_root("runtime-bridge-blocked-env-")
     try:
@@ -532,6 +592,7 @@ def main() -> int:
         test_fallback_runtime_recovers_failed_role,
         test_blocked_skill_tester_becomes_takeover_required,
         test_blocked_skill_tester_auto_takeover_completes,
+        test_blocked_skill_tester_auto_takeover_partial_stays_takeover_required,
         test_blocked_environment_checker_remains_failure,
         test_quality_assessor_missing_required_sections_fails,
         test_missing_dispatch_prompt_file_reports_clear_error,

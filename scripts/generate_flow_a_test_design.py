@@ -70,7 +70,9 @@ HOST_TAKEOVER_PROVIDER_ALIASES = {
     "chinagoldgroup": ["http://www.chinagoldgroup.com/"],
     "boc": ["https://www.boc.cn/"],
     "jin10": ["https://www.jin10.com/"],
+    "coindesk": ["https://www.coindesk.com/"],
 }
+HOST_TAKEOVER_BROWSER_ALIASES = {"jin10", "coindesk", "tradingeconomics"}
 
 
 def text(language: str, zh: str, en: str) -> str:
@@ -700,6 +702,7 @@ def build_case_execution_plan(
             ]
             case_payload["executionHints"] = build_case_execution_hints(case_payload)
             cases.append(case_payload)
+    coverage_summary = build_coverage_summary(cases)
     return {
         "targetPath": fingerprint.get("targetPath"),
         "resolvedRootPath": fingerprint.get("resolvedRootPath"),
@@ -708,7 +711,39 @@ def build_case_execution_plan(
         "productType": list(fingerprint.get("productType", [])),
         "totalCaseCount": execution_plan.get("totalCaseCount", len(cases)),
         "parallelRoles": list(execution_plan.get("parallelRoles", [])),
+        "coverageSummary": coverage_summary,
         "cases": cases,
+    }
+
+
+def build_coverage_summary(cases: list[dict[str, object]]) -> dict[str, object]:
+    per_surface: dict[str, dict[str, int | str]] = {}
+    totals = {"positive": 0, "negative": 0, "boundary": 0, "capability": 0}
+    for case in cases:
+        surface_id = str(case.get("surfaceId", "")).strip()
+        if not surface_id:
+            continue
+        category = str(case.get("category", "scenario"))
+        bucket = "capability"
+        if category == "structural":
+            bucket = "positive"
+        elif category in {"positive", "negative", "boundary"}:
+            bucket = category
+        elif category.startswith("rule") or category.startswith("decision") or category.startswith("check") or category == "scenario":
+            bucket = "capability"
+        entry = per_surface.setdefault(
+            surface_id,
+            {"surfaceId": surface_id, "positive": 0, "negative": 0, "boundary": 0, "capability": 0, "total": 0},
+        )
+        entry[bucket] = int(entry[bucket]) + 1
+        entry["total"] = int(entry["total"]) + 1
+        totals[bucket] += 1
+    return {
+        "totals": {
+            **totals,
+            "total": sum(totals.values()),
+        },
+        "perSurface": list(per_surface.values()),
     }
 
 
@@ -744,6 +779,124 @@ def extract_case_urls(text: str) -> list[str]:
     return list(dict.fromkeys(match.group(0) for match in URL_PATTERN.finditer(text)))
 
 
+def detect_fault_injection(case: dict[str, object], case_blob: str, provider_aliases: list[str]) -> dict[str, object]:
+    lowered = case_blob.lower()
+    category = str(case.get("category", "scenario")).lower()
+    if category not in {"negative", "boundary", "rule-negative"}:
+        return {"enabled": False}
+
+    if any(token in lowered for token in ("字段缺失", "missing field", "missing-field", "missing fields")):
+        return {
+            "enabled": True,
+            "profile": "missing-fields",
+            "responseType": "json",
+            "requiredMissingFields": ["price"],
+        }
+    if any(token in lowered for token in ("空 json", "empty json", "empty-json", "{}")):
+        return {"enabled": True, "profile": "empty-json", "responseType": "json"}
+    if any(token in lowered for token in ("空内容 html", "empty html", "empty-html", "空 html")):
+        return {"enabled": True, "profile": "empty-html", "responseType": "html"}
+    if any(token in lowered for token in ("超时", "timeout")):
+        return {"enabled": True, "profile": "timeout", "responseType": "json"}
+    if any(token in lowered for token in ("dns", "解析失败", "无法解析")):
+        return {"enabled": True, "profile": "dns-failure", "responseType": "json"}
+    if provider_aliases and any(token in lowered for token in ("故障", "unavailable", "unreachable", "不可用", "失败")):
+        return {"enabled": True, "profile": "http-500", "responseType": "json"}
+    return {"enabled": False}
+
+
+def detect_multi_source_plan(case_blob: str, provider_aliases: list[str], source_urls: list[str]) -> dict[str, object]:
+    lowered = case_blob.lower()
+    if not (
+        any(token in lowered for token in ("dedupe", "multi-source", "multiple sources", "9 sources", "9个新闻源", "新闻源", "去重"))
+        or len(provider_aliases) >= 2
+        or len(source_urls) >= 2
+    ):
+        return {"enabled": False}
+    min_sources_required = 3 if ("9 sources" in lowered or "9个新闻源" in lowered) else 2
+    return {
+        "enabled": True,
+        "minSourcesRequired": min_sources_required,
+        "dedupeKey": "title",
+        "aggregationRule": "merge-dedupe",
+    }
+
+
+def detect_synthetic_dataset(case_blob: str) -> dict[str, object]:
+    lowered = case_blob.lower()
+    if not any(token in lowered for token in ("110", "110条", "110 articles", "large dataset", "many articles", "大数据量")):
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "kind": "news-feed",
+        "recordCount": 110,
+        "duplicateRatio": 0.1,
+        "languages": ["zh-CN", "en"],
+        "missingFields": [],
+    }
+
+
+def detect_fault_injection_stable(case: dict[str, object], case_blob: str, provider_aliases: list[str]) -> dict[str, object]:
+    lowered = case_blob.lower()
+    category = str(case.get("category", "scenario")).lower()
+    if category not in {"negative", "boundary", "rule-negative"}:
+        return {"enabled": False}
+
+    if any(token in lowered for token in ("字段缺失", "missing field", "missing-field", "missing fields")):
+        return {
+            "enabled": True,
+            "profile": "missing-fields",
+            "responseType": "json",
+            "requiredMissingFields": ["price"],
+        }
+    if any(token in lowered for token in ("空 json", "空json", "empty json", "empty-json", "{}")):
+        return {"enabled": True, "profile": "empty-json", "responseType": "json"}
+    if any(token in lowered for token in ("空内容 html", "空html", "empty html", "empty-html")):
+        return {"enabled": True, "profile": "empty-html", "responseType": "html"}
+    if any(token in lowered for token in ("超时", "timeout")):
+        return {"enabled": True, "profile": "timeout", "responseType": "json"}
+    if any(token in lowered for token in ("dns", "解析失败", "无法解析", "unresolvable")):
+        return {"enabled": True, "profile": "dns-failure", "responseType": "json"}
+    if provider_aliases and any(token in lowered for token in ("故障", "unavailable", "unreachable", "不可用", "失败", "failure", "error")):
+        return {"enabled": True, "profile": "http-500", "responseType": "json"}
+    return {"enabled": False}
+
+
+def detect_multi_source_plan_stable(case_blob: str, provider_aliases: list[str], source_urls: list[str]) -> dict[str, object]:
+    lowered = case_blob.lower()
+    if not (
+        any(token in lowered for token in ("dedupe", "multi-source", "multiple sources", "9 sources", "9个新闻源", "新闻源", "去重"))
+        or len(provider_aliases) >= 2
+        or len(source_urls) >= 2
+    ):
+        return {"enabled": False}
+    declared_source_count = max(len(set(provider_aliases)), len(set(source_urls)))
+    if "9 sources" in lowered or "9个新闻源" in lowered:
+        declared_source_count = max(declared_source_count, 9)
+    min_sources_required = max(2, declared_source_count or 2)
+    return {
+        "enabled": True,
+        "declaredSourceCount": declared_source_count,
+        "minSourcesRequired": min_sources_required,
+        "dedupeKey": "title",
+        "aggregationRule": "merge-dedupe",
+    }
+
+
+def detect_synthetic_dataset_stable(case_blob: str) -> dict[str, object]:
+    lowered = case_blob.lower()
+    if not any(token in lowered for token in ("110", "110条", "110 articles", "large dataset", "many articles", "大数据量")):
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "kind": "news-feed",
+        "recordCount": 110,
+        "duplicateRatio": 0.1,
+        "languages": ["zh-CN", "en"],
+        "missingFields": [],
+    }
+
+
 def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
     category = str(case.get("category", "scenario"))
     minimum_mode = str(case.get("minimumMode", "shim-live"))
@@ -775,16 +928,44 @@ def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
 
     provider_aliases = detect_provider_aliases(case_blob)
     source_urls = extract_case_urls(case_blob)
+    multi_source = detect_multi_source_plan_stable(case_blob, provider_aliases, source_urls)
+    synthetic_dataset = detect_synthetic_dataset_stable(case_blob)
+    browser_required = bool(
+        provider_aliases and any(alias in HOST_TAKEOVER_BROWSER_ALIASES for alias in provider_aliases)
+    ) or any(token in case_blob.lower() for token in ("javascript", "js渲染", "浏览器渲染", "dynamic render"))
+    fault_injection = detect_fault_injection_stable(case, case_blob, provider_aliases)
+    if not browser_required:
+        browser_required = any(token in case_blob for token in ("js渲染", "浏览器渲染"))
+    if bool(fault_injection.get("enabled")):
+        verification_policy = "fixture-only"
+    elif bool(synthetic_dataset.get("enabled")):
+        verification_policy = "synthetic-dataset"
     host_takeover_enabled = bool(
         str(case.get("surfaceKind", "")) == "skill" and minimum_mode in {"shim-live", "live"}
     )
     host_takeover = {
         "enabled": host_takeover_enabled,
-        "strategy": "http-probe" if (source_urls or provider_aliases) else "generic-real-call",
+        "strategy": (
+            "synthetic-dataset"
+            if bool(synthetic_dataset.get("enabled"))
+            else (
+                "multi-source"
+                if bool(multi_source.get("enabled"))
+                else (
+                    "browser-probe"
+                    if browser_required
+                    else ("fault-injection" if bool(fault_injection.get("enabled")) else ("http-probe" if (source_urls or provider_aliases) else "generic-real-call"))
+                )
+            )
+        ),
         "strictReal": minimum_mode in {"shim-live", "live"},
         "urls": source_urls,
         "providerAliases": provider_aliases,
         "expectedKeywords": expected_keywords,
+        "browserRequired": browser_required,
+        "faultInjection": fault_injection,
+        "multiSource": multi_source,
+        "syntheticDataset": synthetic_dataset,
     }
 
     return {
@@ -794,6 +975,10 @@ def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
         "requireDeliveryStatus": "delivered" if expect_trigger == "true" else None,
         "expectedKeywords": expected_keywords,
         "verificationPolicy": verification_policy,
+        "browserRequired": browser_required,
+        "faultInjection": fault_injection,
+        "multiSource": multi_source,
+        "syntheticDataset": synthetic_dataset,
         "hostTakeover": host_takeover,
     }
 
@@ -830,6 +1015,20 @@ def render_branch_matrix(surface_inventory: list[dict[str, object]], language: s
             f"| {surface['surfaceId']} | {counts['positive']} | {counts['negative']} | {counts['boundary']} | {counts['capability']} |"
         )
     return "\n".join(lines)
+
+
+def render_machine_coverage_summary(case_execution_plan: dict[str, object], language: str) -> str:
+    summary = case_execution_plan.get("coverageSummary", {})
+    if not isinstance(summary, dict):
+        return ""
+    totals = summary.get("totals", {})
+    if not isinstance(totals, dict):
+        return ""
+    return text(
+        language,
+        f"- 机器统计：正向 `{totals.get('positive', 0)}` / 逆向 `{totals.get('negative', 0)}` / 边界 `{totals.get('boundary', 0)}` / 能力展开 `{totals.get('capability', 0)}`。",
+        f"- Machine-derived counts: positive `{totals.get('positive', 0)}` / negative `{totals.get('negative', 0)}` / boundary `{totals.get('boundary', 0)}` / capability `{totals.get('capability', 0)}`.",
+    )
 
 
 def render_capability_matrix(surface_inventory: list[dict[str, object]], language: str) -> str:
@@ -869,6 +1068,7 @@ def build_test_design_markdown(
     fingerprint: dict[str, object],
     surface_inventory: list[dict[str, object]],
     execution_plan: dict[str, object],
+    case_execution_plan: dict[str, object],
     language: str,
 ) -> str:
     title = str(fingerprint.get("packageName", "unknown"))
@@ -881,6 +1081,7 @@ def build_test_design_markdown(
         text(language, "- 每个表面至少覆盖正向、逆向和边界路径。", "- Every surface must include positive, negative, and boundary coverage at minimum."),
         text(language, "- `SURFACE-EXECUTION-PLAN.json` 是阶段五执行输入；任何 surface 都不得被静默跳过。", "- `SURFACE-EXECUTION-PLAN.json` is the stage-five execution input; no surface may be skipped silently."),
         text(language, f"- 当前自动生成用例数：`{execution_plan.get('totalCaseCount', 0)}`。", f"- Current auto-generated case count: `{execution_plan.get('totalCaseCount', 0)}`."),
+        render_machine_coverage_summary(case_execution_plan, language),
         "",
         text(language, "## 表面清单", "## Surface Inventory"),
         "",
@@ -966,7 +1167,13 @@ def main(argv: list[str] | None = None) -> int:
     surface_inventory = build_surface_inventory(fingerprint, args.language)
     execution_plan = build_execution_plan(fingerprint, surface_inventory, args.language)
     case_execution_plan = build_case_execution_plan(fingerprint, surface_inventory, execution_plan)
-    test_design = build_test_design_markdown(fingerprint, surface_inventory, execution_plan, args.language)
+    test_design = build_test_design_markdown(
+        fingerprint,
+        surface_inventory,
+        execution_plan,
+        case_execution_plan,
+        args.language,
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     write_text(output_dir / "TEST-DESIGN.md", test_design + "\n")

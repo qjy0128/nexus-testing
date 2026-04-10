@@ -60,6 +60,55 @@ def collect_missing_deliverables(report_dir: Path, deliverables: list[object]) -
     return missing
 
 
+def normalize_report_deliverable(item: object) -> str:
+    text = str(item).strip().strip("`")
+    if not text:
+        return ""
+    normalized = text.replace("\\", "/")
+    parts = [part for part in normalized.split("/") if part]
+    if "nexus-reports" in parts:
+        index = parts.index("nexus-reports")
+        if len(parts) > index + 2:
+            normalized = "/".join(parts[index + 2 :])
+        elif parts:
+            normalized = parts[-1]
+    return normalized
+
+
+def available_report_artifacts(report_dir: Path) -> list[str]:
+    artifacts: list[str] = []
+    if not report_dir.exists():
+        return artifacts
+    ignored_roots = {"DISPATCH", "RUNS"}
+    for path in sorted(report_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(report_dir)
+        if relative.parts and relative.parts[0] in ignored_roots:
+            continue
+        artifacts.append(str(relative).replace("\\", "/"))
+    return artifacts[:200]
+
+
+def actionable_roles_for_stage(report_dir: Path, action: dict[str, object]) -> list[dict[str, object]]:
+    roles = [role for role in action.get("roles", []) if isinstance(role, dict)]
+    if str(action.get("dispatchMode")) != "serial" or len(roles) <= 1:
+        return roles
+    for role in roles:
+        role_file = resolve_path(str(role.get("file")))
+        role_meta = parse_role_doc(role_file)
+        outputs: list[str] = []
+        for item in role_meta.get("outputs", []):
+            normalized = normalize_report_deliverable(item)
+            if normalized:
+                outputs.append(normalized)
+        if not outputs:
+            return [role]
+        if collect_missing_deliverables(report_dir, outputs):
+            return [role]
+    return roles[:1]
+
+
 def has_stage_complete_event(stage_log: list[object], stage_id: str) -> bool:
     for item in stage_log:
         if not isinstance(item, dict):
@@ -146,7 +195,9 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
         return action
 
     payloads: list[dict[str, object]] = []
-    roles = list(action.get("roles", []))
+    roles = actionable_roles_for_stage(report_dir, action)
+    run_mode = str(plan.get("runMode", "test"))
+    artifacts = available_report_artifacts(report_dir)
     for index, role in enumerate(roles):
         role_id = str(role.get("id"))
         role_file = resolve_path(str(role.get("file")))
@@ -162,7 +213,9 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
                 "stageName": action.get("name"),
                 "dispatchMode": action.get("dispatchMode"),
                 "reportDir": str(report_dir),
+                "runMode": run_mode,
                 "missingDeliverables": action.get("missingDeliverables", []),
+                "availableArtifacts": artifacts,
                 "inputSources": role_meta.get("inputSources", []),
                 "inputs": role_meta.get("inputs", []),
                 "outputs": role_meta.get("outputs", []),
@@ -204,7 +257,9 @@ def render_dispatch_prompt(payload: dict[str, object]) -> str:
         f"- Stage: {payload['stageLabel']} {payload['stageName']}",
         f"- Role File: `{payload['roleFile']}`",
         f"- Report Dir: `{payload['reportDir']}`",
+        f"- Run Mode: `{payload.get('runMode', 'test')}`",
         f"- Missing Deliverables: {', '.join(str(item) for item in payload.get('missingDeliverables', [])) or '(none)'}",
+        f"- Available Report Artifacts: {', '.join(str(item) for item in payload.get('availableArtifacts', [])) or '(none)'}",
         "",
         "## Role Summary",
         "",
@@ -314,11 +369,13 @@ def bundle_dispatch(report_dir: Path, payload_result: dict[str, object]) -> dict
     return result
 
 
-def init_executor(report_dir: Path, flow: str, mode: str) -> dict[str, object]:
+def init_executor(report_dir: Path, flow: str, mode: str, run_mode: str = "test") -> dict[str, object]:
     report_dir.mkdir(parents=True, exist_ok=True)
     flow_id = normalize_flow(flow)
     normalized_mode = normalize_mode(flow_id, mode)
+    normalized_run_mode = "repair" if str(run_mode).strip().lower() == "repair" else "test"
     plan = build_plan(flow_id, normalized_mode)
+    plan["runMode"] = normalized_run_mode
     plan_path = report_dir / "STAGE-SUBAGENT-PLAN.json"
     approval_path = report_dir / "approval-records.json"
     rejection_path = report_dir / "rejection-count.json"
@@ -338,6 +395,7 @@ def init_executor(report_dir: Path, flow: str, mode: str) -> dict[str, object]:
         "planFile": str(plan_path),
         "flowId": flow_id,
         "mode": normalized_mode,
+        "runMode": normalized_run_mode,
     }
 
 
@@ -499,6 +557,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--report-dir", required=True)
     init_parser.add_argument("--flow", required=True)
     init_parser.add_argument("--mode", default="standard")
+    init_parser.add_argument("--run-mode", default="test")
 
     status_parser = sub.add_parser("status", help="Inspect current orchestration state")
     status_parser.add_argument("--report-dir", required=True)
@@ -541,7 +600,7 @@ def main(argv: list[str] | None = None) -> int:
     report_dir = resolve_path(args.report_dir)
 
     if args.command == "init":
-        result = init_executor(report_dir, args.flow, args.mode)
+        result = init_executor(report_dir, args.flow, args.mode, args.run_mode)
     elif args.command == "status":
         plan, approvals, rejections, stage_log = read_executor_state(report_dir)
         result = {

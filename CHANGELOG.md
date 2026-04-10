@@ -776,3 +776,24 @@
 - 更新：`scripts/fixtures/mock_openclaw_cli.py` 会按当前阶段缺失交付物自动补齐 mock 产物，避免 demo / smoke test 反复停在同一阶段
 - 更新：`scripts/nexus_openclaw_role_runtime.py` 向宿主 runtime 透出 `NEXUS_MISSING_DELIVERABLES`，让 mock / 适配层可按当前阶段上下文补产物
 - 更新：`scripts/validate_contracts.py`、`scripts/validate-framework.py`、`README.md`、`SKILL.md`，把 OpenClaw demo runner 接入契约校验、smoke test 和使用说明
+### v0.9.44（2026-04-10）**multi-source + synthetic takeover**
+
+- 新增：`scripts/run_flow_a_multi_source_execution.py` 与 `scripts/test_flow_a_multi_source_execution.py`，为 Flow A host takeover 提供多源抓取、去重和最小成功源数校验能力，支持这类“9 源抓取 + 去重”的真实执行场景
+- 新增：`scripts/flow_a_synthetic_data.py` 与 `scripts/test_flow_a_synthetic_data.py`，为 Flow A 边界 case 提供可复用的 synthetic dataset 生成器，首版支持新闻流数据集（记录数、重复率、语言分布、缺字段注入）
+- 更新：`scripts/generate_flow_a_test_design.py`，阶段三现在会自动推断 `multiSource` 与 `syntheticDataset` hints，并把 `hostTakeover.strategy` 扩展到 `multi-source` / `synthetic-dataset`
+- 更新：`scripts/run_flow_a_takeover_execution.py` 与 `scripts/test_flow_a_takeover_execution.py`，Flow A host takeover 现在已支持 `http-probe`、`browser-probe`、`fault-injection`、`multi-source`、`synthetic-dataset` 五类路径；多源新闻聚合和 110 条资讯边界场景不再只能停留在 blocked
+- 修复：`scripts/generate_flow_a_test_design.py` 与 `scripts/run_flow_a_takeover_execution.py`，收紧多源 case 的成功阈值，`9个新闻源` 不再被降级成“抓到 3 源也算通过”；同时 fault injection 改为校验故障是否真的被观察到，避免 mock fixture 起得来就误记为 passed，并补齐中文 hint 检测回归
+
+### v0.9.43（2026-04-10）**browser + fault takeover**
+
+- 新增：`scripts/run_flow_a_browser_execution.py` 与 `scripts/test_flow_a_browser_execution.py`，为 Flow A host takeover 提供浏览器渲染探测入口；默认支持自动发现本机 headless browser，也支持通过 `NEXUS_BROWSER_DUMP_COMMAND` 注入浏览器 dump 命令
+- 新增：`scripts/fixtures/mock_browser_dump.py`，用于 browser takeover smoke test 中模拟“页面经浏览器渲染后才出现关键内容”的场景
+- 更新：`scripts/generate_flow_a_test_design.py`，阶段三现在会为 case 自动推断 `browserRequired`、`hostTakeover.strategy=browser-probe|fault-injection` 和基础 `faultInjection` profile（如 `missing-fields` / `empty-json` / `empty-html` / `timeout` / `dns-failure` / `http-500`）
+- 更新：`scripts/run_flow_a_takeover_execution.py` 与相关 smoke tests，Flow A host takeover 现在支持三类执行路径：`http-probe`、`browser-probe`、`fault-injection`；其中浏览器渲染站点和标准上游故障注入 case 不再只能留在 blocked
+
+### v0.9.42（2026-04-10）**flow integrity hardening**
+
+- 更新：`scripts/nexus_stage_executor.py` 与 `scripts/test_nexus_stage_executor.py`，serial stage 现在按角色逐个 dispatch，不再把同一阶段的依赖角色一次性全部发车；阶段一会先跑 `requirement-analyst`，待 `PRODUCT-FINGERPRINT.json` / `SPEC.md` 就绪后再发 `spec-consistency-validator`
+- 更新：`scripts/nexus_stage_executor.py`、`scripts/dispatch_payload_schema.py`、`scripts/role_runtime_prompt.py`，新增 `runMode=test|repair` 和 `availableArtifacts`；默认测试模式下明确禁止修改被测仓库，只允许在报告目录写产物
+- 更新：`scripts/generate_flow_a_test_design.py` 与 `scripts/test_flow_a_test_design.py`，阶段三会把 `CASE-EXECUTION-PLAN.json.coverageSummary` 作为机器统计来源写出，并在 `TEST-DESIGN.md` 标注 machine-derived coverage，避免阶段三口头统计与阶段四机器校验打架
+- 更新：`scripts/run_flow_a_takeover_execution.py`、`scripts/nexus_runtime_bridge.py` 及相关 smoke tests，host takeover 现在会输出 `TEST-EXECUTION/REMAINING-CASES.json|md`，并把 `remainingIncompleteCases` 也纳入门禁；只要还有 blocked/incomplete case，就不会把 `skill-tester` 记为 completed

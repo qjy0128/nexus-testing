@@ -161,6 +161,37 @@ def test_bundle_dispatch() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_serial_stage_dispatches_one_role_at_a_time() -> None:
+    temp_root = make_temp_root("stage-exec-serial-role-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
+
+        first_dispatch = run_json("dispatch", "--report-dir", str(report_dir))
+        first_payloads = first_dispatch["dispatchPayloads"]
+        assert_equal(len(first_payloads), 1, "serial stage should dispatch one role")
+        assert_equal(first_payloads[0]["roleId"], "requirement-analyst", "requirement analyst dispatches first")
+        assert_equal(first_payloads[0]["runMode"], "test", "default run mode is test")
+        write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
+        write_text(report_dir / "SPEC.md", "# Spec\n")
+
+        second_dispatch = run_json("dispatch", "--report-dir", str(report_dir))
+        second_payloads = second_dispatch["dispatchPayloads"]
+        assert_equal(len(second_payloads), 1, "serial follow-up dispatch should still emit one role")
+        assert_equal(second_payloads[0]["roleId"], "spec-consistency-validator", "validator dispatches second")
+        assert_equal(
+            "PRODUCT-FINGERPRINT.json" in second_payloads[0]["availableArtifacts"],
+            True,
+            "dispatch payload should list existing report artifacts",
+        )
+        print("  [PASS] test_serial_stage_dispatches_one_role_at_a_time")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_parse_role_doc_minimum_output_structure() -> None:
     roles_dir = PROJECT_DIR / "roles"
     expectations = {
@@ -314,6 +345,7 @@ def main() -> int:
         test_approval_stage_must_match_current_gate,
         test_dispatch_payloads,
         test_bundle_dispatch,
+        test_serial_stage_dispatches_one_role_at_a_time,
         test_parse_role_doc_minimum_output_structure,
         test_parse_role_doc_takeover_policy,
         test_frontmatter_metadata_overrides_sections,

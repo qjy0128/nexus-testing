@@ -8,7 +8,9 @@ LOCALIZATION = {
         "intro": "You are the stage-role subagent `{role_id}` for {stage_label} {stage_name}.",
         "role_file": "Role file: {role_file}",
         "report_dir": "Report directory: {report_dir}",
+        "run_mode": "Run mode: {run_mode}",
         "missing": "Missing deliverables: {missing}",
+        "available_artifacts": "Available report artifacts: {artifacts}",
         "rules_title": "Execution rules:",
         "rules": [
             "Work only for this role and this stage.",
@@ -46,7 +48,9 @@ LOCALIZATION = {
         "intro": "你现在是阶段角色 subagent：`{role_id}`。",
         "role_file": "角色文件：{role_file}",
         "report_dir": "报告目录：{report_dir}",
+        "run_mode": "运行模式：{run_mode}",
         "missing": "当前缺失交付物：{missing}",
+        "available_artifacts": "当前报告目录已有工件：{artifacts}",
         "rules_title": "执行要求：",
         "rules": [
             "只执行当前角色负责的工作，不处理审批。",
@@ -94,6 +98,8 @@ def build_runtime_prompt(
 ) -> str:
     messages = LOCALIZATION[language]
     missing = ", ".join(str(item) for item in payload.get("missingDeliverables", [])) or "(none)"
+    run_mode = str(payload.get("runMode", "test"))
+    available_artifacts = ", ".join(str(item) for item in payload.get("availableArtifacts", [])) or "(none)"
     lines = [
         messages["intro"].format(
             role_id=str(payload["roleId"]),
@@ -102,11 +108,19 @@ def build_runtime_prompt(
         ),
         messages["role_file"].format(role_file=str(payload["roleFile"])),
         messages["report_dir"].format(report_dir=str(payload["reportDir"])),
+        messages["run_mode"].format(run_mode=run_mode),
         messages["missing"].format(missing=missing),
+        messages["available_artifacts"].format(artifacts=available_artifacts),
         "",
         messages["rules_title"],
         *[f"- {item}" for item in messages["rules"]],
     ]
+    if run_mode == "test":
+        lines.append(
+            "- Do not modify the target repository under test; record defects in the report directory and stop."
+            if language == "en"
+            else "- 测试模式下禁止修改被测仓库；只能在报告目录记录缺陷，不得边测边改产品。"
+        )
     extend_prompt_section(lines, "Responsibilities", list(payload.get("responsibilities", [])), language=language)
     extend_prompt_section(lines, "Hard boundaries", list(payload.get("hardBoundaries", [])), language=language)
     extend_prompt_section(lines, "Execution rules from role doc", list(payload.get("executionRules", [])), language=language)

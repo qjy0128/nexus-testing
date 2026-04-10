@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import generate_flow_a_test_design as design_module
 from test_helpers import assert_contains, assert_equal, make_temp_root, read_text
 from test_product_fingerprint import (
     build_companion_inventory_fixture,
@@ -103,9 +104,17 @@ def test_surface_aware_test_design() -> None:
         assert case_plan.get("cases"), "case execution plan should include cases"
         first_case = case_plan.get("cases", [])[0]
         assert "executionHints" in first_case, "case execution hints missing"
+        coverage_summary = case_plan.get("coverageSummary", {})
+        assert_equal(isinstance(coverage_summary, dict), True, "coverage summary included")
+        assert_equal(int(coverage_summary.get("totals", {}).get("total", 0)), int(case_plan.get("totalCaseCount", 0)), "coverage total sync")
+        assert_contains(test_design, "Machine-derived counts", "test design machine coverage summary")
         host_takeover = first_case["executionHints"].get("hostTakeover", {})
         assert_equal(isinstance(host_takeover, dict), True, "host takeover hints present")
         assert_equal(host_takeover.get("enabled"), True, "skill case enables host takeover")
+        assert_equal("browserRequired" in first_case["executionHints"], True, "browserRequired hint present")
+        assert_equal("faultInjection" in first_case["executionHints"], True, "faultInjection hint present")
+        assert_equal("multiSource" in first_case["executionHints"], True, "multiSource hint present")
+        assert_equal("syntheticDataset" in first_case["executionHints"], True, "syntheticDataset hint present")
         print("  [PASS] test_surface_aware_test_design")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -227,6 +236,31 @@ def test_companion_inventory_expansion() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_chinese_hint_detection_is_stable() -> None:
+    case = {
+        "caseId": "TC-ZH-01",
+        "surfaceId": "SURFACE-01",
+        "surfaceKind": "skill",
+        "title": "9个新闻源抓取与去重",
+        "objective": "验证浏览器渲染站点、9个新闻源聚合，以及 110 条资讯边界场景。",
+        "steps": [
+            "对 Jin10 进行浏览器渲染抓取。",
+            "在字段缺失和超时场景下验证故障注入。",
+            "构造 110 条资讯的大数据量场景。",
+        ],
+        "expected": ["完成 9 个新闻源去重。"],
+        "minimumMode": "shim-live",
+        "category": "negative",
+    }
+    hints = design_module.build_case_execution_hints(case)
+    assert_equal(hints["browserRequired"], True, "browser required detection")
+    assert_equal(hints["faultInjection"]["enabled"], True, "fault injection detection")
+    assert_equal(hints["multiSource"]["enabled"], True, "multi-source detection")
+    assert_equal(hints["multiSource"]["minSourcesRequired"], 9, "9-source minimum threshold")
+    assert_equal(hints["syntheticDataset"]["enabled"], True, "synthetic dataset detection")
+    print("  [PASS] test_chinese_hint_detection_is_stable")
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -254,6 +288,12 @@ def main() -> int:
         passed += 1
     except AssertionError as exc:
         print(f"  [FAIL] test_companion_inventory_expansion: {exc}")
+        failed += 1
+    try:
+        test_chinese_hint_detection_is_stable()
+        passed += 1
+    except AssertionError as exc:
+        print(f"  [FAIL] test_chinese_hint_detection_is_stable: {exc}")
         failed += 1
     print("=" * 40)
     print(f"{passed} passed, {failed} failed")
