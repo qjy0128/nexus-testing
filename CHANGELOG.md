@@ -1,3 +1,17 @@
+### v0.9.41（2026-04-10）
+**合同对齐 + 共享解析收口**
+
+- 更新：`SKILL.md` 的参考文档表，补齐 `reference-security-blacklist.md`、`reference-skill-tier-requirements.md`、`reference-expected-outputs.md`、`reference-output-verification-examples.md`，与仓库实际参考文档集合保持一致
+- 更新：`scripts/nexus_runtime_bridge.py`，将 `advance` 从函数体内延迟导入改为模块级导入，去掉不必要的局部导入分支
+- 修复：`scripts/security-scanner.py`，恢复 `PI-003` 的真实检测并移除对不存在规则 `OBF-006` 的引用，避免提示注入和混淆检测出现死代码分支
+- 更新：`scripts/frontmatter_utils.py`、`scripts/path_utils.py`、`scripts/json_utils.py`、`scripts/role_runtime_prompt.py`，把 frontmatter / 路径解析 / JSON 加载 / 角色运行时 prompt 抽成共享模块，并接入 `role_metadata.py`、`validate-framework.py`、`extract_product_fingerprint.py`、`skill_structure_validator_core.py`、`nexus_*runtime*.py`、`run_flow_a_skill_execution.py` 等脚本
+- 更新：`scripts/dispatch_payload_schema.py` 与 `scripts/nexus_runtime_bridge.py`，dispatch bundle 现在会同时校验 manifest 命名和实际 payload/prompt 文件存在性，缺文件时在 bridge 边界直接失败
+- 更新：`scripts/nexus_stage_executor.py`、`scripts/nexus_dispatch_runner.py`、`scripts/nexus_runtime_bridge.py` 及相关 smoke tests，损坏的 `approval-records.json`、角色状态文件、runtime config 等 JSON 现在会给出统一的 `ERROR: invalid JSON in ...` 明确错误，而不是落 Python traceback
+- 更新：`flows/web-api-testing.md`、`flows/android-testing.md`、`flows/mcp-testing.md`、`DEFINITIONS.md`、`SKILL.md`、`README.md`、`CLAUDE.md`，补齐标准阶段一的 `spec-consistency-validator`、统一 `PRODUCT-QUALITY-REVIEW.md` / `TEST-CASE-REVIEW.md` / `SURFACE-EXECUTION-PLAN.json` 命名，移除“阶段五后/阶段八后”这类伪阶段标签，并补充 Flow B A/B 双模式与辅助角色说明
+- 更新：`roles/accessibility-auditor.md`、`roles/compatibility-tester.md`、`roles/experience-tester-a.md`、`roles/experience-tester-b.md`、`roles/functional-tester.md`、`roles/mcp-tester.md`、`roles/performance-tester.md`、`roles/reality-checker.md`、`roles/tool-evaluator.md`、`roles/workflow-optimizer.md`、`roles/security-tester.md`、`roles/skill-tester.md`，补齐 `## 输入来源` / `## 下游消费者`，修正与 `DEFINITIONS.md` 不一致的输入列表，并删掉 8 个已由 frontmatter 覆盖的重复 takeover body 声明
+- 更新：`scripts/validate_contracts.py`、`scripts/test_role_metadata.py`、`scripts/test_dispatch_payload_schema.py`、`scripts/test_nexus_stage_executor.py`、`scripts/test_nexus_dispatch_runner.py`、`scripts/test_nexus_runtime_bridge.py`，新增针对角色输入流转、bundle 文件缺失、坏 JSON 和文档一致性的回归
+- 更新：`scripts/run_flow_a_skill_execution.py`，删除未使用的旧版 `run_generic_mcp_surface()` 实现，保留唯一生效的 v2 路径
+
 ### v0.9.40（2026-04-09）
 **runtime takeover + prompt 硬约束**
 

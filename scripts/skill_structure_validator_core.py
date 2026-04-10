@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from frontmatter_utils import parse_frontmatter
+
 # Version
 VERSION = "1.1.0"
 
@@ -263,13 +265,9 @@ class SkillStructureValidator:
             self.report.add_error(f"Invalid YAML frontmatter: {e}")
 
     def _parse_frontmatter(self, text: str) -> Optional[Dict]:
-        """Simple YAML frontmatter parser"""
-        result = {}
-        for line in text.strip().splitlines():
-            if ':' in line:
-                key, _, value = line.partition(':')
-                result[key.strip()] = value.strip().strip('"\'')
-        return result if result else None
+        """Parse YAML frontmatter using the shared repository helper."""
+        wrapped = f"---\n{text.strip()}\n---\n"
+        return parse_frontmatter(wrapped)
 
     def _validate_required_sections(self, content: str):
         """Validate required markdown sections"""

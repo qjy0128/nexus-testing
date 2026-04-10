@@ -46,7 +46,7 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 
 默认模式。执行阶段零到阶段七，产出完整测试文档与最终结论。
 
-**轻量模式**：当被测对象规模较小时（Skill 行数 < 100、能力 ≤ 3、必测维度 ≤ 5，或用户要求），自动合并部分阶段。触发条件和变更规则见 `DEFINITIONS.md` 第六节-C。轻量模式必须在环境就绪报告中显式声明。
+**轻量模式**：当被测对象规模较小时，自动合并部分阶段。具体触发条件和变更规则见 `DEFINITIONS.md` 第六节-C。轻量模式必须在环境就绪报告中显式声明。
 
 ### 评审模式
 
@@ -74,6 +74,7 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 - subagent 只负责执行本角色任务并写入结果
 - 阶段间上下文通过报告目录里的文件传递，不依赖聊天上下文转述
 - Flow B 的 A/B 双模式定义以 `DEFINITIONS.md` 和 `flows/web-api-testing.md` 为准
+- `tool-evaluator`、`workflow-optimizer` 属于按需触发的辅助角色，不属于标准 8 阶段链路
 
 ## 四、标准阶段合同
 
@@ -84,7 +85,7 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 阶段三：测试设计 -> TEST-DESIGN.md / SURFACE-EXECUTION-PLAN.json
 阶段四：用例评估 -> TEST-CASE-REVIEW.md -> 等待批准
 阶段五：并行测试执行 -> TEST-EXECUTION/*.md / SKILL-SURFACE-WORKLIST.md / SURFACE-COVERAGE.json
-阶段五后：证据收集 -> DEFECTS/evidence-collection.md
+阶段五完成后（后置角色）：证据收集 -> DEFECTS/evidence-collection.md
 阶段六：缺陷分析 -> DEFECTS/DEFECT-REPORT.md
 阶段七：报告整合 -> FINAL-TEST-REPORT.md
 ```
@@ -273,14 +274,18 @@ message(action: "send", filePath: "files/nexus-reports/{date}-{test-type}-{flow}
 | `reference-approval-mechanism.md` | 批准、拒绝、无响应与 No-Go 规则 |
 | `reference-sandbox-spec.md` | 沙箱目录、生命周期与安全边界 |
 | `reference-security-scan.md` | 安全扫描维度与判定规则 |
+| `reference-security-blacklist.md` | 安全黑名单与禁用模式 |
 | `reference-external-case-sourcing.md` | 外部测试用例获取方法 |
 | `reference-test-case-templates.md` | 用例模板与反模式清单 |
+| `reference-skill-tier-requirements.md` | Skill 分层要求与层级判定 |
 | `reference-skill-review-framework.md` | Skill 文档与结构审查框架 |
 | `reference-agent-evaluation-methodology.md` | Agent/Skill 测试方法论 |
 | `reference-flow-skill.md` | Flow A 详细模板 |
 | `reference-flow-web-api.md` | Flow B 详细模板 |
 | `reference-flow-android.md` | Flow C 详细模板 |
 | `reference-flow-mcp.md` | Flow D 详细模板 |
+| `reference-expected-outputs.md` | 各阶段预期输出清单 |
+| `reference-output-verification-examples.md` | 输出验证示例 |
 | `reference-production-readiness.md` | 测试完成后的生产就绪检查项 |
 | `reference-recovery.md` | 测试中断后的恢复与续跑机制 |
 

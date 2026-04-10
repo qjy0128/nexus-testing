@@ -70,7 +70,7 @@
 阶段三：测试设计 -> TEST-DESIGN.md / SURFACE-EXECUTION-PLAN.json
 阶段四：用例评估 -> TEST-CASE-REVIEW.md -> 等待用户批准
 阶段五：并行测试执行 -> TEST-EXECUTION/*.md / SKILL-SURFACE-WORKLIST.md / SURFACE-COVERAGE.json
-阶段五后：证据收集 -> DEFECTS/evidence-collection.md
+阶段五完成后（后置角色）：证据收集 -> DEFECTS/evidence-collection.md
 阶段六：缺陷分析 -> DEFECTS/DEFECT-REPORT.md
 阶段七：报告整合 -> FINAL-TEST-REPORT.md
 ```
@@ -78,6 +78,10 @@
 Flow B 支持双模式：
 - A 模式：文档完整时走标准 8 阶段。
 - B 模式：文档不全或需要深度体验时，插入双边体验、交叉核对、争议复检三个扩展阶段，总计 11 个阶段（B-阶段零~十）。
+
+辅助角色：
+- `tool-evaluator`：仅在用户主动请求工具评估时触发，不属于标准阶段。
+- `workflow-optimizer`：仅在需要流程瓶颈分析或仲裁时触发，不属于标准阶段。
 
 简化调度示意：
 
@@ -355,4 +359,4 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 
 ## 当前版本
 
-v0.9.40 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.41 — 详见 [CHANGELOG.md](CHANGELOG.md)

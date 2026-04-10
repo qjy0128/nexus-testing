@@ -245,3 +245,7 @@ def validate_bundle_files(bundle_dir: Path, manifest: dict[str, object], payload
             raise ValueError(f"bundle manifest payloadFile mismatch for roleId '{role_id}'")
         if prompt_path.name != f"{int(payload['order']):02d}-{role_id}.prompt.md":
             raise ValueError(f"bundle manifest promptFile mismatch for roleId '{role_id}'")
+        if not payload_path.is_file():
+            raise ValueError(f"bundle manifest payloadFile is missing for roleId '{role_id}': {payload_path.name}")
+        if not prompt_path.is_file():
+            raise ValueError(f"bundle manifest promptFile is missing for roleId '{role_id}': {prompt_path.name}")

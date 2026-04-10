@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from test_helpers import assert_equal, make_temp_root
+from test_helpers import assert_equal, make_temp_root, write_text
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 EXECUTOR = PROJECT_DIR / "scripts" / "nexus_stage_executor.py"
@@ -146,6 +146,30 @@ def test_takeover_role_state() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_invalid_role_state_json_reports_clear_error() -> None:
+    temp_root = make_temp_root("dispatch-runner-bad-json-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json(RUNNER, "prepare", "--report-dir", str(report_dir))
+        bad_state = report_dir / "RUNS" / "stage-0" / "environment-checker.state.json"
+        write_text(bad_state, "{oops\n")
+        proc = subprocess.run(
+            [sys.executable, str(RUNNER), "status", "--report-dir", str(report_dir)],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert_equal(proc.returncode == 0, False, "status should fail for invalid role state")
+        if "ERROR: invalid JSON in role state environment-checker.state.json" not in proc.stderr:
+            raise AssertionError(f"stderr missing clear JSON error: {proc.stderr!r}")
+        print("  [PASS] test_invalid_role_state_json_reports_clear_error")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -162,6 +186,7 @@ def main() -> int:
         test_waiting_for_completion,
         test_failed_role_state,
         test_takeover_role_state,
+        test_invalid_role_state_json_reports_clear_error,
     ):
         try:
             test()

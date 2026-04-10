@@ -28,12 +28,25 @@ takeover_on_process_failure: false
 
 > 阶段定义、输出路径、执行率阈值与降级规则统一以 `DEFINITIONS.md` 为准。
 
+## 输入来源
+
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
+- `SPEC.md`（由 requirement-analyst 产出）
+- `TEST-DESIGN.md`（由 test-designer 产出）
+- 测试目标：URL、API 信息或 APK 路径
+
+## 下游消费者
+
+- `evidence-collector`（收集功能测试证据）
+- `defect-analyst`（汇总功能缺陷）
+
 ## 职责
 
 根据 `SPEC.md` 和 `TEST-DESIGN.md` 执行真实功能测试，输出 `functional-results.md`。重点是“真实操作 + 真实响应”，不是阅读文档后做静态判断。
 
 ## 输入
 
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
 - `TEST-DESIGN.md`
 - 测试目标：URL、API 信息或 APK 路径
@@ -41,12 +54,6 @@ takeover_on_process_failure: false
 ## 输出
 
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/functional-results.md`
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 核心规则
 

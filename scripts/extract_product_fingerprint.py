@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 
+from frontmatter_utils import parse_frontmatter
 from sandbox_skill_invoke.core import read_text
 
 IGNORED_PATH_PARTS = {".git", "node_modules", "__pycache__", ".tmp", ".tmp-test-runs", ".tmp-validation"}
@@ -46,36 +47,6 @@ IGNORED_UPPER_TOKENS = {
     "URL",
     "ALL",
 }
-
-
-def parse_frontmatter(text: str) -> dict[str, object]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}
-
-    end_index = None
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            end_index = index
-            break
-    if end_index is None:
-        return {}
-
-    data: dict[str, object] = {}
-    current_key: str | None = None
-    for raw_line in lines[1:end_index]:
-        if not raw_line.strip():
-            continue
-        if raw_line.startswith((" ", "\t")) and current_key:
-            previous = data.get(current_key, "")
-            data[current_key] = f"{previous}\n{raw_line.strip()}".strip()
-            continue
-        if ":" not in raw_line:
-            continue
-        key, value = raw_line.split(":", 1)
-        current_key = key.strip()
-        data[current_key] = value.strip().strip('"')
-    return data
 
 
 def parse_json(path: Path) -> dict[str, object]:
@@ -663,7 +634,7 @@ def extract_capabilities_from_skill(skill_path: Path, root: Path) -> list[dict[s
             source=make_text_evidence(skill_path, root, stripped, "capability-bullet"),
         )
 
-    frontmatter = parse_frontmatter(text)
+    frontmatter = parse_frontmatter(text) or {}
     argument_hint = frontmatter.get("argument-hint")
     if isinstance(argument_hint, str) and argument_hint:
         merge_capability_entry(
@@ -698,7 +669,7 @@ def extract_product_fingerprint(
         product_type.append("skill")
         for skill_path in skill_files:
             rel = relative_to_root(skill_path, root)
-            frontmatter = parse_frontmatter(read_text(skill_path))
+            frontmatter = parse_frontmatter(read_text(skill_path)) or {}
             name = frontmatter.get("name") if isinstance(frontmatter.get("name"), str) else skill_path.parent.name
             entry_surfaces.append(
                 {

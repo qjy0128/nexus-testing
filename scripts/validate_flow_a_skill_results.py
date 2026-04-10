@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 
+from json_utils import load_json
 from sandbox_skill_invoke.core import read_text
 
 
@@ -17,10 +18,6 @@ SURFACE_BLOCK_RE = re.compile(
     re.MULTILINE,
 )
 CASE_STATUS_VALUES = {"pending", "passed", "blocked", "incomplete"}
-
-
-def load_json(path: Path) -> dict[str, object]:
-    return json.loads(read_text(path))
 
 
 def parse_surface_results(text: str) -> dict[str, dict[str, str]]:

@@ -106,6 +106,72 @@ def test_invalid_bundle_manifest_rejected() -> None:
     print("  [PASS] test_invalid_bundle_manifest_rejected")
 
 
+def test_bundle_manifest_requires_payload_and_prompt_files() -> None:
+    temp_root = make_temp_root("dispatch-schema-files-")
+    try:
+        bundle_dir = temp_root / "DISPATCH" / "stage-2"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        manifest = dispatch_payload_schema.validate_bundle_manifest(
+            {
+                "stageId": "stage-2",
+                "stageLabel": "阶段二",
+                "stageName": "质量评估",
+                "dispatchMode": "serial",
+                "status": "run-stage",
+                "generatedAt": "2026-04-10 12:00:00",
+                "roles": [
+                    {
+                        "roleId": "quality-assessor",
+                        "order": 1,
+                        "payloadFile": "01-quality-assessor.payload.json",
+                        "promptFile": "01-quality-assessor.prompt.md",
+                    }
+                ],
+            }
+        )
+        payloads = dispatch_payload_schema.validate_dispatch_payload_list(
+            [
+                {
+                    "roleId": "quality-assessor",
+                    "roleFile": "roles/quality-assessor.md",
+                    "roleType": "validator",
+                    "order": 1,
+                    "stageId": "stage-2",
+                    "stageLabel": "阶段二",
+                    "stageName": "质量评估",
+                    "dispatchMode": "serial",
+                    "reportDir": "D:/tmp/report",
+                    "missingDeliverables": ["PRODUCT-QUALITY-REVIEW.md"],
+                    "inputSources": ["SPEC.md"],
+                    "inputs": ["SPEC.md"],
+                    "outputs": ["PRODUCT-QUALITY-REVIEW.md"],
+                    "consumers": ["test-designer"],
+                    "responsibilities": ["评估需求完整性"],
+                    "executionRules": [],
+                    "evidenceRequirements": [],
+                    "antiPatterns": [],
+                    "hardBoundaries": [],
+                    "minimumOutput": ["规格完整性"],
+                    "validateMarkdownStructure": True,
+                    "minimumOutputAliases": {},
+                    "mainAgentTakeoverPolicy": {},
+                    "description": "desc",
+                    "bestFor": [],
+                    "launchPrompt": "run it",
+                }
+            ]
+        )
+        try:
+            dispatch_payload_schema.validate_bundle_files(bundle_dir, manifest, payloads)
+        except ValueError as exc:
+            assert_contains(str(exc), "payloadFile is missing", "missing payload file reported")
+        else:
+            raise AssertionError("bundle validation should reject missing payload/prompt files")
+        print("  [PASS] test_bundle_manifest_requires_payload_and_prompt_files")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -120,6 +186,7 @@ def main() -> int:
         test_real_dispatch_payloads_validate,
         test_invalid_dispatch_payload_rejected,
         test_invalid_bundle_manifest_rejected,
+        test_bundle_manifest_requires_payload_and_prompt_files,
     ):
         try:
             test()

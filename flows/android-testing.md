@@ -25,18 +25,18 @@
 
 **需用户确认后才能进入阶段一**
 
-### 阶段一：需求解析
-**执行角色**：`roles/requirement-analyst.md`
+### 阶段一：需求解析 + 规格一致性校验
+**执行角色**：`roles/requirement-analyst.md` + `roles/spec-consistency-validator.md`
 
 输入：APK 文件路径 / 需求文档 / 截图
-输出：`SPEC.md`
-任务：提取功能清单、页面流、数据依赖、权限要求
+输出：`PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md`
+任务：提取功能清单、页面流、数据依赖、权限要求，并校验规格与事实是否一致
 
 ### 阶段二：质量评估（评估产品本身）
 **执行角色**：`roles/quality-assessor.md`
 
 输入：`SPEC.md`
-输出：产品质量评估报告
+输出：`PRODUCT-QUALITY-REVIEW.md`
 任务：评估需求完整性、功能可行性、非功能需求
 **需批准后才能进入阶段三**
 
@@ -44,14 +44,14 @@
 **执行角色**：`roles/test-designer.md`
 
 输入：`SPEC.md`
-输出：`TEST-DESIGN.md`
+输出：`TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json`
 任务：设计测试用例——安装/卸载测试、功能测试用例、权限验证矩阵、设备适配矩阵
 
 ### 阶段四：用例评估（评估测试用例本身）
 **执行角色**：`roles/test-case-evaluator.md`
 
 输入：`TEST-DESIGN.md` + `SPEC.md`
-输出：用例评估报告
+输出：`TEST-CASE-REVIEW.md`
 任务：评估测试用例覆盖率、边界条件覆盖、测试数据充分性
 **需批准后才能进入阶段五**
 
@@ -119,7 +119,7 @@
 
 
 > **沙箱执行**：当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师可使用沙箱隔离执行 `adb` 命令、APK 安装验证、logcat 捕获等操作。沙箱规格详见 `reference-sandbox-spec.md`。
-#### Step 5.6：证据收集
+#### 阶段五完成后（后置角色）：证据收集
 
 **执行角色**：`roles/evidence-collector.md`
 

@@ -369,13 +369,19 @@ class SecurityScanner:
             rel_path = self._rel(path)
             for i, line in enumerate(lines, 1):
                 for rule_id, severity, desc, pattern in S1_RULES:
-                    # Skip PI-003 here; handled in S2 obfuscation with entropy check
-                    if rule_id == "PI-003":
-                        continue
                     m = pattern.search(line)
                     if m:
+                        matched = m.group(0)
+                        if rule_id == "PI-003":
+                            try:
+                                decoded = base64.b64decode(matched)
+                                entropy = shannon_entropy(decoded.decode("utf-8", errors="replace"))
+                                if entropy < 4.0:
+                                    continue
+                            except Exception:
+                                continue
                         self._add(rule_id, "S1", severity, "high",
-                                  desc, rel_path, i, m.group(0)[:200])
+                                  desc, rel_path, i, matched[:200])
 
     # -- S2 --
 
@@ -410,8 +416,8 @@ class SecurityScanner:
                     m = pattern.search(line)
                     if m:
                         matched = m.group(0)
-                        # For OBF-001 and OBF-006, check entropy to reduce FP
-                        if rule_id in ("OBF-001", "OBF-006"):
+                        # For OBF-001, check entropy to reduce FP
+                        if rule_id == "OBF-001":
                             try:
                                 decoded = base64.b64decode(matched)
                                 entropy = shannon_entropy(decoded.decode("utf-8", errors="replace"))

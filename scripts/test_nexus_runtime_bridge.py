@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from nexus_runtime_bridge import payload_context
 from test_helpers import assert_equal, make_temp_root, read_text, write_text
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -254,6 +255,37 @@ def test_invalid_runtime_config_rejected_before_execution() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_invalid_runtime_config_json_reports_clear_error() -> None:
+    temp_root = make_temp_root("runtime-bridge-bad-config-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_text(config_path, "{broken\n")
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(BRIDGE),
+                "run-once",
+                "--report-dir",
+                str(report_dir),
+                "--runtime-config",
+                str(config_path),
+            ],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert_equal(proc.returncode == 0, False, "run-once should fail for invalid runtime config")
+        if "ERROR: invalid JSON in runtime config" not in proc.stderr:
+            raise AssertionError(f"stderr missing clear JSON error: {proc.stderr!r}")
+        print("  [PASS] test_invalid_runtime_config_json_reports_clear_error")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_role_takeover_stops_runtime_bridge() -> None:
     temp_root = make_temp_root("runtime-bridge-takeover-")
     try:
@@ -351,6 +383,30 @@ def test_quality_assessor_missing_required_sections_fails() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_missing_dispatch_prompt_file_reports_clear_error() -> None:
+    temp_root = make_temp_root("runtime-bridge-missing-bundle-file-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path)
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        approve_stage(report_dir, "stage-0")
+        bundle = run_json(EXECUTOR, "bundle-dispatch", "--report-dir", str(report_dir))
+        prompt_path = report_dir / "DISPATCH" / "stage-1" / "01-requirement-analyst.prompt.md"
+        prompt_path.unlink()
+        try:
+            payload_context(report_dir, bundle, bundle["dispatchPayloads"][0])
+        except SystemExit as exc:
+            if "ERROR: dispatch prompt file is missing:" not in str(exc):
+                raise AssertionError(f"system exit missing clear dispatch-file error: {exc!r}") from exc
+        else:
+            raise AssertionError("payload_context should fail for missing dispatch prompt")
+        print("  [PASS] test_missing_dispatch_prompt_file_reports_clear_error")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -367,11 +423,13 @@ def main() -> int:
         test_missing_stage_outputs_trigger_rerun,
         test_missing_runtime_command_marks_failure,
         test_invalid_runtime_config_rejected_before_execution,
+        test_invalid_runtime_config_json_reports_clear_error,
         test_role_takeover_stops_runtime_bridge,
         test_fallback_runtime_recovers_failed_role,
         test_blocked_skill_tester_becomes_takeover_required,
         test_blocked_environment_checker_remains_failure,
         test_quality_assessor_missing_required_sections_fails,
+        test_missing_dispatch_prompt_file_reports_clear_error,
     ):
         try:
             test()

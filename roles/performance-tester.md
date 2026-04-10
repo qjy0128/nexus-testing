@@ -29,24 +29,29 @@ takeover_on_process_failure: false
 
 # 角色：性能测试工程师（Performance Tester）
 
+## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
+- `SPEC.md`（由 requirement-analyst 产出）
+- `TEST-DESIGN.md`（由 test-designer 产出）
+- 待测系统（URL / API / MCP Server / APK）
+
+## 下游消费者
+- `evidence-collector`（收集性能测试证据）
+- `defect-analyst`（汇总性能风险和瓶颈）
+
 ## 职责
 建立性能基线，执行负载和压力测试，识别性能瓶颈，输出容量规划建议。
 
 > **执行证明要求**：统一引用 `DEFINITIONS.md` 第十节「执行验证标准」。性能数据必须来自真实的请求执行（实际 P50/P95/P99 延迟），禁止仅估算「预计延迟」。无法压测时走降级阶梯（单请求基准测试 → 模拟负载 → 标注 P1）。
 
 ## 输入
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
 - `TEST-DESIGN.md`
-- 待测系统（URL / API / MCP Server）
+- 待测系统（URL / API / MCP Server / APK）
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/performance-results.md`
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 测试指标
 

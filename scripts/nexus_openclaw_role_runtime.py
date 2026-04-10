@@ -10,66 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from json_utils import load_json
+from path_utils import ROOT, resolve_path
+from role_runtime_prompt import build_runtime_prompt
 from sandbox_skill_invoke.core import read_text
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def resolve_path(path_value: str) -> Path:
-    candidate = Path(path_value).expanduser()
-    if not candidate.is_absolute():
-        return (ROOT / candidate).resolve()
-    return candidate.resolve()
-
-
-def extend_prompt_section(lines: list[str], title: str, items: list[object]) -> None:
-    values = [str(item).strip() for item in items if str(item).strip()]
-    if not values:
-        return
-    lines.extend(["", f"{title}：", *[f"- {item}" for item in values]])
-
-
-def build_prompt(payload: dict[str, object], prompt_text: str) -> str:
-    role_id = str(payload["roleId"])
-    stage_label = str(payload["stageLabel"])
-    stage_name = str(payload["stageName"])
-    report_dir = str(payload["reportDir"])
-    missing = ", ".join(str(item) for item in payload.get("missingDeliverables", [])) or "(none)"
-    lines = [
-        f"你现在是阶段角色 subagent：`{role_id}`。",
-        f"当前阶段：{stage_label} {stage_name}",
-        f"报告目录：{report_dir}",
-        f"当前缺失交付物：{missing}",
-        "",
-        "执行要求：",
-        "- 只执行当前角色负责的工作，不处理审批。",
-        "- 只在报告目录中补齐当前角色交付物。",
-        "- 完成后优先把主交付物写入报告目录。",
-        "- 不要输出长解释，不要向用户提问。",
-        "- 不要只写占位内容、TODO 或模糊结论。",
-        "- 若环境不足以完成真实执行，必须明确写 blocker，而不是把未验证内容写成通过。",
-    ]
-    extend_prompt_section(lines, "职责", list(payload.get("responsibilities", [])))
-    extend_prompt_section(lines, "强边界", list(payload.get("hardBoundaries", [])))
-    extend_prompt_section(lines, "执行规则", list(payload.get("executionRules", [])))
-    extend_prompt_section(lines, "证据要求", list(payload.get("evidenceRequirements", [])))
-    extend_prompt_section(lines, "反模式", list(payload.get("antiPatterns", [])))
-    extend_prompt_section(lines, "最低输出结构", list(payload.get("minimumOutput", [])))
-    lines.extend(
-        [
-            "",
-            "返回前自检：",
-            "- 你声称产出的交付物必须已写入磁盘。",
-            "- 交付物必须是可消费结果，不是空壳或摘要占位。",
-            "- 若需主 agent 接管，请在结果 JSON 中明确说明 blocker 和接管原因。",
-            "",
-            "角色启动提示词：",
-            prompt_text.strip(),
-        ]
-    )
-    return "\n".join(lines)
-
-
 def render_existing_artifacts(report_dir: Path, patterns: list[object]) -> set[str]:
     found: set[str] = set()
     for item in patterns:
@@ -130,11 +74,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    payload = json.loads(read_text(resolve_path(args.payload_file)))
+    payload = load_json(resolve_path(args.payload_file), label="role payload")
     if not isinstance(payload, dict):
         raise SystemExit("ERROR: payload must be a JSON object")
     prompt_text = read_text(resolve_path(args.prompt_file))
-    prompt = build_prompt(payload, prompt_text)
+    prompt = build_runtime_prompt(payload, prompt_text, language="zh", include_json_response_rules=False)
 
     payload_file = resolve_path(args.payload_file)
     runtime_dir = payload_file.parent

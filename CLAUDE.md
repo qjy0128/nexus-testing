@@ -8,7 +8,7 @@ Nexus Testing 是一个多 Flow AI 测试编排框架，用于测试 OpenClaw Sk
 
 - **单一事实源**: `DEFINITIONS.md` — 所有阶段、角色、超时、门禁的唯一权威定义
 - **4 个 Flow**: `flows/skill-testing.md` (A), `flows/web-api-testing.md` (B), `flows/android-testing.md` (C), `flows/mcp-testing.md` (D)
-- **19 个角色**: `roles/*.md` — 每个角色有 frontmatter、输入来源、下游消费者
+- **21 个角色**: `roles/*.md` — 19 个标准流程角色 + 2 个按需辅助角色（`tool-evaluator`、`workflow-optimizer`）
 - **沙箱执行**: `scripts/sandbox-*.sh` + Python 包 `scripts/sandbox_skill_invoke/`
 - **安全扫描**: `scripts/security-scanner.py` — 自动化 S1-S4 检测规则
 - **元测试 Fixtures**: `scripts/fixtures/` — pass/defect/extreme 三个样例 Skill
@@ -37,6 +37,11 @@ python scripts/security-scanner.py <dir>     # 安全扫描
 python scripts/test_sandbox_lifecycle.py     # E2E 生命周期测试
 ```
 
+## Flow 特例
+
+- Flow B 支持 A / B 双模式：A 模式走标准 8 阶段；B 模式插入双边体验、交叉核对、争议复检三个扩展阶段，总计 11 个阶段。
+- `tool-evaluator` 与 `workflow-optimizer` 为辅助角色，不属于标准阶段编排，按用户请求或流程优化场景单独触发。
+
 ## 参考文档
 
 | 文件 | 用途 |
@@ -48,3 +53,15 @@ python scripts/test_sandbox_lifecycle.py     # E2E 生命周期测试
 | `reference-recovery.md` | 测试中断后的恢复/续跑机制 |
 | `reference-report-format.md` | 报告输出格式规范 |
 | `reference-production-readiness.md` | 生产就绪检查清单 |
+| `reference-test-case-templates.md` | 测试用例模板与反模式 |
+| `reference-external-case-sourcing.md` | 外部测试用例获取规则 |
+| `reference-flow-skill.md` | Flow A 详细模板 |
+| `reference-flow-web-api.md` | Flow B 详细模板 |
+| `reference-flow-android.md` | Flow C 详细模板 |
+| `reference-flow-mcp.md` | Flow D 详细模板 |
+| `reference-skill-review-framework.md` | Skill 结构与内容评审框架 |
+| `reference-agent-evaluation-methodology.md` | Agent / Skill 测试方法论 |
+| `reference-security-blacklist.md` | 安全黑名单与阻断项 |
+| `reference-expected-outputs.md` | 预期输出与交付物要求 |
+| `reference-output-verification-examples.md` | 输出校验示例 |
+| `reference-skill-tier-requirements.md` | Skill 分层要求 |

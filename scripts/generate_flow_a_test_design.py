@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from flow_a_localization import add_output_language_argument
+from json_utils import load_json
 from sandbox_skill_invoke.core import read_text, write_text
 
 
@@ -76,10 +77,6 @@ def surface_label(kind: str, fallback: str, language: str) -> str:
     }
     zh, en = labels.get(kind, (fallback, fallback))
     return text(language, zh, en)
-
-
-def load_json(path: Path) -> dict[str, object]:
-    return json.loads(read_text(path))
 
 
 def ensure_passed_review(path: Path) -> None:

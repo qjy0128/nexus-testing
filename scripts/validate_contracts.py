@@ -24,6 +24,10 @@ def validate_definition_consistency() -> list[str]:
     approval_text = read_text(ROOT / "reference-approval-mechanism.md")
     readme_text = read_text(ROOT / "README.md")
     skill_text = read_text(ROOT / "SKILL.md")
+    claude_text = read_text(ROOT / "CLAUDE.md")
+    flow_web_text = read_text(ROOT / "flows" / "web-api-testing.md")
+    flow_android_text = read_text(ROOT / "flows" / "android-testing.md")
+    flow_mcp_text = read_text(ROOT / "flows" / "mcp-testing.md")
 
     if "approval-records.json" in approval_text and "approval-records.json" not in definitions_text:
         issues.append(
@@ -47,6 +51,30 @@ def validate_definition_consistency() -> list[str]:
         issues.append("DEFINITIONS.md is missing SPEC-CONSISTENCY-REVIEW.md in the stage outputs")
     if "STAGE-SUBAGENT-PLAN.json" not in definitions_text:
         issues.append("DEFINITIONS.md is missing STAGE-SUBAGENT-PLAN.json in the stage outputs")
+    if "六-D" not in definitions_text:
+        issues.append("DEFINITIONS.md is missing the 六-D section reference")
+    if "关��" in definitions_text:
+        issues.append("DEFINITIONS.md still contains corrupted heading text")
+    if "roles/spec-consistency-validator.md" not in flow_web_text:
+        issues.append("flows/web-api-testing.md is missing spec-consistency-validator in standard stage one")
+    for relative_path, text in (
+        ("flows/android-testing.md", flow_android_text),
+        ("flows/mcp-testing.md", flow_mcp_text),
+    ):
+        if "roles/spec-consistency-validator.md" not in text:
+            issues.append(f"{relative_path} is missing spec-consistency-validator in stage one")
+        for marker in ("PRODUCT-QUALITY-REVIEW.md", "TEST-CASE-REVIEW.md", "SURFACE-EXECUTION-PLAN.json"):
+            if marker not in text:
+                issues.append(f"{relative_path} is missing {marker} in the documented stage outputs")
+    if "roles/mcp-tester.md` + `roles/mcp-tester.md`" in flow_mcp_text or "roles/mcp-tester.md` 协作" in flow_mcp_text:
+        issues.append("flows/mcp-testing.md still documents mcp-tester as a stage-three collaborator")
+    if "21 个角色" not in claude_text:
+        issues.append("CLAUDE.md is missing the correct active role count")
+    if "A / B 双模式" not in claude_text and ("A 模式" not in claude_text or "B 模式" not in claude_text):
+        issues.append("CLAUDE.md is missing Flow B A/B mode guidance")
+    for role_name in ("tool-evaluator", "workflow-optimizer"):
+        if role_name not in definitions_text or role_name not in skill_text or role_name not in claude_text:
+            issues.append(f"{role_name} is not consistently documented as an auxiliary role")
 
     return issues
 
@@ -220,8 +248,6 @@ def validate_runtime_bridge_contract() -> list[str]:
     for relative_path, text in takeover_role_texts.items():
         if "takeover_enabled:" not in text or "takeover_statuses:" not in text:
             issues.append(f"{relative_path} is missing frontmatter main-agent takeover metadata")
-        if "主Agent接管策略" not in text:
-            issues.append(f"{relative_path} is missing the main-agent takeover policy section")
     return issues
 
 

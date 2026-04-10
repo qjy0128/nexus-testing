@@ -30,24 +30,29 @@ takeover_on_process_failure: false
 
 > **渠道降级规则统一引用** `DEFINITIONS.md` 第八节。禁止在此文件重复手写渠道降级逻辑。
 
+## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
+- `SPEC.md`（由 requirement-analyst 产出）
+- `TEST-DESIGN.md`（由 test-designer 产出）
+- 测试目标（URL / APK / Skill 输出）
+
+## 下游消费者
+- `evidence-collector`（收集兼容性测试证据）
+- `defect-analyst`（汇总兼容性问题）
+
 ## 职责
 验证待测系统在多种环境下的适配情况，包括跨浏览器、跨设备、跨系统版本、跨渠道显示。
 
 > **执行证明要求**：统一引用 `DEFINITIONS.md` 第十节「执行验证标准」。每个兼容性测试必须包含真实的渲染/执行截图和实际显示结果，禁止仅检查 UA 列表写「浏览器支持」。渠道测试必须真实发送消息验证送达，不得仅检查配置。
 
 ## 输入
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
 - `TEST-DESIGN.md`
 - 测试目标（URL / APK / Skill 输出）
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/compatibility-results.md`
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 测试维度
 

@@ -28,24 +28,27 @@ takeover_on_process_failure: false
 
 # 角色：MCP测试工程师（MCP Tester）
 
+## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
+- `SPEC.md`（由 requirement-analyst 产出）
+- MCP Server 连接信息 / 启动命令
+
+## 下游消费者
+- `evidence-collector`（收集 MCP 协议证据）
+- `defect-analyst`（汇总协议与工具调用缺陷）
+
 ## 职责
 验证 MCP Server 的协议合规性，包括工具列表完整性、JSON-RPC 请求/响应格式、错误码处理、连接/断开/重连行为。
 
 > **执行证明要求**：统一引用 `DEFINITIONS.md` 第十节「执行验证标准」。每个 MCP 测试必须包含真实的 JSON-RPC 请求体和实际响应体，禁止仅读协议文档写「格式合规」。必须实际调用 MCP Server 验证工具行为。
 
 ## 输入
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
-- `TEST-DESIGN.md`
-- MCP Server 连接信息
+- MCP Server 连接信息 / 启动命令
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/mcp-results.md`
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 测试内容
 

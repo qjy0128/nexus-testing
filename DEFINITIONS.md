@@ -2,7 +2,7 @@
 
 > 此文件定义共享阶段、角色、文件、超时和 Flow 基线；Flow/Reference 文件可按第六节-B 的优先级补充更具体的场景规则，主入口和 Role 文件默认引用这里的公共定义。
 
-**目录**：[一 阶段定义](#一阶段定义8-阶段编号零七) | [二 上下文传递](#二阶段间上下文传递唯一路径) | [三 报告目录](#三报告目录结构) | [四 Flow 配置](#四flow-配置并行角色定义) | [五 超时](#五超时配置统一值) | [六 角色分类](#六角色分类体系) | [七 Token 预算](#七token-预算规则统一值) | [八 渠道降级](#八渠道降级规则统一描述) | [九 审批打回](#九审批与打回规则统一) | [十 执行验证](#十执行验证标准反偷懒机制) | [十一 增量复测](#十一增量复测流程) | [十二 回归套件](#十二回归套件分层定义) | [十三 动态测试](#十三ai-动态测试增强) | [十四 沙箱环境](#十四沙箱执行环境) | [十五 外部用例](#十五外部测试用例获取) | [十六 Skill 分类](#十六skill-类型分类体系) | [十七 测试维度矩阵](#十七能力驱动测试维度矩阵)
+**目录**：[一 阶段定义](#一阶段定义8-阶段编号零七) | [二 上下文传递](#二阶段间上下文传递唯一路径) | [三 报告目录](#三报告目录结构) | [四 Flow 配置](#四flow-配置并行角色定义) | [五 超时](#五超时配置统一值) | [六 角色分类](#六角色分类体系) | [六-B 文档优先级](#六-b文档优先级规则) | [六-C 轻量模式](#六-c轻量模式) | [六-D 角色输入输出约定](#六-d角色输入输出约定阶段角色-subagent) | [七 Token 预算](#七token-预算规则统一值) | [八 渠道降级](#八渠道降级规则统一描述) | [九 审批打回](#九审批与打回规则统一) | [十 执行验证](#十执行验证标准反偷懒机制) | [十一 增量复测](#十一增量复测流程) | [十二 回归套件](#十二回归套件分层定义) | [十三 动态测试](#十三ai-动态测试增强) | [十四 沙箱环境](#十四沙箱执行环境) | [十五 外部用例](#十五外部测试用例获取) | [十六 Skill 分类](#十六skill-类型分类体系) | [十七 测试维度矩阵](#十七能力驱动测试维度矩阵)
 
 ---
 
@@ -102,10 +102,10 @@
 
 | Flow | 测试类型 | 并行角色（阶段五） | 数量 | evidence-collector |
 |------|---------|-------------------|------|-------------------|
-| Flow A | Skill 测试 | `skill-tester`（含运行时性能测试） + `security-tester` | 2 | ✅ 阶段五后执行 |
-| Flow B | 网页+接口测试 | `functional-tester` + `compatibility-tester` + `security-tester` + `performance-tester` + `accessibility-auditor` | 5 | ✅ 阶段五后执行 |
-| Flow C | 安卓测试 | `functional-tester` + `compatibility-tester` + `security-tester` + `performance-tester` + `reality-checker` | 5 | ✅ 阶段五后执行 |
-| Flow D | MCP 测试 | `mcp-tester` + `security-tester` + `performance-tester` + `reality-checker` | 4 | ✅ 阶段五后执行 |
+| Flow A | Skill 测试 | `skill-tester`（含运行时性能测试） + `security-tester` | 2 | ✅ 阶段五完成后执行 |
+| Flow B | 网页+接口测试 | `functional-tester` + `compatibility-tester` + `security-tester` + `performance-tester` + `accessibility-auditor` | 5 | ✅ 阶段五完成后执行 |
+| Flow C | 安卓测试 | `functional-tester` + `compatibility-tester` + `security-tester` + `performance-tester` + `reality-checker` | 5 | ✅ 阶段五完成后执行 |
+| Flow D | MCP 测试 | `mcp-tester` + `security-tester` + `performance-tester` + `reality-checker` | 4 | ✅ 阶段五完成后执行 |
 
 **注意**：
 - Flow A **不含** `compatibility-tester`，渠道适配检测已集成在 `skill-tester` 内
@@ -172,6 +172,10 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 - 除主 agent 外，阶段零到阶段七的角色默认都以对应 `subagent` 执行；串行阶段启动 1 个阶段角色，阶段五或 B 模式体验阶段按模板并行启动多个角色
 - `executor` / `validator` 都可以作为 subagent；区别在于前者偏生产交付物，后者偏审计评估
 - `evidence-collector` 不参与并行组，只在所有测试执行角色结束后再启动
+
+**辅助角色**：
+- `tool-evaluator`、`workflow-optimizer` 属于按需触发的辅助 `validator`，不进入标准 8 阶段或 Flow B 11 阶段调度表。
+- 这两个角色只在用户主动请求工具评估、流程优化或质量争议仲裁时启动。
 
 ### 角色依赖图
 
@@ -664,7 +668,7 @@ test-designer 分析被测产品功能
 | 沙箱总时长 | 10 分钟（600 秒） |
 | 依赖安装（npm/pip） | 120 秒 |
 
-### 与降级阶梯的关��
+### 与降级阶梯的关系
 
 > **完整降级阶梯定义见** `reference-sandbox-spec.md` **第八节。**以下仅为速查映射。
 

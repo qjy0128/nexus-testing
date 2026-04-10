@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 
 from dispatch_payload_schema import validate_dispatch_payload_list
+from json_utils import load_json
 from nexus_stage_executor import (
     append_stage_log,
     bundle_dispatch,
@@ -24,12 +25,6 @@ from sandbox_skill_invoke.core import read_text, write_text
 
 
 STATE_LOCK = threading.RLock()
-
-
-def load_json(path: Path, default: object) -> object:
-    if not path.exists():
-        return default
-    return json.loads(read_text(path))
 
 
 def save_json(path: Path, value: object) -> None:
@@ -99,7 +94,7 @@ def prepare_bundle(report_dir: Path) -> dict[str, object]:
                     "runtime": None,
                 },
             )
-        role_state = load_json(state_path, {})
+        role_state = load_json(state_path, {}, label=f"role state {state_path.name}")
         if not isinstance(role_state, dict):
             role_state = {"status": "unknown"}
         manifest["roles"].append(
@@ -121,7 +116,7 @@ def update_role_state(report_dir: Path, stage_id: str, role_id: str, updater) ->
     if not state_path.exists():
         raise SystemExit(f"ERROR: role state does not exist: {state_path}")
     with STATE_LOCK:
-        state = load_json(state_path, {})
+        state = load_json(state_path, {}, label=f"role state {state_path.name}")
         if not isinstance(state, dict):
             state = {}
         updater(state)
@@ -294,7 +289,7 @@ def stage_run_status(report_dir: Path, stage_id: str) -> dict[str, object]:
     run_dir = runner_root(report_dir, stage_id)
     role_states = []
     for path in sorted(run_dir.glob("*.state.json")):
-        payload = load_json(path, {})
+        payload = load_json(path, {}, label=f"role state {path.name}")
         if isinstance(payload, dict):
             role_states.append(payload)
     completed = [item for item in role_states if item.get("status") == "completed"]

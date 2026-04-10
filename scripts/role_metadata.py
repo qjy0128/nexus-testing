@@ -6,9 +6,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from frontmatter_utils import parse_boolean_text, parse_frontmatter
 from sandbox_skill_invoke.core import read_text
-
-FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 ANY_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 
 SECTION_MINIMUM_OUTPUT = "\u6700\u4f4e\u8f93\u51fa\u7ed3\u6784"
@@ -65,50 +64,6 @@ def section_body(text: str, heading: str) -> str:
     if current_heading == heading:
         return "\n".join(current_lines).strip("\n")
     return ""
-
-
-def parse_boolean_text(value: str) -> bool | None:
-    normalized = value.strip().lower()
-    if normalized in {"true", "yes", "on", "enabled"}:
-        return True
-    if normalized in {"false", "no", "off", "disabled"}:
-        return False
-    return None
-
-
-def parse_frontmatter(text: str) -> dict[str, object]:
-    match = FRONTMATTER_RE.match(text)
-    if not match:
-        return {}
-    lines = match.group(1).splitlines()
-    result: dict[str, object] = {}
-    current_list_key: str | None = None
-    for raw_line in lines:
-        line = raw_line.rstrip()
-        if not line.strip():
-            continue
-        if line.startswith("  - ") and current_list_key:
-            result.setdefault(current_list_key, [])
-            casted = result[current_list_key]
-            if isinstance(casted, list):
-                casted.append(line[4:].strip().strip('"'))
-            continue
-        current_list_key = None
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-        if not value:
-            result[key] = []
-            current_list_key = key
-            continue
-        scalar = value.strip('"')
-        boolean = parse_boolean_text(scalar)
-        result[key] = boolean if boolean is not None else scalar
-    return result
-
-
 def section_lines(text: str, heading: str) -> list[str]:
     body = section_body(text, heading)
     if body:
@@ -345,7 +300,7 @@ def validate_parsed_role_metadata(role_file: Path, metadata: dict[str, object]) 
 
 def parse_role_doc(role_file: Path) -> dict[str, object]:
     text = read_text(role_file)
-    frontmatter = parse_frontmatter(text)
+    frontmatter = parse_frontmatter(text) or {}
     validate_frontmatter_schema(role_file, frontmatter)
 
     minimum_output = frontmatter_string_list(frontmatter, "minimum_output")

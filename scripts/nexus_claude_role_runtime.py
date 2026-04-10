@@ -7,11 +7,11 @@ import argparse
 import json
 import subprocess
 import sys
-from pathlib import Path
 
+from json_utils import load_json
+from path_utils import ROOT, resolve_path
+from role_runtime_prompt import build_runtime_prompt
 from sandbox_skill_invoke.core import read_text
-
-ROOT = Path(__file__).resolve().parents[1]
 
 RESULT_SCHEMA = {
     "type": "object",
@@ -28,72 +28,6 @@ RESULT_SCHEMA = {
     "required": ["resultFile", "note"],
     "additionalProperties": False,
 }
-
-
-def resolve_path(path_value: str) -> Path:
-    candidate = Path(path_value).expanduser()
-    if not candidate.is_absolute():
-        return (ROOT / candidate).resolve()
-    return candidate.resolve()
-
-
-def extend_prompt_section(lines: list[str], title: str, items: list[object]) -> None:
-    values = [str(item).strip() for item in items if str(item).strip()]
-    if not values:
-        return
-    lines.extend(["", f"{title}:", *[f"- {item}" for item in values]])
-
-
-def build_prompt(payload: dict[str, object], prompt_text: str) -> str:
-    report_dir = str(payload["reportDir"])
-    role_file = str(payload["roleFile"])
-    role_id = str(payload["roleId"])
-    stage_label = str(payload["stageLabel"])
-    stage_name = str(payload["stageName"])
-    missing = ", ".join(str(item) for item in payload.get("missingDeliverables", [])) or "(none)"
-    lines = [
-        f"You are the stage-role subagent `{role_id}` for {stage_label} {stage_name}.",
-        f"Role file: {role_file}",
-        f"Report directory: {report_dir}",
-        f"Missing deliverables: {missing}",
-        "",
-        "Execution rules:",
-        "- Work only for this role and this stage.",
-        "- Create or update only the deliverables needed for this role in the report directory.",
-        "- Do not ask the user for approval; that is handled by the orchestrator.",
-        "- Do not leave TODOs, placeholders, or vague summaries in the final artifacts.",
-        "- If you cannot finish real execution, record explicit blockers and mark the situation clearly instead of claiming success.",
-        "- When finished, return only JSON matching the required schema.",
-        "- Put the primary artifact path in resultFile. Use a path under the report directory when possible.",
-    ]
-    extend_prompt_section(lines, "Responsibilities", list(payload.get("responsibilities", [])))
-    extend_prompt_section(lines, "Hard boundaries", list(payload.get("hardBoundaries", [])))
-    extend_prompt_section(lines, "Execution rules from role doc", list(payload.get("executionRules", [])))
-    extend_prompt_section(lines, "Evidence requirements", list(payload.get("evidenceRequirements", [])))
-    extend_prompt_section(lines, "Anti-patterns to avoid", list(payload.get("antiPatterns", [])))
-    extend_prompt_section(lines, "Minimum output structure", list(payload.get("minimumOutput", [])))
-    lines.extend(
-        [
-            "",
-            "Self-check before returning:",
-            "- Every deliverable you claim to have produced exists on disk.",
-            "- The deliverable content follows the role's required structure, not just a stub.",
-            "- Blockers and residual gaps are explicit when anything remains unverified.",
-            "",
-            "Role launch prompt:",
-            prompt_text.strip(),
-            "",
-            "JSON response requirements:",
-            "- resultFile: primary artifact path you produced, or null if there is no single primary file.",
-            "- note: one short sentence summarizing what you completed.",
-            "- status: optional. Use `completed` when done, or `blocked` if you need takeover.",
-            "- needsMainAgentTakeover: optional boolean. Set true when the host/main agent must continue the work because your environment is insufficient.",
-            "- blockers: optional array of short blocker reasons.",
-        ]
-    )
-    return "\n".join(lines)
-
-
 def build_command(args: argparse.Namespace) -> list[str]:
     command = [args.claude_command]
     if args.claude_args:
@@ -137,12 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    payload = json.loads(read_text(resolve_path(args.payload_file)))
+    payload = load_json(resolve_path(args.payload_file), label="role payload")
     if not isinstance(payload, dict):
         raise SystemExit("ERROR: payload must be a JSON object")
     prompt_text = read_text(resolve_path(args.prompt_file))
 
-    prompt = build_prompt(payload, prompt_text)
+    prompt = build_runtime_prompt(payload, prompt_text, language="en", include_json_response_rules=True)
     command = build_command(args)
 
     if args.dry_run:

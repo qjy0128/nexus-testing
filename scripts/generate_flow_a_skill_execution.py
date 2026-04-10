@@ -9,11 +9,8 @@ import sys
 from pathlib import Path
 
 from flow_a_localization import add_output_language_argument
+from json_utils import load_json
 from sandbox_skill_invoke.core import read_text, write_text
-
-
-def load_json(path: Path) -> dict[str, object]:
-    return json.loads(read_text(path))
 
 
 def text(language: str, zh: str, en: str) -> str:

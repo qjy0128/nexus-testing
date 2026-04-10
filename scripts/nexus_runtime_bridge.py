@@ -13,10 +13,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from dispatch_payload_schema import validate_bundle_manifest, validate_dispatch_payload_list
+from json_utils import load_json
 from nexus_dispatch_runner import (
+    advance,
     complete_role,
     fail_role,
-    load_json,
     prepare_bundle,
     role_state_path,
     runner_root,
@@ -38,7 +39,9 @@ def load_runtime_config(path_value: str | None) -> dict[str, object]:
     path = resolve_path(path_value)
     if not path.exists():
         raise SystemExit(f"ERROR: runtime config does not exist: {path}")
-    payload = json.loads(read_text(path))
+    payload = load_json(path, label="runtime config")
+    if not isinstance(payload, dict):
+        raise SystemExit(f"ERROR: runtime config must be a JSON object: {path}")
     try:
         return validate_runtime_config(payload)
     except ValueError as exc:
@@ -64,7 +67,7 @@ def render_list(values: list[object], context: dict[str, str]) -> list[str]:
 def role_bundle_info(bundle: dict[str, object], role_id: str) -> dict[str, object]:
     manifest_file = Path(str(bundle["manifestFile"]))
     try:
-        bundle_manifest = validate_bundle_manifest(load_json(manifest_file, {}))
+        bundle_manifest = validate_bundle_manifest(load_json(manifest_file, {}, label="bundle manifest"))
     except ValueError as exc:
         raise SystemExit(f"ERROR: invalid bundle manifest: {exc}") from exc
     for item in bundle_manifest.get("roles", []):
@@ -79,6 +82,10 @@ def payload_context(report_dir: Path, bundle: dict[str, object], payload: dict[s
     run_dir = runner_root(report_dir, str(payload["stageId"]))
     payload_file = bundle_dir / str(role_info["payloadFile"])
     prompt_file = bundle_dir / str(role_info["promptFile"])
+    if not payload_file.is_file():
+        raise SystemExit(f"ERROR: dispatch payload file is missing: {payload_file}")
+    if not prompt_file.is_file():
+        raise SystemExit(f"ERROR: dispatch prompt file is missing: {prompt_file}")
     return {
         "workspace_root": str(ROOT),
         "report_dir": str(report_dir),
@@ -644,8 +651,6 @@ def run_stage_once(report_dir: Path, config: dict[str, object]) -> dict[str, obj
             "roleResults": results,
             "runStatus": run_status,
         }
-
-    from nexus_dispatch_runner import advance
 
     return {
         "status": "stage-run-finished",

@@ -28,23 +28,29 @@ takeover_on_process_failure: false
 
 # 角色：现实检验者（Reality Checker）
 
+## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
+- `SPEC.md`（由 requirement-analyst 产出）
+- `TEST-DESIGN.md`（由 test-designer 产出）
+- 待测系统（URL / APK / API / MCP Server）
+
+## 下游消费者
+- `evidence-collector`（收集真实场景测试证据）
+- `defect-analyst`（汇总边缘场景问题）
+
 ## 职责
 模拟真实用户的使用场景，包括弱网环境、旧设备、异常操作序列等，发现常规测试环境难以复现的边缘问题。
 
 > **执行证明要求**：统一引用 `DEFINITIONS.md` 第十节「执行验证标准」。每个异常场景必须真实触发（断网、超时、非法输入），记录实际系统行为，禁止仅列出「可能的异常」不实际验证。弱网等无法完全模拟的场景走降级阶梯。
 
 ## 输入
+- `PRODUCT-FINGERPRINT.json`
+- `SPEC.md`
 - `TEST-DESIGN.md`
-- 待测系统（URL / APK / API）
+- 待测系统（URL / APK / API / MCP Server）
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/reality-results.md`
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 测试场景
 

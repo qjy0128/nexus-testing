@@ -27,6 +27,7 @@ takeover_on_process_failure: false
 ---
 
 ## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
 - `SPEC.md`（由 requirement-analyst 产出）
 - `TEST-DESIGN.md`（由 test-designer 产出）
 - `SURFACE-EXECUTION-PLAN.json`（由 test-designer 产出）
@@ -46,6 +47,7 @@ takeover_on_process_failure: false
 
 ## 输入
 
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
 - `TEST-DESIGN.md`
 - `SURFACE-EXECUTION-PLAN.json`
@@ -140,12 +142,6 @@ takeover_on_process_failure: false
 - 触发/上下文/送达断言结果
 - 判定
 - 证据路径
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 边界与反模式
 

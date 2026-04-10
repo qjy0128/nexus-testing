@@ -12,30 +12,16 @@ from pathlib import Path
 
 from dispatch_payload_schema import validate_bundle_files, validate_bundle_manifest, validate_dispatch_payload_list
 from generate_stage_subagent_plan import build_plan, normalize_flow, normalize_mode
+from json_utils import load_json
+from path_utils import resolve_path
 from role_metadata import parse_role_doc as load_role_doc_metadata
 from sandbox_skill_invoke.core import read_text, write_text
 
-ROOT = Path(__file__).resolve().parents[1]
 STATE_LOCK = threading.RLock()
 
 
 def now_text() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-
-
-def resolve_path(path_value: str) -> Path:
-    candidate = Path(path_value).expanduser()
-    if not candidate.is_absolute():
-        return (ROOT / candidate).resolve()
-    return candidate.resolve()
-
-
-def load_json(path: Path, default: object) -> object:
-    if not path.exists():
-        return default
-    return json.loads(read_text(path))
-
-
 def save_json(path: Path, value: object) -> None:
     write_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
@@ -356,10 +342,10 @@ def init_executor(report_dir: Path, flow: str, mode: str) -> dict[str, object]:
 
 
 def read_executor_state(report_dir: Path) -> tuple[dict[str, object], dict[str, object], dict[str, object], list[object]]:
-    plan = load_json(report_dir / "STAGE-SUBAGENT-PLAN.json", {})
-    approvals = load_json(report_dir / "approval-records.json", {})
-    rejections = load_json(report_dir / "rejection-count.json", {})
-    stage_log = load_json(report_dir / "stage-transition-log.json", [])
+    plan = load_json(report_dir / "STAGE-SUBAGENT-PLAN.json", {}, label="stage subagent plan")
+    approvals = load_json(report_dir / "approval-records.json", {}, label="approval records")
+    rejections = load_json(report_dir / "rejection-count.json", {}, label="rejection counts")
+    stage_log = load_json(report_dir / "stage-transition-log.json", [], label="stage transition log")
     if not isinstance(plan, dict):
         raise SystemExit("ERROR: invalid STAGE-SUBAGENT-PLAN.json")
     if not isinstance(approvals, dict):
@@ -387,7 +373,7 @@ def current_approval_gate(
 def append_stage_log(report_dir: Path, entry: dict[str, object]) -> None:
     stage_log_path = report_dir / "stage-transition-log.json"
     with STATE_LOCK:
-        stage_log = load_json(stage_log_path, [])
+        stage_log = load_json(stage_log_path, [], label="stage transition log")
         if not isinstance(stage_log, list):
             stage_log = []
         stage_log.append(entry)

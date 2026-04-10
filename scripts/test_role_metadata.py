@@ -99,6 +99,14 @@ def test_all_repo_roles_parse() -> None:
     print("  [PASS] test_all_repo_roles_parse")
 
 
+def test_all_repo_roles_have_input_flow_metadata() -> None:
+    for role_file in sorted((PROJECT_DIR / "roles").glob("*.md")):
+        parsed = role_metadata.parse_role_doc(role_file)
+        assert_equal(bool(parsed["inputSources"]), True, f"{role_file.name} inputSources present")
+        assert_equal(bool(parsed["consumers"]), True, f"{role_file.name} consumers present")
+    print("  [PASS] test_all_repo_roles_have_input_flow_metadata")
+
+
 def test_invalid_frontmatter_schema_rejected() -> None:
     temp_root = make_temp_root("role-metadata-invalid-")
     try:
@@ -157,6 +165,7 @@ def main() -> int:
         test_parse_real_role_metadata,
         test_frontmatter_priority,
         test_all_repo_roles_parse,
+        test_all_repo_roles_have_input_flow_metadata,
         test_invalid_frontmatter_schema_rejected,
     ):
         try:

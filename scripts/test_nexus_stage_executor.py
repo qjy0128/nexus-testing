@@ -99,6 +99,21 @@ def test_rejection_tracking() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_invalid_executor_json_state_reports_clear_error() -> None:
+    temp_root = make_temp_root("stage-exec-bad-json-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        write_text(report_dir / "approval-records.json", "{broken\n")
+        proc = run_proc("next", "--report-dir", str(report_dir))
+        assert_equal(proc.returncode == 0, False, "next should fail for invalid approval records")
+        if "ERROR: invalid JSON in approval records" not in proc.stderr:
+            raise AssertionError(f"stderr missing clear JSON error: {proc.stderr!r}")
+        print("  [PASS] test_invalid_executor_json_state_reports_clear_error")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_approval_stage_must_match_current_gate() -> None:
     temp_root = make_temp_root("stage-exec-invalid-approval-")
     try:
@@ -295,6 +310,7 @@ def main() -> int:
         test_init_and_next,
         test_stage_progression_with_approval,
         test_rejection_tracking,
+        test_invalid_executor_json_state_reports_clear_error,
         test_approval_stage_must_match_current_gate,
         test_dispatch_payloads,
         test_bundle_dispatch,

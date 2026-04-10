@@ -16,6 +16,7 @@ from pathlib import Path
 from flow_a_localization import add_output_language_argument
 from flow_a_command_builders import build_bin_command, build_launch_command, build_module_probe_command
 from flow_a_mcp_client import StdioJsonRpcClient, choose_tool_for_call
+from json_utils import load_json
 from sandbox_skill_invoke.core import detect_command, find_bash_executable, read_text, write_text
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -50,18 +51,11 @@ def tr(zh: str, en: str) -> str:
     return zh if OUTPUT_LANGUAGE == "zh-CN" else en
 
 
-def load_json(path: Path) -> dict[str, object]:
-    return json.loads(read_text(path))
-
-
 def load_testing_manifest(skill_path: Path) -> dict[str, object]:
     manifest_path = skill_path / "testing.json"
     if not manifest_path.exists():
         return {}
-    try:
-        return load_json(manifest_path)
-    except json.JSONDecodeError:
-        return {}
+    return load_json(manifest_path, label="testing manifest")
 
 
 def resolve_execution_roots(plan: dict[str, object], cli_skill_path: Path) -> tuple[Path, Path]:
@@ -2430,142 +2424,6 @@ def probe_module_surface(
         "evidence": [str(stdout_path), str(stderr_path)],
             "notes": f"{notes}; probe-only=true",
         }
-
-
-def run_generic_mcp_surface(
-    surface: dict[str, object],
-    surface_root: Path,
-    execution_dir: Path,
-    *,
-    harness_block: dict[str, object] | None = None,
-) -> dict[str, object]:
-    skill_path = surface_root
-    target = resolve_surface_path(surface_root, surface)
-    if target is None:
-        return mark_incomplete(
-            surface,
-            tr("mcp 表面缺少可启动命令元数据", "mcp surface has no launchable command metadata"),
-            str(skill_path),
-            execution_level=surface.get("minimumMode", "shim-live"),
-        )
-
-    command = None
-    cwd = surface_root
-    timeout_seconds = 20
-    protocol_versions: list[str] = []
-    if harness_block:
-        command = resolve_command_items(harness_block.get("command"))
-        cwd = surface_root / str(harness_block.get("cwd", "."))
-        timeout_seconds = _safe_timeout(harness_block.get("timeoutSeconds", timeout_seconds), default=timeout_seconds)
-        protocol_versions = [str(item) for item in harness_block.get("protocolVersions", []) if str(item).strip()]
-    if not command:
-        command, runtime_issue = build_launch_command(target, surface_root)
-        if command is None:
-            return mark_incomplete(
-                surface,
-                runtime_issue or tr("mcp 运行时不可用", "mcp runtime is unavailable"),
-                str(target),
-                execution_level=surface.get("minimumMode", "shim-live"),
-            )
-
-    if not protocol_versions:
-        protocol_versions = ["2025-03-26", "2024-11-05"]
-
-    logs_dir = execution_logs_dir(execution_dir)
-    stdout_path = logs_dir / f"{surface.get('surfaceId')}.mcp-transcript.json"
-    stderr_path = logs_dir / f"{surface.get('surfaceId')}.stderr.log"
-
-    try:
-        proc = subprocess.Popen(
-            command,
-            cwd=str(cwd),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except OSError as exc:
-        return mark_blocked(surface, tr(f"mcp harness 启动失败：{exc}", f"mcp harness failed to start: {exc}"), str(cwd))
-    client = StdioJsonRpcClient(proc, stdout_path)
-    try:
-        init_response: dict[str, object] | None = None
-        init_version = ""
-        last_error = ""
-        for version in protocol_versions:
-            try:
-                init_response = client.request(
-                    1,
-                    "initialize",
-                    {
-                        "protocolVersion": version,
-                        "capabilities": {},
-                        "clientInfo": {"name": "nexus-testing", "version": "0.9.36"},
-                    },
-                    timeout=5.0,
-                )
-                if "result" in init_response:
-                    init_version = version
-                    break
-                last_error = json.dumps(init_response.get("error", {}), ensure_ascii=False)
-            except Exception as exc:  # noqa: BLE001
-                last_error = str(exc)
-
-        if init_response is None or "result" not in init_response:
-            return mark_blocked(surface, tr(f"mcp initialize 失败：{last_error}", f"mcp initialize failed: {last_error}"), str(stdout_path))
-
-        client.notify("notifications/initialized", {})
-        tools_response = client.request(2, "tools/list", {}, timeout=5.0)
-        if "result" not in tools_response:
-            return mark_blocked(
-                surface,
-                tr(
-                    f"mcp tools/list 失败：{json.dumps(tools_response.get('error', {}), ensure_ascii=False)}",
-                    f"mcp tools/list failed: {json.dumps(tools_response.get('error', {}), ensure_ascii=False)}",
-                ),
-                str(stdout_path),
-            )
-
-        tools = list(tools_response.get("result", {}).get("tools", []))
-        tool_call_status = "skipped"
-        selected_tool = choose_tool_for_call(tools)
-        if selected_tool is not None:
-            tool_response = client.request(
-                3,
-                "tools/call",
-                {"name": selected_tool.get("name"), "arguments": {}},
-                timeout=5.0,
-            )
-            if "result" in tool_response:
-                tool_call_status = f"called:{selected_tool.get('name')}"
-            else:
-                tool_call_status = f"error:{selected_tool.get('name')}"
-        return {
-            "surfaceId": surface.get("surfaceId"),
-            "kind": surface.get("kind"),
-            "identifier": surface.get("identifier"),
-            "status": "passed",
-            "executionLevel": surface.get("minimumMode", "shim-live"),
-            "evidence": [str(stdout_path), str(stderr_path)],
-            "notes": f"protocol-version={init_version}; tools={len(tools)}; tool-call={tool_call_status}; protocol-verified=true",
-        }
-    except Exception as exc:  # noqa: BLE001
-        return mark_blocked(surface, tr(f"mcp harness 执行失败：{exc}", f"mcp harness failed: {exc}"), str(stdout_path))
-    finally:
-        client.write_transcript()
-        write_text(stderr_path, client.stderr_text())
-        for stream_name in ("stdin", "stdout", "stderr"):
-            stream = getattr(proc, stream_name, None)
-            if stream is not None:
-                try:
-                    stream.close()
-                except OSError:
-                    pass
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=2)
 
 
 def run_generic_mcp_surface_v2(

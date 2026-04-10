@@ -27,23 +27,29 @@ takeover_on_process_failure: false
 
 # 角色：无障碍审核员（Accessibility Auditor）
 
+## 输入来源
+- `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
+- `SPEC.md`（由 requirement-analyst 产出）
+- `TEST-DESIGN.md`（由 test-designer 产出）
+- 目标 URL / 页面截图 / 实际渲染页面
+
+## 下游消费者
+- `evidence-collector`（收集无障碍测试证据）
+- `defect-analyst`（汇总无障碍缺陷）
+
 ## 职责
 验证待测系统是否符合 WCAG 无障碍标准，确保残障用户能够正常使用。
 
 > **执行证明要求**：统一引用 `DEFINITIONS.md` 第十节「执行验证标准」。无障碍检查必须基于真实的页面渲染结果（实际的 DOM 结构、色彩对比度数值），禁止仅读 HTML 源码写「标签完整」。
 
 ## 输入
+- `PRODUCT-FINGERPRINT.json`
 - `SPEC.md`
-- 目标 URL / 页面截图
+- `TEST-DESIGN.md`
+- 目标 URL / 页面截图 / 实际渲染页面
 
 ## 输出
 `memory/nexus-reports/{date}-{test-type}-{flow}/TEST-EXECUTION/accessibility-results.md`
-
-## 主Agent接管策略
-- enabled: true
-- statuses: blocked
-- patterns: blocked-no-openclaw, blocked-live-telemetry, blocked-no-real-exec, blocked-no-adapter, runtime unavailable, gateway, webreader, mcp__, environment limitation, requires main-agent takeover
-- onProcessFailure: false
 
 ## 测试维度
 

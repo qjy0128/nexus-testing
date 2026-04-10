@@ -41,12 +41,12 @@ Flow B 有两种模式：
 | 阶段 | 执行者 | 核心输出 |
 |------|--------|---------|
 | 阶段零 | `roles/environment-checker.md` | 环境就绪报告 |
-| 阶段一 | `roles/requirement-analyst.md` | `SPEC.md` |
+| 阶段一 | `roles/requirement-analyst.md` + `roles/spec-consistency-validator.md` | `PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md` |
 | 阶段二 | `roles/quality-assessor.md` | `PRODUCT-QUALITY-REVIEW.md` |
-| 阶段三 | `roles/test-designer.md` | `TEST-DESIGN.md` |
+| 阶段三 | `roles/test-designer.md` | `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json` |
 | 阶段四 | `roles/test-case-evaluator.md` | `TEST-CASE-REVIEW.md` |
 | 阶段五 | 并行测试角色 | `TEST-EXECUTION/*.md` |
-| 阶段五后 | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
+| 阶段五完成后（后置角色） | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
 | 阶段六 | `roles/defect-analyst.md` | `DEFECTS/DEFECT-REPORT.md` |
 | 阶段七 | `roles/report-integrator.md` | `FINAL-TEST-REPORT.md` |
 
@@ -71,7 +71,7 @@ Flow B 有两种模式：
 | B-阶段六 | `roles/test-designer.md` | `TEST-DESIGN.md` |
 | B-阶段七 | `roles/test-case-evaluator.md` | `TEST-CASE-REVIEW.md` |
 | B-阶段八 | 并行测试角色 | `TEST-EXECUTION/*.md` |
-| B-阶段八后 | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
+| B-阶段八完成后（后置角色） | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
 | B-阶段九 | `roles/defect-analyst.md` | `DEFECTS/DEFECT-REPORT.md` |
 | B-阶段十 | `roles/report-integrator.md` | `FINAL-TEST-REPORT.md` |
 

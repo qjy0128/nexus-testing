@@ -17,6 +17,8 @@ from pathlib import Path
 from shutil import which
 from urllib.parse import unquote
 
+from frontmatter_utils import parse_frontmatter
+from role_metadata import validate_frontmatter_schema as validate_role_frontmatter_schema
 from sandbox_skill_invoke.core import (
     find_bash_executable as _core_find_bash_executable,
     read_text as _core_read_text,
@@ -97,6 +99,10 @@ REQUIRED_SHELL_SCRIPT_FILES = (
 
 REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/diagnose_bash_runtime.py",
+    "scripts/frontmatter_utils.py",
+    "scripts/path_utils.py",
+    "scripts/json_utils.py",
+    "scripts/role_runtime_prompt.py",
     "scripts/generate_runtime_bridge_config.py",
     "scripts/generate_stage_subagent_plan.py",
     "scripts/role_metadata.py",
@@ -151,9 +157,12 @@ REQUIRED_PYTHON_SCRIPT_FILES = (
     "scripts/test_run_openclaw_stage_demo.py",
     "scripts/test_generate_runtime_bridge_config.py",
     "scripts/test_nexus_runtime_bridge.py",
+    "scripts/test_helpers.py",
     "scripts/security-scanner.py",
     "scripts/test_sandbox_lifecycle.py",
     "scripts/validate_flow_a_skill_results.py",
+    "scripts/fixtures/mock_openclaw_cli.py",
+    "scripts/fixtures/mock_role_runtime.py",
 )
 
 REQUIRED_FIXTURE_DIRS = (
@@ -274,29 +283,6 @@ def find_readme_version(readme_text: str) -> str | None:
     return match.group(0) if match else None
 
 
-def parse_frontmatter(text: str) -> dict[str, str] | None:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None
-
-    end_index = None
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            end_index = index
-            break
-
-    if end_index is None:
-        return None
-
-    data: dict[str, str] = {}
-    for line in lines[1:end_index]:
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        data[key.strip()] = value.strip().strip('"')
-    return data
-
-
 def validate_markdown_links(markdown_files: list[Path]) -> list[str]:
     issues: list[str] = []
 
@@ -356,8 +342,16 @@ def validate_frontmatter() -> list[str]:
             issues.append(f"{rel(path)} is missing YAML frontmatter")
             continue
 
+        if path.parent.name == "roles":
+            try:
+                validate_role_frontmatter_schema(path, frontmatter)
+            except ValueError as exc:
+                issues.append(str(exc))
+            continue
+
         for key in ("name", "description"):
-            if not frontmatter.get(key):
+            value = frontmatter.get(key)
+            if not isinstance(value, str) or not value.strip():
                 issues.append(f"{rel(path)} is missing frontmatter field: {key}")
 
     return issues

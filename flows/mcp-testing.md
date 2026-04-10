@@ -25,33 +25,33 @@
 
 **需用户确认后才能进入阶段一**
 
-### 阶段一：需求解析
-**执行角色**：`roles/requirement-analyst.md`
+### 阶段一：需求解析 + 规格一致性校验
+**执行角色**：`roles/requirement-analyst.md` + `roles/spec-consistency-validator.md`
 
 输入：MCP Server 实现文档 / protocol spec / 源码
-输出：`SPEC.md`
-任务：提取工具列表、调用契约、错误码规范、协议版本
+输出：`PRODUCT-FINGERPRINT.json` + `SPEC.md` + `SPEC-CONSISTENCY-REVIEW.md`
+任务：提取工具列表、调用契约、错误码规范、协议版本，并校验规格与事实是否一致
 
 ### 阶段二：质量评估（评估产品本身）
 **执行角色**：`roles/quality-assessor.md`
 
 输入：`SPEC.md`
-输出：产品质量评估报告
+输出：`PRODUCT-QUALITY-REVIEW.md`
 任务：评估需求完整性、协议可行性、非功能需求
 **需批准后才能进入阶段三**
 
 ### 阶段三：测试设计
-**执行角色**：`roles/test-designer.md` + `roles/mcp-tester.md` 协作
+**执行角色**：`roles/test-designer.md`
 
 输入：`SPEC.md`
-输出：`TEST-DESIGN.md`
+输出：`TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json`
 任务：设计测试用例——协议合规用例、工具调用用例、错误码测试、并发测试
 
 ### 阶段四：用例评估（评估测试用例本身）
 **执行角色**：`roles/test-case-evaluator.md`
 
 输入：`TEST-DESIGN.md` + `SPEC.md`
-输出：用例评估报告
+输出：`TEST-CASE-REVIEW.md`
 任务：评估测试用例覆盖率、边界条件覆盖、测试数据充分性
 **需批准后才能进入阶段五**
 
