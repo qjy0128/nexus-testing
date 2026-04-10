@@ -31,6 +31,7 @@ from sandbox_skill_invoke.core import read_text, write_text
 
 ROOT = Path(__file__).resolve().parents[1]
 FLOW_A_SKILL_VALIDATOR = ROOT / "scripts" / "validate_flow_a_skill_results.py"
+FLOW_A_TAKEOVER_EXECUTOR = ROOT / "scripts" / "run_flow_a_takeover_execution.py"
 
 
 def load_runtime_config(path_value: str | None) -> dict[str, object]:
@@ -513,6 +514,43 @@ def validate_role_outputs(report_dir: Path, payload: dict[str, object]) -> str |
     return f"post-run validator failed: {summary_text}; logs={stdout_path},{stderr_path}"
 
 
+def attempt_flow_a_host_takeover(
+    report_dir: Path,
+    payload: dict[str, object],
+    takeover_file: Path | None = None,
+) -> dict[str, object] | None:
+    if str(payload.get("roleId", "")) != "skill-tester":
+        return None
+    surface_plan = report_dir / "SURFACE-EXECUTION-PLAN.json"
+    case_plan = report_dir / "CASE-EXECUTION-PLAN.json"
+    if not FLOW_A_TAKEOVER_EXECUTOR.exists() or not surface_plan.exists() or not case_plan.exists():
+        return None
+    command = [sys.executable, str(FLOW_A_TAKEOVER_EXECUTOR), "--report-dir", str(report_dir)]
+    if takeover_file is not None:
+        command.extend(["--takeover-file", str(takeover_file)])
+    proc = subprocess.run(
+        command,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        return {
+            "status": "failed",
+            "note": f"flow-a host takeover failed: {proc.stderr.strip() or proc.stdout.strip() or f'exit={proc.returncode}'}",
+        }
+    try:
+        payload_data = json.loads(proc.stdout.strip() or "{}")
+    except json.JSONDecodeError as exc:
+        return {"status": "failed", "note": f"flow-a host takeover returned invalid JSON: {exc}"}
+    if not isinstance(payload_data, dict):
+        return {"status": "failed", "note": "flow-a host takeover returned non-object JSON"}
+    return payload_data
+
+
 def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str, object], config: dict[str, object]) -> dict[str, object]:
     role_id = str(payload["roleId"])
     stage_id = str(payload["stageId"])
@@ -549,6 +587,24 @@ def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str,
     parsed_stdout = parse_role_stdout(str(final_attempt.get("stdout", "")))
     takeover_note = str(parsed_stdout.get("note") or final_attempt.get("note") or "")
     if should_request_takeover(payload, config, raw_spec, parsed_stdout, final_attempt):
+        host_takeover = attempt_flow_a_host_takeover(report_dir, payload)
+        if isinstance(host_takeover, dict) and str(host_takeover.get("status")) == "completed":
+            validation_error = validate_role_outputs(report_dir, payload)
+            if validation_error:
+                failed = fail_role(report_dir, stage_id, role_id, validation_error)
+                return {"roleId": role_id, "status": "failed", "detail": failed}
+            completed = complete_role(
+                report_dir,
+                stage_id,
+                role_id,
+                str(host_takeover.get("resultFile") or report_dir / "TEST-EXECUTION" / "skill-results.md"),
+                str(host_takeover.get("note") or "flow-a host takeover completed"),
+            )
+            return {"roleId": role_id, "status": "completed", "detail": completed}
+        if isinstance(host_takeover, dict):
+            note = str(host_takeover.get("note") or "").strip()
+            if note:
+                takeover_note = f"{takeover_note}; {note}".strip("; ")
         takeover_file = write_takeover_file(
             report_dir,
             bundle,

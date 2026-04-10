@@ -15,6 +15,24 @@
 | Flow C（安卓） | ⚠️ 流程骨架 | 同上，需 adb 等 Android 工具链 |
 | Flow D（MCP） | ⚠️ 流程骨架 | 同上，需 MCP Server 可连接 |
 
+## 相比常规 Skill 测试，多做了什么
+
+常规的 Skill 测试，很多时候停留在“读一遍 `SKILL.md`、挑几个 prompt 试一下、人工写结论”的层面。Nexus Testing 在 Flow A 里额外做了这些事：
+
+- **先建产品事实，再做测试设计**：不是直接凭感觉出用例，而是先生成 `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`，把测试对象的真实表面、能力、依赖和事实边界固定下来。
+- **把 Skill 拆成真实表面来测**：不是把整个 Skill 当成一个黑盒 prompt，而是拆成 `skill`、`bin`、`package`、`plugin-manifest`、`openclaw-extension`、`mcp` 等 surface 分别设计和执行。
+- **阶段三到阶段五是结构化联动的**：不仅输出 `TEST-DESIGN.md`，还会生成 `SURFACE-EXECUTION-PLAN.json`、`CASE-EXECUTION-PLAN.json`、`SKILL-SURFACE-WORKLIST.md`、`SURFACE-COVERAGE.json`，让阶段五执行和阶段七结论都能回溯到具体 case。
+- **真实执行和静态分析被严格区分**：`live` / `shim-live` / `trace` 三层执行有硬门禁，没有真实执行证据时不能写成功能通过。
+- **subagent 跑不动时有正式 takeover 机制**：不是简单报 blocked 就结束。Flow A 现在会优先尝试 fallback runtime，再由 host takeover executor 自动接管剩余 blocked/pending 的通用真实调用 case。
+- **结果质量有二次校验**：阶段五结束后会用 `validate_flow_a_skill_results.py` 校验 `skill-results.md` 和 `SURFACE-COVERAGE.json`，防止“有文件但没真正覆盖 case”的空壳结果。
+
+## 现阶段明确不做什么
+
+- **不把纯静态阅读伪装成真实功能通过**。
+- **不承诺所有 Skill 都能零适配深度自动化**。复杂私有运行时、强账号依赖、强人工判断链路仍可能需要专用 harness 或人工复核。
+- **不把 Flow B/C/D 包装成和 Flow A 同等成熟**。当前真正有完整执行闭环的还是 Flow A。
+- **不要求每个纯指令型 Skill 预先手写 `testing.json` 才能开始测试**；但当通用 takeover 仍不足以表达私有行为时，仓库私有 harness 仍是兜底方案。
+
 ### 沙箱执行能力
 
 `auto` / `live` / `shim-live` / `trace` 四级调用控制：
@@ -163,6 +181,7 @@ python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke 
 - `reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
 - 阶段调度、dispatch runner 和 runtime bridge 是否都接入文档与脚本契约
 - runtime bridge 是否能在角色失败时区分 `role-failed` 与 `takeover-required`，并为主 agent 留下可执行的接管工单
+- Flow A 的 `skill-tester` 在纯指令型 Skill 被真实执行环境卡住时，是否能优先触发 host takeover executor，自动接管剩余 blocked/pending case，而不是只能人工补跑或要求仓库预置 `testing.json`
 - runtime bridge 是否会按 role frontmatter 里的 `output_validation` / `minimum_output` / `minimum_output_aliases` 规则，对阶段二/三/七等关键 markdown 交付物执行结构校验，拦截只有占位标题或缺章的懒惰输出
 - runtime bridge 是否会按 role frontmatter 里的 `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure` 自动触发 `takeover-required`，而不是在 bridge 代码里硬编码某几个角色
 - Flow A 的产品事实指纹与阶段一生成链是否存在，并可通过 smoke test 生成 `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`SPEC-CONSISTENCY-REVIEW.md`

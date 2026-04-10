@@ -1,6 +1,10 @@
 ### v0.9.41（2026-04-10）
 **合同对齐 + 共享解析收口**
 
+- 更新：`README.md` 与 `项目介绍.md`，补充“相比常规 Skill 测试多做了什么 / 现阶段明确不做什么”的定位说明，突出事实指纹、surface/case 结构化设计、严格执行分层、host takeover 和结果质量门
+- 新增：`scripts/run_flow_a_takeover_execution.py`，为 Flow A `skill-tester` 提供 host-side takeover 执行器；当纯指令型 Skill 因真实运行时/工具环境限制进入 `takeover-required` 时，可按 `CASE-EXECUTION-PLAN.json` 的 `executionHints.hostTakeover` 自动补跑通用 HTTP 类真实调用 case
+- 更新：`scripts/generate_flow_a_test_design.py` 与相关测试，阶段三生成的 `CASE-EXECUTION-PLAN.json` 现在会额外写出 `hostTakeover.enabled/strategy/urls/providerAliases/strictReal`，供阶段五主 agent takeover 直接消费
+- 更新：`scripts/nexus_runtime_bridge.py` 与相关 smoke tests，`skill-tester` 命中 takeover 条件时会先尝试 Flow A host takeover executor；只有自动接管仍无法补完，才保留 `takeover-required`
 - 更新：`SKILL.md` 的参考文档表，补齐 `reference-security-blacklist.md`、`reference-skill-tier-requirements.md`、`reference-expected-outputs.md`、`reference-output-verification-examples.md`，与仓库实际参考文档集合保持一致
 - 更新：`scripts/nexus_runtime_bridge.py`，将 `advance` 从函数体内延迟导入改为模块级导入，去掉不必要的局部导入分支
 - 修复：`scripts/security-scanner.py`，恢复 `PI-003` 的真实检测并移除对不存在规则 `OBF-006` 的引用，避免提示注入和混淆检测出现死代码分支

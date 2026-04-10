@@ -117,6 +117,7 @@
 - `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的 surface 顺序逐条记录
 - 阶段五结束后必须运行 `scripts/validate_flow_a_skill_results.py`，缺任何 surface 视为执行不完整
 - 若 subagent runtime 因 OpenClaw Gateway、`mcp__web_reader__webReader`、真实执行环境缺失等原因无法完成测试，宿主 runtime 应先尝试该角色的 fallback runtime；仍失败时必须产出 `takeover-required` 工单，交由主 agent 在当前 host session 接管
+- 对纯指令型 Skill，主 agent 接管优先走框架内置的 host takeover executor，而不是要求被测仓库预先提供 `testing.json`；只有通用 host takeover 无法表达的私有运行时行为，才回退到 skill 私有 harness
 - `trace` 只能写“静态追踪已完成，未完成真实执行”
 - 负向触发必须显式得到 `triggerMatched=false`
 - 上下文保持必须显式得到 `contextReferences`

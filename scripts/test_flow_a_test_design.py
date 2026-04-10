@@ -103,6 +103,9 @@ def test_surface_aware_test_design() -> None:
         assert case_plan.get("cases"), "case execution plan should include cases"
         first_case = case_plan.get("cases", [])[0]
         assert "executionHints" in first_case, "case execution hints missing"
+        host_takeover = first_case["executionHints"].get("hostTakeover", {})
+        assert_equal(isinstance(host_takeover, dict), True, "host takeover hints present")
+        assert_equal(host_takeover.get("enabled"), True, "skill case enables host takeover")
         print("  [PASS] test_surface_aware_test_design")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

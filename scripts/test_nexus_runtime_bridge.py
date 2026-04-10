@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import json
 import shutil
+import socketserver
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from nexus_runtime_bridge import payload_context
@@ -16,6 +19,37 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 EXECUTOR = PROJECT_DIR / "scripts" / "nexus_stage_executor.py"
 BRIDGE = PROJECT_DIR / "scripts" / "nexus_runtime_bridge.py"
 MOCK_RUNTIME = PROJECT_DIR / "scripts" / "fixtures" / "mock_role_runtime.py"
+
+
+class _TakeoverHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802
+        body = b'{"status":"ok","provider":"bridge-test"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args) -> None:  # noqa: A003
+        return
+
+
+class LocalServer:
+    def __enter__(self) -> "LocalServer":
+        self.server = socketserver.TCPServer(("127.0.0.1", 0), _TakeoverHandler)
+        self.port = int(self.server.server_address[1])
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        return self
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.port}/probe"
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
 
 
 def run_json(script: Path, *args: str) -> dict[str, object]:
@@ -104,6 +138,44 @@ def write_runtime_config(
 def approve_stage(report_dir: Path, stage_id: str) -> None:
     run_json(EXECUTOR, "record-approval-request", "--report-dir", str(report_dir), "--stage-id", stage_id, "--transport", "text")
     run_json(EXECUTOR, "record-approval-response", "--report-dir", str(report_dir), "--stage-id", stage_id, "--response", "approved")
+
+
+def seed_host_takeover_case_plan(report_dir: Path, probe_url: str) -> None:
+    write_text(
+        report_dir / "CASE-EXECUTION-PLAN.json",
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "caseId": "TC-01",
+                        "surfaceId": "SURFACE-01",
+                        "surfaceKind": "skill",
+                        "title": "Take over blocked real HTTP call",
+                        "objective": "Verify host takeover can finish a blocked real HTTP probe.",
+                        "steps": [f"Fetch `{probe_url}` and keep the live response."],
+                        "expected": ["Response contains `bridge-test`."],
+                        "executionHints": {
+                            "message": "case-id=TC-01; surface-id=SURFACE-01",
+                            "mode": "shim-live",
+                            "verificationPolicy": "assertion-only",
+                            "expectedKeywords": ["bridge-test"],
+                            "hostTakeover": {
+                                "enabled": True,
+                                "strategy": "http-probe",
+                                "strictReal": True,
+                                "urls": [probe_url],
+                                "providerAliases": [],
+                                "expectedKeywords": ["bridge-test"],
+                            },
+                        },
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+    )
 
 
 def test_run_until_gate_flow_a() -> None:
@@ -345,6 +417,38 @@ def test_blocked_skill_tester_becomes_takeover_required() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_blocked_skill_tester_auto_takeover_completes() -> None:
+    temp_root = make_temp_root("runtime-bridge-auto-takeover-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, blocked_role="skill-tester")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        first = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(first["status"], "await-approval", "first gate status")
+        approve_stage(report_dir, "stage-0")
+        second = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(second["status"], "await-approval", "second gate status")
+        approve_stage(report_dir, "stage-2")
+        third = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(third["status"], "await-approval", "third gate status")
+        approve_stage(report_dir, "stage-4")
+        with LocalServer() as server:
+            seed_host_takeover_case_plan(report_dir, server.url)
+            final = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(final["status"], "stage-run-finished", "blocked skill tester recovered via auto takeover")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-5" / "skill-tester.state.json"))
+        assert_equal(state["status"], "completed", "auto takeover role state file")
+        assert_equal((report_dir / "RUNS" / "stage-5" / "skill-tester.takeover.json").exists(), False, "no takeover file written when auto takeover completes")
+        skill_results = read_text(report_dir / "TEST-EXECUTION" / "skill-results.md")
+        if "- status: `passed`" not in skill_results:
+            raise AssertionError("skill-results should contain passed status after auto takeover")
+        print("  [PASS] test_blocked_skill_tester_auto_takeover_completes")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_blocked_environment_checker_remains_failure() -> None:
     temp_root = make_temp_root("runtime-bridge-blocked-env-")
     try:
@@ -427,6 +531,7 @@ def main() -> int:
         test_role_takeover_stops_runtime_bridge,
         test_fallback_runtime_recovers_failed_role,
         test_blocked_skill_tester_becomes_takeover_required,
+        test_blocked_skill_tester_auto_takeover_completes,
         test_blocked_environment_checker_remains_failure,
         test_quality_assessor_missing_required_sections_fails,
         test_missing_dispatch_prompt_file_reports_clear_error,

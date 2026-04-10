@@ -61,6 +61,17 @@ STATIC_VALIDATION_SURFACE_KINDS = {
     "mcp",
 }
 
+URL_PATTERN = re.compile(r"https?://[^\s`)>]+", re.IGNORECASE)
+HOST_TAKEOVER_PROVIDER_ALIASES = {
+    "binance": ["https://api.binance.com/api/v3/ping"],
+    "coingecko": ["https://api.coingecko.com/api/v3/ping"],
+    "coinpaprika": ["https://api.coinpaprika.com/v1/global"],
+    "tradingeconomics": ["https://tradingeconomics.com/commodity/gold"],
+    "chinagoldgroup": ["http://www.chinagoldgroup.com/"],
+    "boc": ["https://www.boc.cn/"],
+    "jin10": ["https://www.jin10.com/"],
+}
+
 
 def text(language: str, zh: str, en: str) -> str:
     return zh if language == "zh-CN" else en
@@ -710,11 +721,35 @@ def extract_case_tokens(case: dict[str, object]) -> list[str]:
     return tokens
 
 
+def case_text_blob(case: dict[str, object]) -> str:
+    parts: list[str] = []
+    for key in ("title", "objective"):
+        value = str(case.get(key, "")).strip()
+        if value:
+            parts.append(value)
+    for key in ("steps", "expected"):
+        value = case.get(key, [])
+        if isinstance(value, list):
+            parts.extend(str(item).strip() for item in value if str(item).strip())
+    return "\n".join(parts)
+
+
+def detect_provider_aliases(text: str) -> list[str]:
+    lowered = text.lower()
+    aliases = [name for name in HOST_TAKEOVER_PROVIDER_ALIASES if name in lowered]
+    return list(dict.fromkeys(aliases))
+
+
+def extract_case_urls(text: str) -> list[str]:
+    return list(dict.fromkeys(match.group(0) for match in URL_PATTERN.finditer(text)))
+
+
 def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
     category = str(case.get("category", "scenario"))
     minimum_mode = str(case.get("minimumMode", "shim-live"))
     title = str(case.get("title", "")).strip()
     objective = str(case.get("objective", "")).strip()
+    case_blob = case_text_blob(case)
     token_candidates = extract_case_tokens(case)
     expected_keywords: list[str] = []
     verification_policy = "assertion-only"
@@ -738,6 +773,20 @@ def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
     if token_candidates:
         message_lines.append(f"focus={', '.join(token_candidates[:3])}")
 
+    provider_aliases = detect_provider_aliases(case_blob)
+    source_urls = extract_case_urls(case_blob)
+    host_takeover_enabled = bool(
+        str(case.get("surfaceKind", "")) == "skill" and minimum_mode in {"shim-live", "live"}
+    )
+    host_takeover = {
+        "enabled": host_takeover_enabled,
+        "strategy": "http-probe" if (source_urls or provider_aliases) else "generic-real-call",
+        "strictReal": minimum_mode in {"shim-live", "live"},
+        "urls": source_urls,
+        "providerAliases": provider_aliases,
+        "expectedKeywords": expected_keywords,
+    }
+
     return {
         "message": "; ".join(line for line in message_lines if line),
         "mode": minimum_mode,
@@ -745,6 +794,7 @@ def build_case_execution_hints(case: dict[str, object]) -> dict[str, object]:
         "requireDeliveryStatus": "delivered" if expect_trigger == "true" else None,
         "expectedKeywords": expected_keywords,
         "verificationPolicy": verification_policy,
+        "hostTakeover": host_takeover,
     }
 
 

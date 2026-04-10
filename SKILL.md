@@ -150,6 +150,7 @@ Flow A 额外要求：
 - 使用 `scripts/nexus_claude_role_runtime.py --payload-file <payload.json> --prompt-file <prompt.md> --claude-command claude` 将单个阶段角色交给 Claude CLI 非交互执行
 - 使用 `scripts/nexus_runtime_bridge.py run-once --report-dir <report-dir> --runtime-config <runtime.json>` 将当前阶段 dispatch bundle 真正交给宿主 runtime 执行
 - 使用 `scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config <runtime.json>` 连续执行多个阶段，直到遇到审批门、No-Go、执行失败或完成
+- 当 `skill-tester` 因真实执行环境缺失进入 `takeover-required` 时，优先使用 `scripts/run_flow_a_takeover_execution.py --report-dir <report-dir>` 在 host 环境自动接管剩余 blocked/pending case；该路径默认消费 `CASE-EXECUTION-PLAN.json` 里的 `executionHints.hostTakeover`
 - role metadata 统一优先从 frontmatter 读取：结构校验使用 `output_validation` / `minimum_output` / `minimum_output_aliases`，接管策略使用 `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure`；旧章节写法只作为兼容回退；`scripts/role_metadata.py` 会在解析阶段直接校验 schema，发现非法 key/type/组合时应直接修 role 文档，不要把坏配置继续传到 runtime
 - dispatch payload 和 `DISPATCH/.../manifest.json` 统一由 `scripts/dispatch_payload_schema.py` 校验；若字段缺失、类型不对、角色顺序冲突或 `minimumOutputAliases` / `mainAgentTakeoverPolicy` 结构非法，应在 dispatch 阶段直接失败，不要等到外部 runtime 才暴露
 - `runtime-config` 统一由 `scripts/runtime_config_schema.py` 校验；若 default/roles/fallback 缺命令、超时非法、环境变量结构错误或 takeover policy 结构不完整，应在生成或加载配置时直接失败
@@ -158,6 +159,7 @@ Flow A 额外要求：
 - `run_openclaw_stage_demo.py` 是推荐的 OpenClaw 演练入口，会把初始化、运行到审批门、记录批准和继续推进串成一条可复用命令链
 - Claude preset 默认通过 `nexus_claude_role_runtime.py` 调 `claude --print`，并用 JSON Schema 约束返回 `resultFile/note`；先用 `--dry-run` 检查 prompt 和命令，再接入真实执行
 - 使用 `scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language>` 生成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
+- `CASE-EXECUTION-PLAN.json` 中的 `executionHints` 现在除 message/mode 外，还会补充 `hostTakeover.enabled/strategy/urls/providerAliases/strictReal`，供阶段五主 agent takeover 自动消费
 - 使用 `scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir>` 生成阶段五 `SKILL-SURFACE-WORKLIST.md` 与 `SURFACE-COVERAGE.json`
 - 使用 `scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --language <request-language>` 让 `skill-tester` 按 surface 顺序执行；当前 `skill/bin` 可给真实执行结论，`package/plugin-manifest` 为结构化校验，`openclaw-extension` 优先通过 `testing.json` 的 `openclawExtensionRuntimeHarness` 验证真实 OpenClaw runtime / subagent 行为，其次才是 `openclawExtensionHarness`；若无 harness 但 live runtime 可用，runner 也必须先做 live probe，并把 `runtime-probed=true` 记入结果；`mcp` 可通过 stdio JSON-RPC harness 验证协议交互，只有 probe 证据时才记为 `incomplete`
 - 阶段五完成后，用 `scripts/validate_flow_a_skill_results.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-results <TEST-EXECUTION/skill-results.md>` 校验 surface 覆盖是否完整
