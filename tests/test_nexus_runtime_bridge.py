@@ -79,7 +79,11 @@ def write_runtime_config(
     takeover_role: str | None = None,
     fallback_role: str | None = None,
     blocked_role: str | None = None,
+    policy_fallback_role: str | None = None,
     weak_role: str | None = None,
+    stall_role: str | None = None,
+    stall_timeout_seconds: int | None = None,
+    stall_seconds: int | None = None,
 ) -> None:
     command = [
         sys.executable,
@@ -95,6 +99,7 @@ def write_runtime_config(
             "command": command,
             "cwd": "{workspace_root}",
             "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
         }
     }
     roles: dict[str, object] = {}
@@ -104,6 +109,7 @@ def write_runtime_config(
             "command": command + ["--fail-role", fail_role],
             "cwd": "{workspace_root}",
             "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
         }
         if fallback_role and fallback_role == fail_role:
             role_config["fallback"] = {
@@ -111,6 +117,7 @@ def write_runtime_config(
                 "command": command,
                 "cwd": "{workspace_root}",
                 "timeoutSeconds": 30,
+                "stallTimeoutSeconds": 10,
             }
         roles[fail_role] = role_config
     if takeover_role:
@@ -119,6 +126,7 @@ def write_runtime_config(
             "command": command + ["--takeover-role", takeover_role],
             "cwd": "{workspace_root}",
             "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
         }
     if blocked_role:
         roles[blocked_role] = {
@@ -126,6 +134,15 @@ def write_runtime_config(
             "command": command + ["--blocked-role", blocked_role],
             "cwd": "{workspace_root}",
             "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
+        }
+    if policy_fallback_role:
+        roles[policy_fallback_role] = {
+            "name": "mock-runtime",
+            "command": command + ["--policy-fallback-role", policy_fallback_role],
+            "cwd": "{workspace_root}",
+            "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
         }
     if weak_role:
         roles[weak_role] = {
@@ -133,6 +150,18 @@ def write_runtime_config(
             "command": command + ["--weak-role", weak_role],
             "cwd": "{workspace_root}",
             "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
+        }
+    if stall_role:
+        role_command = command + ["--stall-role", stall_role]
+        if stall_seconds is not None:
+            role_command.extend(["--stall-seconds", str(stall_seconds)])
+        roles[stall_role] = {
+            "name": "mock-runtime",
+            "command": role_command,
+            "cwd": "{workspace_root}",
+            "timeoutSeconds": 30,
+            "stallTimeoutSeconds": stall_timeout_seconds or 2,
         }
     if roles:
         config["roles"] = roles
@@ -427,6 +456,34 @@ def test_blocked_skill_tester_becomes_takeover_required() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_policy_fallback_skill_tester_becomes_takeover_required() -> None:
+    temp_root = make_temp_root("runtime-bridge-policy-fallback-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, policy_fallback_role="skill-tester")
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        first = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(first["status"], "await-approval", "first gate status")
+        approve_stage(report_dir, "stage-0")
+        second = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(second["status"], "await-approval", "second gate status")
+        approve_stage(report_dir, "stage-2")
+        third = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(third["status"], "await-approval", "third gate status")
+        approve_stage(report_dir, "stage-4")
+        final = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(final["status"], "takeover-required", "policy fallback skill tester becomes takeover")
+        takeover_file = report_dir / "RUNS" / "stage-5" / "skill-tester.takeover.json"
+        assert_equal(takeover_file.exists(), True, "policy fallback takeover file exists")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-5" / "skill-tester.state.json"))
+        assert_equal(state["runtimeStatus"], "blocked-policy", "policy fallback runtime status persisted")
+        print("  [PASS] test_policy_fallback_skill_tester_becomes_takeover_required")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def test_blocked_skill_tester_auto_takeover_completes() -> None:
     temp_root = make_temp_root("runtime-bridge-auto-takeover-")
     try:
@@ -531,7 +588,34 @@ def test_blocked_environment_checker_remains_failure() -> None:
         assert_equal(final["status"], "role-failed", "blocked environment checker stays failed")
         state = json.loads(read_text(report_dir / "RUNS" / "stage-0" / "environment-checker.state.json"))
         assert_equal(state["status"], "failed", "blocked environment checker state file")
+        assert_equal(state["runtimeStatus"], "blocked-env", "blocked environment runtime status")
         print("  [PASS] test_blocked_environment_checker_remains_failure")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_stalled_skill_tester_becomes_takeover_required() -> None:
+    temp_root = make_temp_root("runtime-bridge-stalled-skill-")
+    try:
+        report_dir = temp_root / "reports"
+        config_path = temp_root / "runtime.json"
+        write_runtime_config(config_path, stall_role="skill-tester", stall_timeout_seconds=1, stall_seconds=5)
+
+        run_json(EXECUTOR, "init", "--report-dir", str(report_dir), "--flow", "skill")
+        first = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(first["status"], "await-approval", "first gate status")
+        approve_stage(report_dir, "stage-0")
+        second = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(second["status"], "await-approval", "second gate status")
+        approve_stage(report_dir, "stage-2")
+        third = run_json(BRIDGE, "run-until-gate", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(third["status"], "await-approval", "third gate status")
+        approve_stage(report_dir, "stage-4")
+        final = run_json(BRIDGE, "run-once", "--report-dir", str(report_dir), "--runtime-config", str(config_path))
+        assert_equal(final["status"], "takeover-required", "stalled skill tester becomes takeover")
+        state = json.loads(read_text(report_dir / "RUNS" / "stage-5" / "skill-tester.state.json"))
+        assert_equal(state["runtimeStatus"], "stalled", "stalled runtime status persisted")
+        print("  [PASS] test_stalled_skill_tester_becomes_takeover_required")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -601,9 +685,11 @@ def main() -> int:
         test_role_takeover_stops_runtime_bridge,
         test_fallback_runtime_recovers_failed_role,
         test_blocked_skill_tester_becomes_takeover_required,
+        test_policy_fallback_skill_tester_becomes_takeover_required,
         test_blocked_skill_tester_auto_takeover_completes,
         test_blocked_skill_tester_auto_takeover_partial_stays_takeover_required,
         test_blocked_environment_checker_remains_failure,
+        test_stalled_skill_tester_becomes_takeover_required,
         test_quality_assessor_missing_required_sections_fails,
         test_missing_dispatch_prompt_file_reports_clear_error,
     ):

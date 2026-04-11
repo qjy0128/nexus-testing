@@ -11,7 +11,9 @@ best_for:
   - "工具列表和 JSON-RPC 调用"
 takeover_enabled: true
 takeover_statuses:
-  - "blocked"
+  - "blocked-env"
+  - "blocked-policy"
+  - "stalled"
 takeover_patterns:
   - "blocked-no-openclaw"
   - "blocked-live-telemetry"

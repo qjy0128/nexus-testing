@@ -147,6 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     status = None
     needs_takeover = False
     blockers: list[str] = []
+    consumed_artifact_paths: list[str] = []
+    produced_artifact_paths: list[str] = []
+    execution_method = None
     if isinstance(structured_result, dict):
         if structured_result.get("resultFile"):
             result_path = str(structured_result["resultFile"])
@@ -155,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         if structured_result.get("status"):
             status = str(structured_result["status"])
         needs_takeover = bool(structured_result.get("needsMainAgentTakeover", False))
+        if structured_result.get("executionMethod"):
+            execution_method = str(structured_result["executionMethod"])
+        raw_consumed = structured_result.get("consumedArtifactPaths", [])
+        if isinstance(raw_consumed, list):
+            consumed_artifact_paths = [str(item) for item in raw_consumed if str(item).strip()]
+        raw_produced = structured_result.get("producedArtifactPaths", [])
+        if isinstance(raw_produced, list):
+            produced_artifact_paths = [str(item) for item in raw_produced if str(item).strip()]
         raw_blockers = structured_result.get("blockers", [])
         if isinstance(raw_blockers, list):
             blockers = [str(item) for item in raw_blockers if str(item).strip()]
@@ -172,6 +183,9 @@ def main(argv: list[str] | None = None) -> int:
                 "status": status,
                 "needsMainAgentTakeover": needs_takeover,
                 "blockers": blockers,
+                "consumedArtifactPaths": consumed_artifact_paths,
+                "producedArtifactPaths": produced_artifact_paths,
+                "executionMethod": execution_method,
             },
             ensure_ascii=False,
         )

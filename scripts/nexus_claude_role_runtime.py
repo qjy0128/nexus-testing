@@ -28,6 +28,15 @@ RESULT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
         },
+        "consumedArtifactPaths": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "producedArtifactPaths": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "executionMethod": {"type": "string"},
     },
     "required": ["resultFile", "note"],
     "additionalProperties": False,

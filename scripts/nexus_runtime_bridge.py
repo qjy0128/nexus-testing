@@ -10,9 +10,12 @@ bootstrap_paths()
 import argparse
 import json
 import os
+import queue
 import re
 import subprocess
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -41,6 +44,12 @@ from nexus_testing.dispatch_payload_schema import (
 from nexus_testing.json_utils import load_json
 from nexus_testing.runtime.policy import EXECUTION_PROFILES, resolve_execution_policy
 from nexus_testing.runtime_config_schema import validate_runtime_config
+from nexus_testing.runtime_status import (
+    build_runtime_haystack,
+    derive_runtime_status,
+    is_takeover_trigger_status,
+    matches_takeover_status,
+)
 from nexus_testing.sandbox_skill_invoke.core import read_text, write_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -199,6 +208,9 @@ def parse_role_stdout(stdout: str) -> dict[str, object]:
             "status": None,
             "needsMainAgentTakeover": False,
             "blockers": [],
+            "consumedArtifactPaths": [],
+            "producedArtifactPaths": [],
+            "executionMethod": None,
             "rawText": "",
         }
     try:
@@ -210,6 +222,9 @@ def parse_role_stdout(stdout: str) -> dict[str, object]:
             "status": None,
             "needsMainAgentTakeover": False,
             "blockers": [],
+            "consumedArtifactPaths": [],
+            "producedArtifactPaths": [],
+            "executionMethod": None,
             "rawText": text,
         }
     if not isinstance(parsed, dict):
@@ -219,16 +234,24 @@ def parse_role_stdout(stdout: str) -> dict[str, object]:
             "status": None,
             "needsMainAgentTakeover": False,
             "blockers": [],
+            "consumedArtifactPaths": [],
+            "producedArtifactPaths": [],
+            "executionMethod": None,
             "rawText": text,
         }
     result_file = parsed.get("resultFile")
     blockers = parsed.get("blockers", [])
+    consumed_artifact_paths = parsed.get("consumedArtifactPaths", [])
+    produced_artifact_paths = parsed.get("producedArtifactPaths", [])
     return {
         "resultFile": str(result_file) if result_file else None,
         "note": str(parsed.get("note")) if parsed.get("note") else None,
         "status": str(parsed.get("status")) if parsed.get("status") else None,
         "needsMainAgentTakeover": bool(parsed.get("needsMainAgentTakeover", False)),
         "blockers": [str(item) for item in blockers] if isinstance(blockers, list) else [],
+        "consumedArtifactPaths": [str(item) for item in consumed_artifact_paths] if isinstance(consumed_artifact_paths, list) else [],
+        "producedArtifactPaths": [str(item) for item in produced_artifact_paths] if isinstance(produced_artifact_paths, list) else [],
+        "executionMethod": str(parsed.get("executionMethod")) if parsed.get("executionMethod") else None,
         "rawText": text,
     }
 
@@ -261,6 +284,35 @@ def render_env_map(env_value: object, context: dict[str, str]) -> dict[str, str]
     return env
 
 
+def snapshot_report_progress(report_dir: Path) -> dict[str, tuple[int, int]]:
+    snapshot: dict[str, tuple[int, int]] = {}
+    if not report_dir.exists():
+        return snapshot
+    for path in report_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            relative = path.relative_to(report_dir)
+            stat = path.stat()
+        except (OSError, ValueError):
+            continue
+        if relative.parts and relative.parts[0] == "RUNS":
+            continue
+        snapshot[str(relative).replace("\\", "/")] = (int(stat.st_mtime_ns), int(stat.st_size))
+    return snapshot
+
+
+def stream_reader(stream, sink: "queue.Queue[tuple[str, str, float]]", label: str) -> None:
+    try:
+        while True:
+            chunk = stream.readline()
+            if chunk == "":
+                break
+            sink.put((label, chunk, time.monotonic()))
+    finally:
+        stream.close()
+
+
 def resolved_runtime_spec(
     runtime_name: str,
     raw_spec: dict[str, object],
@@ -278,6 +330,7 @@ def resolved_runtime_spec(
         "cwd": render_value(str(cwd_value), context) if cwd_value else fallback_to_root,
         "env": render_env_map(raw_spec.get("env"), context),
         "timeoutSeconds": int(timeout_value),
+        "stallTimeoutSeconds": int(raw_spec["stallTimeoutSeconds"]) if "stallTimeoutSeconds" in raw_spec else None,
     }
 
 
@@ -293,37 +346,25 @@ def invoke_runtime_command(
     cwd = str(spec["cwd"])
     env = spec.get("env")
     timeout_seconds = int(spec["timeoutSeconds"])
+    stall_timeout_seconds = spec.get("stallTimeoutSeconds")
+    stall_timeout_seconds = int(stall_timeout_seconds) if stall_timeout_seconds else None
+    process_queue: "queue.Queue[tuple[str, str, float]]" = queue.Queue()
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    start_time = time.monotonic()
+    last_progress_time = start_time
+    progress_snapshot = snapshot_report_progress(report_dir)
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             command,
             cwd=cwd,
             env=env if isinstance(env, dict) else None,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout_seconds,
         )
-    except subprocess.TimeoutExpired:
-        stdout_path, stderr_path = save_process_logs(
-            report_dir,
-            stage_id,
-            role_id,
-            "",
-            f"timeout after {timeout_seconds} seconds\n",
-            label,
-        )
-        return {
-            "ok": False,
-            "returnCode": None,
-            "stdout": "",
-            "stderr": "",
-            "stdoutPath": stdout_path,
-            "stderrPath": stderr_path,
-            "note": f"timeout after {timeout_seconds} seconds; logs={stdout_path},{stderr_path}",
-            "runtimeName": spec["name"],
-            "command": command,
-        }
     except Exception as exc:
         stdout_path, stderr_path = save_process_logs(
             report_dir,
@@ -343,31 +384,131 @@ def invoke_runtime_command(
             "note": f"runtime exception {type(exc).__name__}: {exc}; logs={stdout_path},{stderr_path}",
             "runtimeName": spec["name"],
             "command": command,
+            "stalled": False,
         }
 
-    stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, proc.stdout, proc.stderr, label)
-    if proc.returncode != 0:
+    readers = [
+        threading.Thread(target=stream_reader, args=(proc.stdout, process_queue, "stdout"), daemon=True),
+        threading.Thread(target=stream_reader, args=(proc.stderr, process_queue, "stderr"), daemon=True),
+    ]
+    for thread in readers:
+        thread.start()
+
+    timed_out = False
+    stalled = False
+    stall_note = ""
+    while True:
+        now = time.monotonic()
+        drained = False
+        while True:
+            try:
+                stream_name, chunk, event_time = process_queue.get_nowait()
+            except queue.Empty:
+                break
+            drained = True
+            last_progress_time = max(last_progress_time, event_time)
+            if stream_name == "stdout":
+                stdout_chunks.append(chunk)
+            else:
+                stderr_chunks.append(chunk)
+        current_snapshot = snapshot_report_progress(report_dir)
+        if current_snapshot != progress_snapshot:
+            progress_snapshot = current_snapshot
+            last_progress_time = now
+            drained = True
+        if proc.poll() is not None and not drained:
+            break
+        if now - start_time >= timeout_seconds:
+            timed_out = True
+            proc.kill()
+            stall_note = f"timeout after {timeout_seconds} seconds"
+            break
+        if stall_timeout_seconds and now - last_progress_time >= stall_timeout_seconds:
+            stalled = True
+            proc.kill()
+            stall_note = f"stalled after {stall_timeout_seconds} seconds without new output or artifacts"
+            break
+        time.sleep(0.1)
+
+    for thread in readers:
+        thread.join(timeout=1)
+    while True:
+        try:
+            stream_name, chunk, _ = process_queue.get_nowait()
+        except queue.Empty:
+            break
+        if stream_name == "stdout":
+            stdout_chunks.append(chunk)
+        else:
+            stderr_chunks.append(chunk)
+
+    try:
+        return_code = proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return_code = proc.wait(timeout=5)
+    stdout_text = "".join(stdout_chunks)
+    stderr_text = "".join(stderr_chunks)
+    if timed_out and stall_note:
+        stderr_text = (stderr_text + ("\n" if stderr_text else "") + stall_note + "\n").rstrip() + "\n"
+    if stalled and stall_note:
+        stderr_text = (stderr_text + ("\n" if stderr_text else "") + stall_note + "\n").rstrip() + "\n"
+
+    stdout_path, stderr_path = save_process_logs(report_dir, stage_id, role_id, stdout_text, stderr_text, label)
+    if timed_out:
         return {
             "ok": False,
-            "returnCode": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
+            "returnCode": None,
+            "stdout": stdout_text,
+            "stderr": stderr_text,
             "stdoutPath": stdout_path,
             "stderrPath": stderr_path,
-            "note": f"exit={proc.returncode}; logs={stdout_path},{stderr_path}",
+            "note": f"{stall_note}; logs={stdout_path},{stderr_path}",
             "runtimeName": spec["name"],
             "command": command,
+            "timedOut": True,
+            "stalled": False,
+        }
+    if stalled:
+        return {
+            "ok": False,
+            "returnCode": None,
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "stdoutPath": stdout_path,
+            "stderrPath": stderr_path,
+            "note": f"{stall_note}; logs={stdout_path},{stderr_path}",
+            "runtimeName": spec["name"],
+            "command": command,
+            "timedOut": False,
+            "stalled": True,
+        }
+    if return_code != 0:
+        return {
+            "ok": False,
+            "returnCode": return_code,
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "stdoutPath": stdout_path,
+            "stderrPath": stderr_path,
+            "note": f"exit={return_code}; logs={stdout_path},{stderr_path}",
+            "runtimeName": spec["name"],
+            "command": command,
+            "timedOut": False,
+            "stalled": False,
         }
     return {
         "ok": True,
-        "returnCode": proc.returncode,
-        "stdout": proc.stdout,
-        "stderr": proc.stderr,
+        "returnCode": return_code,
+        "stdout": stdout_text,
+        "stderr": stderr_text,
         "stdoutPath": stdout_path,
         "stderrPath": stderr_path,
         "note": f"logs={stdout_path},{stderr_path}",
         "runtimeName": spec["name"],
         "command": command,
+        "timedOut": False,
+        "stalled": False,
     }
 
 
@@ -414,6 +555,8 @@ def should_request_takeover(
     parsed_stdout: dict[str, object],
     attempt: dict[str, object],
 ) -> bool:
+    normalized_status = str(parsed_stdout.get("normalizedStatus") or derive_runtime_status(parsed_stdout, attempt)).lower()
+    raw_status = str(parsed_stdout.get("status") or "").lower()
     if bool(parsed_stdout.get("needsMainAgentTakeover")):
         return True
     if bool(spec.get("mainAgentTakeover")) or bool(config.get("mainAgentTakeover")):
@@ -421,24 +564,19 @@ def should_request_takeover(
     policy = resolved_takeover_policy(payload, config, spec)
     if not bool(policy.get("enabled", False)):
         return False
-    parsed_status = str(parsed_stdout.get("status") or "").lower()
     statuses = {str(item).lower() for item in policy.get("statuses", []) if str(item).strip()}
+    if is_takeover_trigger_status(normalized_status):
+        if not statuses or matches_takeover_status(statuses, raw_status, normalized_status):
+            return True
+    parsed_status = str(parsed_stdout.get("status") or "").lower()
     patterns = tuple(str(item).lower() for item in policy.get("patterns", []) if str(item).strip())
     if not attempt.get("ok") and not bool(policy.get("onProcessFailure", False)):
         return False
-    if statuses and parsed_status not in statuses:
+    if statuses and not matches_takeover_status(statuses, raw_status, normalized_status):
         return False
-    haystack = "\n".join(
-        str(item or "")
-        for item in (
-            parsed_stdout.get("note"),
-            parsed_stdout.get("status"),
-            " ".join(str(item) for item in parsed_stdout.get("blockers", [])),
-            attempt.get("note"),
-            attempt.get("stdout"),
-            attempt.get("stderr"),
-        )
-    ).lower()
+    haystack = build_runtime_haystack(parsed_stdout, attempt)
+    if not patterns:
+        return bool(statuses and (parsed_status or normalized_status))
     return any(pattern in haystack for pattern in patterns)
 
 
@@ -536,7 +674,7 @@ def validate_markdown_structure(report_dir: Path, payload: dict[str, object]) ->
 
 def blocking_note(parsed_stdout: dict[str, object], fallback_note: str) -> str:
     parts: list[str] = []
-    status = str(parsed_stdout.get("status") or "").strip()
+    status = str(parsed_stdout.get("normalizedStatus") or parsed_stdout.get("status") or "").strip()
     note = str(parsed_stdout.get("note") or "").strip()
     blockers = [str(item).strip() for item in parsed_stdout.get("blockers", []) if str(item).strip()]
     if status:
@@ -550,16 +688,55 @@ def blocking_note(parsed_stdout: dict[str, object], fallback_note: str) -> str:
     return "; ".join(parts)
 
 
-def validate_role_outputs(report_dir: Path, payload: dict[str, object]) -> str | None:
+def false_missing_required_artifacts(payload: dict[str, object], parsed_stdout: dict[str, object]) -> str | None:
+    required_paths = [Path(str(item)) for item in payload.get("requiredArtifactPaths", []) if str(item).strip()]
+    if not required_paths or not bool(payload.get("upstreamOutputsVerified", False)):
+        return None
+    normalized_status = str(parsed_stdout.get("normalizedStatus") or parsed_stdout.get("status") or "").lower()
+    if normalized_status not in {"blocked", "blocked-dependency"}:
+        return None
+    haystack = " ".join(
+        [
+            str(parsed_stdout.get("note") or ""),
+            " ".join(str(item) for item in parsed_stdout.get("blockers", [])),
+        ]
+    ).lower()
+    basenames = [path.name.lower() for path in required_paths if path.exists()]
+    if not basenames:
+        return None
+    if normalized_status == "blocked-dependency":
+        return f"required artifact paths were already verified and present: {', '.join(str(path) for path in required_paths)}"
+    if any(name in haystack for name in basenames):
+        return f"required artifact paths were already verified and present: {', '.join(str(path) for path in required_paths)}"
+    return None
+
+
+def validate_role_outputs(report_dir: Path, payload: dict[str, object], parsed_stdout: dict[str, object]) -> str | None:
     role_id = str(payload["roleId"])
     structure_error = validate_markdown_structure(report_dir, payload)
     if structure_error:
         return structure_error
     if role_id != "skill-tester":
         return None
+    execution_method = str(parsed_stdout.get("executionMethod") or "").strip()
+    allowed_execution_methods = {
+        "scripts/run_flow_a_skill_execution.py",
+        "scripts/run_flow_a_takeover_execution.py",
+    }
+    if execution_method not in allowed_execution_methods:
+        return "skill-tester must report executionMethod from the standard Flow A runner"
     surface_plan = report_dir / "SURFACE-EXECUTION-PLAN.json"
     skill_results = report_dir / "TEST-EXECUTION" / "skill-results.md"
     surface_coverage = report_dir / "TEST-EXECUTION" / "SURFACE-COVERAGE.json"
+    execution_meta = report_dir / "TEST-EXECUTION" / "skill-results.meta.json"
+    if execution_meta.exists():
+        try:
+            metadata = load_json(execution_meta, label="skill execution meta")
+        except SystemExit:
+            metadata = {}
+        generated_by = str(metadata.get("generatedBy", "")).strip() if isinstance(metadata, dict) else ""
+        if generated_by and generated_by != execution_method:
+            return "skill-results.meta.json generatedBy must match the reported executionMethod"
     command = [
         sys.executable,
         str(FLOW_A_SKILL_VALIDATOR),
@@ -569,6 +746,8 @@ def validate_role_outputs(report_dir: Path, payload: dict[str, object]) -> str |
         str(skill_results),
         "--surface-coverage",
         str(surface_coverage),
+        "--execution-meta",
+        str(execution_meta),
     ]
     proc = subprocess.run(
         command,
@@ -665,13 +844,24 @@ def execute_role(
         final_attempt = fallback_attempt
 
     parsed_stdout = parse_role_stdout(str(final_attempt.get("stdout", "")))
+    parsed_stdout["normalizedStatus"] = derive_runtime_status(parsed_stdout, final_attempt)
+    false_missing_note = false_missing_required_artifacts(payload, parsed_stdout)
+    if false_missing_note:
+        parsed_stdout["normalizedStatus"] = "blocked-policy"
+        blockers = [str(item) for item in parsed_stdout.get("blockers", []) if str(item).strip()]
+        blockers.append(false_missing_note)
+        parsed_stdout["blockers"] = list(dict.fromkeys(blockers))
     takeover_note = str(parsed_stdout.get("note") or final_attempt.get("note") or "")
     if should_request_takeover(payload, config, raw_spec, parsed_stdout, final_attempt):
         host_takeover = attempt_flow_a_host_takeover(report_dir, payload)
         if isinstance(host_takeover, dict) and str(host_takeover.get("status")) == "completed":
-            validation_error = validate_role_outputs(report_dir, payload)
+            validation_error = validate_role_outputs(
+                report_dir,
+                payload,
+                {"executionMethod": "scripts/run_flow_a_takeover_execution.py"},
+            )
             if validation_error:
-                failed = fail_role(report_dir, stage_id, role_id, validation_error)
+                failed = fail_role(report_dir, stage_id, role_id, validation_error, runtime_status="blocked-policy")
                 return {"roleId": role_id, "status": "failed", "detail": failed}
             completed = complete_role(
                 report_dir,
@@ -679,6 +869,7 @@ def execute_role(
                 role_id,
                 str(host_takeover.get("resultFile") or report_dir / "TEST-EXECUTION" / "skill-results.md"),
                 str(host_takeover.get("note") or "flow-a host takeover completed"),
+                runtime_status="completed",
             )
             return {"roleId": role_id, "status": "completed", "detail": completed}
         if isinstance(host_takeover, dict):
@@ -703,6 +894,7 @@ def execute_role(
             role_id,
             takeover_note or "runtime requested main-agent takeover",
             str(takeover_file),
+            runtime_status=str(parsed_stdout.get("normalizedStatus") or parsed_stdout.get("status") or "blocked"),
         )
         return {
             "roleId": role_id,
@@ -712,16 +904,32 @@ def execute_role(
         }
 
     if not final_attempt["ok"]:
-        failed = fail_role(report_dir, stage_id, role_id, str(final_attempt["note"]))
+        failed = fail_role(
+            report_dir,
+            stage_id,
+            role_id,
+            str(final_attempt["note"]),
+            runtime_status=str(parsed_stdout.get("normalizedStatus") or parsed_stdout.get("status") or "failed"),
+        )
         return {"roleId": role_id, "status": "failed", "detail": failed}
 
-    parsed_status = str(parsed_stdout.get("status") or "").lower()
-    if parsed_status in {"blocked", "failed"}:
+    parsed_status = str(parsed_stdout.get("normalizedStatus") or parsed_stdout.get("status") or "").lower()
+    if parsed_status in {
+        "blocked",
+        "blocked-env",
+        "blocked-dependency",
+        "blocked-policy",
+        "blocked-product",
+        "failed",
+        "precondition-failed",
+        "stalled",
+    }:
         failed = fail_role(
             report_dir,
             stage_id,
             role_id,
             blocking_note(parsed_stdout, str(final_attempt.get("note") or "runtime returned blocked status")),
+            runtime_status=parsed_status,
         )
         return {"roleId": role_id, "status": "failed", "detail": failed}
 
@@ -730,9 +938,9 @@ def execute_role(
         result_path = Path(str(result_file))
         if not result_path.is_absolute():
             result_file = str((report_dir / result_path).resolve())
-    validation_error = validate_role_outputs(report_dir, payload)
+    validation_error = validate_role_outputs(report_dir, payload, parsed_stdout)
     if validation_error:
-        failed = fail_role(report_dir, stage_id, role_id, validation_error)
+        failed = fail_role(report_dir, stage_id, role_id, validation_error, runtime_status="blocked-policy")
         return {"roleId": role_id, "status": "failed", "detail": failed}
 
     success_note = str(parsed_stdout.get("note") or final_attempt.get("note") or "")
@@ -742,6 +950,7 @@ def execute_role(
         role_id,
         str(result_file) if result_file else None,
         success_note,
+        runtime_status="completed",
     )
     return {"roleId": role_id, "status": "completed", "detail": completed}
 

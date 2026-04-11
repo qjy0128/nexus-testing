@@ -42,6 +42,9 @@ def test_real_dispatch_payloads_validate() -> None:
         dispatched = run_json(EXECUTOR, "dispatch", "--report-dir", str(report_dir))
         payloads = dispatch_payload_schema.validate_dispatch_payload_list(dispatched["dispatchPayloads"])
         assert_equal(len(payloads), 1, "stage zero dispatch payload count")
+        assert_equal(payloads[0]["artifactBaseDir"], str(report_dir.resolve()), "payload artifact base dir")
+        assert_equal(payloads[0]["requiredArtifactPaths"], [], "payload required artifact paths")
+        assert_equal(payloads[0]["upstreamOutputsVerified"], True, "payload upstream verification")
         bundled = run_json(EXECUTOR, "bundle-dispatch", "--report-dir", str(report_dir))
         manifest = json.loads((report_dir / "DISPATCH" / "stage-0" / "manifest.json").read_text(encoding="utf-8"))
         validated_manifest = dispatch_payload_schema.validate_bundle_manifest(manifest)
@@ -62,6 +65,9 @@ def test_invalid_dispatch_payload_rejected() -> None:
         "stageName": "质量评估",
         "dispatchMode": "serial",
         "reportDir": "D:/tmp/report",
+        "artifactBaseDir": "D:/tmp/report",
+        "requiredArtifactPaths": ["D:/tmp/report/SPEC.md"],
+        "upstreamOutputsVerified": True,
         "missingDeliverables": ["PRODUCT-QUALITY-REVIEW.md"],
         "inputSources": [],
         "inputs": [],
@@ -146,6 +152,9 @@ def test_bundle_manifest_requires_payload_and_prompt_files() -> None:
                     "stageName": "质量评估",
                     "dispatchMode": "serial",
                     "reportDir": "D:/tmp/report",
+                    "artifactBaseDir": "D:/tmp/report",
+                    "requiredArtifactPaths": ["D:/tmp/report/SPEC.md"],
+                    "upstreamOutputsVerified": True,
                     "missingDeliverables": ["PRODUCT-QUALITY-REVIEW.md"],
                     "inputSources": ["SPEC.md"],
                     "inputs": ["SPEC.md"],
@@ -177,6 +186,47 @@ def test_bundle_manifest_requires_payload_and_prompt_files() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def test_dispatch_payload_requires_artifact_path_contract_fields() -> None:
+    payload = {
+        "roleId": "quality-assessor",
+        "roleFile": "roles/quality-assessor.md",
+        "roleType": "validator",
+        "order": 1,
+        "stageId": "stage-2",
+        "stageLabel": "阶段二",
+        "stageName": "质量评估",
+        "dispatchMode": "serial",
+        "reportDir": "D:/tmp/report",
+        "artifactBaseDir": "",
+        "requiredArtifactPaths": [],
+        "upstreamOutputsVerified": True,
+        "missingDeliverables": ["PRODUCT-QUALITY-REVIEW.md"],
+        "inputSources": [],
+        "inputs": [],
+        "outputs": [],
+        "consumers": [],
+        "responsibilities": [],
+        "executionRules": [],
+        "evidenceRequirements": [],
+        "antiPatterns": [],
+        "hardBoundaries": [],
+        "minimumOutput": ["结论"],
+        "validateMarkdownStructure": True,
+        "minimumOutputAliases": {},
+        "mainAgentTakeoverPolicy": {},
+        "description": "desc",
+        "bestFor": [],
+        "launchPrompt": "run it",
+    }
+    try:
+        dispatch_payload_schema.validate_dispatch_payload(payload)
+    except ValueError as exc:
+        assert_contains(str(exc), "artifactBaseDir must be a non-empty string", "artifact base dir required")
+    else:
+        raise AssertionError("payload without artifact base dir should raise ValueError")
+    print("  [PASS] test_dispatch_payload_requires_artifact_path_contract_fields")
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -192,6 +242,7 @@ def main() -> int:
         test_invalid_dispatch_payload_rejected,
         test_invalid_bundle_manifest_rejected,
         test_bundle_manifest_requires_payload_and_prompt_files,
+        test_dispatch_payload_requires_artifact_path_contract_fields,
     ):
         try:
             test()

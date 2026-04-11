@@ -21,7 +21,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 def test_parse_real_role_metadata() -> None:
     parsed = role_metadata.parse_role_doc(PROJECT_DIR / "roles" / "skill-tester.md")
     assert_equal(parsed["mainAgentTakeoverPolicy"]["enabled"], True, "skill-tester takeover enabled")
-    assert_equal("blocked" in parsed["mainAgentTakeoverPolicy"]["statuses"], True, "skill-tester blocked status")
+    statuses = set(parsed["mainAgentTakeoverPolicy"]["statuses"])
+    assert_equal({"blocked-env", "blocked-policy", "stalled"}.issubset(statuses), True, "skill-tester precise statuses")
 
     parsed_quality = role_metadata.parse_role_doc(PROJECT_DIR / "roles" / "quality-assessor.md")
     assert_equal(parsed_quality["validateMarkdownStructure"], True, "quality-assessor validation enabled")

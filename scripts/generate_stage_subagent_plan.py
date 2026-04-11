@@ -81,8 +81,9 @@ def serial_stage(
     roles: list[str],
     deliverables: list[str],
     gate: str = "none",
+    required_inputs: list[str] | None = None,
 ) -> dict[str, object]:
-    return {
+    stage: dict[str, object] = {
         "stageId": stage_id,
         "label": label,
         "name": name,
@@ -91,6 +92,9 @@ def serial_stage(
         "deliverables": deliverables,
         "userGate": gate,
     }
+    if required_inputs:
+        stage["requiredInputs"] = required_inputs
+    return stage
 
 
 def parallel_stage(
@@ -102,6 +106,7 @@ def parallel_stage(
     gate: str = "none",
     post_roles: list[str] | None = None,
     post_deliverables: list[str] | None = None,
+    required_inputs: list[str] | None = None,
 ) -> dict[str, object]:
     stage: dict[str, object] = {
         "stageId": stage_id,
@@ -112,6 +117,8 @@ def parallel_stage(
         "deliverables": deliverables,
         "userGate": gate,
     }
+    if required_inputs:
+        stage["requiredInputs"] = required_inputs
     if post_roles:
         stage["postStageRoles"] = [role_entry(role_id, index + 1) for index, role_id in enumerate(post_roles)]
     if post_deliverables:
@@ -149,6 +156,7 @@ def build_standard_stages(flow_id: str) -> list[dict[str, object]]:
             ["quality-assessor"],
             ["PRODUCT-QUALITY-REVIEW.md"],
             gate="approve",
+            required_inputs=["PRODUCT-FINGERPRINT.json", "SPEC.md", "SPEC-CONSISTENCY-REVIEW.md"],
         ),
         serial_stage(
             "stage-3",
@@ -156,6 +164,7 @@ def build_standard_stages(flow_id: str) -> list[dict[str, object]]:
             "测试设计",
             ["test-designer"],
             ["TEST-DESIGN.md", "SURFACE-EXECUTION-PLAN.json"],
+            required_inputs=["PRODUCT-FINGERPRINT.json", "SPEC.md", "SPEC-CONSISTENCY-REVIEW.md", "PRODUCT-QUALITY-REVIEW.md"],
         ),
         serial_stage(
             "stage-4",
@@ -164,6 +173,7 @@ def build_standard_stages(flow_id: str) -> list[dict[str, object]]:
             ["test-case-evaluator"],
             ["TEST-CASE-REVIEW.md"],
             gate="approve",
+            required_inputs=["PRODUCT-FINGERPRINT.json", "SPEC.md", "TEST-DESIGN.md", "SURFACE-EXECUTION-PLAN.json"],
         ),
         parallel_stage(
             "stage-5",
@@ -173,6 +183,7 @@ def build_standard_stages(flow_id: str) -> list[dict[str, object]]:
             ["TEST-EXECUTION/*.md", "TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md", "TEST-EXECUTION/SURFACE-COVERAGE.json"],
             post_roles=["evidence-collector"],
             post_deliverables=["DEFECTS/evidence-collection.md"],
+            required_inputs=["PRODUCT-FINGERPRINT.json", "SPEC.md", "TEST-DESIGN.md", "SURFACE-EXECUTION-PLAN.json"],
         ),
         serial_stage(
             "stage-6",
@@ -180,6 +191,7 @@ def build_standard_stages(flow_id: str) -> list[dict[str, object]]:
             "缺陷分析",
             ["defect-analyst"],
             ["DEFECTS/DEFECT-REPORT.md"],
+            required_inputs=["TEST-EXECUTION/*.md", "TEST-EXECUTION/SURFACE-COVERAGE.json", "DEFECTS/evidence-collection.md"],
         ),
         serial_stage(
             "stage-7",
@@ -187,6 +199,7 @@ def build_standard_stages(flow_id: str) -> list[dict[str, object]]:
             "报告整合",
             ["report-integrator"],
             ["FINAL-TEST-REPORT.md"],
+            required_inputs=["DEFECTS/DEFECT-REPORT.md"],
         ),
     ]
 
@@ -215,6 +228,7 @@ def build_flow_b_mode_stages() -> list[dict[str, object]]:
             ["quality-assessor"],
             ["PRODUCT-QUALITY-REVIEW.md"],
             gate="approve",
+            required_inputs=["SPEC.md"],
         ),
         parallel_stage(
             "b-stage-3",
@@ -243,6 +257,7 @@ def build_flow_b_mode_stages() -> list[dict[str, object]]:
             "测试设计",
             ["test-designer"],
             ["TEST-DESIGN.md"],
+            required_inputs=["SPEC.md", "PRODUCT-QUALITY-REVIEW.md", "EXPERIENCE/experience-report-a.md", "EXPERIENCE/experience-report-b.md"],
         ),
         serial_stage(
             "b-stage-7",
@@ -251,6 +266,7 @@ def build_flow_b_mode_stages() -> list[dict[str, object]]:
             ["test-case-evaluator"],
             ["TEST-CASE-REVIEW.md"],
             gate="approve",
+            required_inputs=["SPEC.md", "TEST-DESIGN.md"],
         ),
         parallel_stage(
             "b-stage-8",
@@ -260,6 +276,7 @@ def build_flow_b_mode_stages() -> list[dict[str, object]]:
             ["TEST-EXECUTION/*.md"],
             post_roles=["evidence-collector"],
             post_deliverables=["DEFECTS/evidence-collection.md"],
+            required_inputs=["SPEC.md", "TEST-DESIGN.md", "TEST-CASE-REVIEW.md"],
         ),
         serial_stage(
             "b-stage-9",
@@ -267,6 +284,7 @@ def build_flow_b_mode_stages() -> list[dict[str, object]]:
             "缺陷分析",
             ["defect-analyst"],
             ["DEFECTS/DEFECT-REPORT.md"],
+            required_inputs=["TEST-EXECUTION/*.md", "DEFECTS/evidence-collection.md"],
         ),
         serial_stage(
             "b-stage-10",
@@ -274,6 +292,7 @@ def build_flow_b_mode_stages() -> list[dict[str, object]]:
             "报告整合",
             ["report-integrator"],
             ["FINAL-TEST-REPORT.md"],
+            required_inputs=["DEFECTS/DEFECT-REPORT.md"],
         ),
     ]
 

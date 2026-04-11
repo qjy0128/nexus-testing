@@ -9,7 +9,9 @@ best_for:
   - "验证核心功能行为是否符合规格"
 takeover_enabled: true
 takeover_statuses:
-  - "blocked"
+  - "blocked-env"
+  - "blocked-policy"
+  - "stalled"
 takeover_patterns:
   - "blocked-no-openclaw"
   - "blocked-live-telemetry"

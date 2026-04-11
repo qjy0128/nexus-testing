@@ -140,6 +140,11 @@ def validate_dispatch_payload(payload: object, *, field: str = "dispatch payload
         raise ValueError(f"{field}.dispatchMode must be one of: {', '.join(sorted(ALLOWED_DISPATCH_MODES))}")
 
     report_dir = _non_empty_string(payload.get("reportDir"), f"{field}.reportDir")
+    artifact_base_dir = _non_empty_string(payload.get("artifactBaseDir", report_dir), f"{field}.artifactBaseDir")
+    required_artifact_paths = _string_list(payload.get("requiredArtifactPaths", []), f"{field}.requiredArtifactPaths")
+    upstream_outputs_verified = payload.get("upstreamOutputsVerified", True)
+    if not isinstance(upstream_outputs_verified, bool):
+        raise ValueError(f"{field}.upstreamOutputsVerified must be a boolean")
     run_mode = _non_empty_string(payload.get("runMode", "test"), f"{field}.runMode")
     if run_mode not in ALLOWED_RUN_MODES:
         raise ValueError(f"{field}.runMode must be one of: {', '.join(sorted(ALLOWED_RUN_MODES))}")
@@ -212,6 +217,9 @@ def validate_dispatch_payload(payload: object, *, field: str = "dispatch payload
         "stageName": stage_name,
         "dispatchMode": dispatch_mode,
         "reportDir": report_dir,
+        "artifactBaseDir": artifact_base_dir,
+        "requiredArtifactPaths": required_artifact_paths,
+        "upstreamOutputsVerified": upstream_outputs_verified,
         "runMode": run_mode,
         "executionProfile": execution_profile,
         "strictReal": strict_real,

@@ -2946,6 +2946,19 @@ def main(argv: list[str] | None = None) -> int:
         coverage_path,
         json.dumps(update_coverage(coverage, results), ensure_ascii=False, indent=2) + "\n",
     )
+    write_json(
+        execution_dir / "skill-results.meta.json",
+        {
+            "generatedBy": "scripts/run_flow_a_skill_execution.py",
+            "runner": "flow-a-stage5",
+            "executionProfile": execution_policy.name,
+            "strictReal": effective_strict_real,
+            "validatedBy": "scripts/validate_flow_a_skill_results.py",
+            "surfacePlan": str(surface_plan_path),
+            "skillResults": str((execution_dir / "skill-results.md").resolve()),
+            "surfaceCoverage": str(coverage_path.resolve()),
+        },
+    )
 
     passed = sum(1 for item in results if item["status"] == "passed")
     blocked = sum(1 for item in results if item["status"] == "blocked")
@@ -2956,6 +2969,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"EXECUTION_PROFILE={execution_policy.name}")
     print(f"EFFECTIVE_STRICT_REAL={'true' if effective_strict_real else 'false'}")
     print(f"SKILL_RESULTS={execution_dir / 'skill-results.md'}")
+    print(f"SKILL_RESULTS_META={execution_dir / 'skill-results.meta.json'}")
     print(f"SURFACE_COVERAGE={coverage_path}")
     return 0
 

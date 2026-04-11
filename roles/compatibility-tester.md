@@ -11,7 +11,9 @@ best_for:
   - "验证跨浏览器/设备/系统/渠道的适配"
 takeover_enabled: true
 takeover_statuses:
-  - "blocked"
+  - "blocked-env"
+  - "blocked-policy"
+  - "stalled"
 takeover_patterns:
   - "blocked-no-openclaw"
   - "blocked-live-telemetry"

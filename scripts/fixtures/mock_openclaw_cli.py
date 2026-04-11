@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     if report_dir:
         report_root = Path(report_dir)
         if role_id == "quality-assessor":
-            created = write_quality_assessor_output(report_root, "openclaw-demo")
+            created = write_quality_assessor_output(report_root)
             created_file = created[0] if created else None
         elif role_id == "test-designer":
             created = write_test_designer_outputs(report_root, "openclaw-demo")
@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             created = write_skill_tester_outputs(report_root, "openclaw-demo")
             created_file = created[0] if created else None
         elif role_id == "report-integrator":
-            created = write_report_integrator_output(report_root, "openclaw-demo")
+            created = write_report_integrator_output(report_root)
             created_file = created[0] if created else None
         else:
             missing_raw = os.environ.get("NEXUS_MISSING_DELIVERABLES", "[]")

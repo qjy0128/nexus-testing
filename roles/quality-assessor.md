@@ -64,6 +64,7 @@ minimum_output_aliases:
 - `SPEC.md`
 - `SPEC-CONSISTENCY-REVIEW.md`
 - 待测对象入口信息，例如 `SKILL.md`、URL、接口文档、APK 或 MCP 配置
+- 框架下发的 `requiredArtifactPaths`。必须先读取这些完整路径，再判断上游文件是否缺失；不得自行推断替代路径。
 
 ## 输出
 

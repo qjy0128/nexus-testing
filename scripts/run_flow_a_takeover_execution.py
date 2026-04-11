@@ -686,6 +686,24 @@ def main(argv: list[str] | None = None) -> int:
 
     write_text(coverage_path, json.dumps(coverage, ensure_ascii=False, indent=2) + "\n")
     write_text(skill_results_path, render_skill_results(plan, coverage_map))
+    write_text(
+        execution_dir / "skill-results.meta.json",
+        json.dumps(
+            {
+                "generatedBy": "scripts/run_flow_a_takeover_execution.py",
+                "runner": "flow-a-host-takeover",
+                "executionProfile": "internal-fast",
+                "strictReal": True,
+                "validatedBy": "scripts/validate_flow_a_skill_results.py",
+                "surfacePlan": str(surface_plan_path.resolve()),
+                "skillResults": str(skill_results_path.resolve()),
+                "surfaceCoverage": str(coverage_path.resolve()),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+    )
     remaining_blocked, remaining_incomplete = remaining_case_lists(coverage)
     remaining_json_path, remaining_md_path = write_remaining_case_reports(
         execution_dir,
@@ -708,6 +726,7 @@ def main(argv: list[str] | None = None) -> int:
         "surfaceCoverageFile": str(coverage_path),
         "remainingCasesFile": remaining_json_path,
         "remainingCasesMarkdown": remaining_md_path,
+        "executionMethod": "scripts/run_flow_a_takeover_execution.py",
         "note": (
             f"host takeover attempted {attempted} cases; resolved {resolved}; "
             f"remaining blocked={len(remaining_blocked)}; remaining incomplete={len(remaining_incomplete)}"

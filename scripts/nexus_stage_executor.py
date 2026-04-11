@@ -26,6 +26,8 @@ from nexus_testing.path_utils import resolve_path
 from nexus_testing.role_metadata import parse_role_doc as load_role_doc_metadata
 from nexus_testing.runtime.policy import EXECUTION_PROFILES, resolve_execution_policy
 from nexus_testing.sandbox_skill_invoke.core import write_text
+from nexus_testing.stage_contracts import verify_stage_preconditions
+from nexus_testing.stage_validation import validate_stage_artifacts
 
 STATE_LOCK = threading.RLock()
 
@@ -159,6 +161,25 @@ def parse_role_doc(role_file: Path) -> dict[str, object]:
     return load_role_doc_metadata(role_file)
 
 
+def precondition_failure_action(stage: dict[str, object], stage_index: int, preconditions: dict[str, object]) -> dict[str, object]:
+    return {
+        "status": "precondition-failed",
+        "stageId": stage.get("stageId"),
+        "label": stage.get("label"),
+        "name": stage.get("name"),
+        "dispatchMode": stage.get("dispatchMode"),
+        "roles": stage.get("roles", []),
+        "postStageRoles": stage.get("postStageRoles", []),
+        "requiredInputs": preconditions.get("requiredInputs", []),
+        "missingInputs": preconditions.get("missingInputs", []),
+        "artifactBaseDir": preconditions.get("artifactBaseDir"),
+        "requiredArtifactPaths": preconditions.get("requiredArtifactPaths", []),
+        "upstreamOutputsVerified": False,
+        "userGate": stage.get("userGate", "none"),
+        "stageIndex": stage_index,
+    }
+
+
 def next_action(
     report_dir: Path,
     plan: dict[str, object],
@@ -169,11 +190,14 @@ def next_action(
     stages = list(plan.get("stages", []))
     for index, stage in enumerate(stages):
         stage_id = str(stage["stageId"])
+        preconditions = verify_stage_preconditions(report_dir, stage)
         missing = collect_missing_deliverables(report_dir, list(stage.get("deliverables", [])))
         if not missing and any(str(item).startswith("(") for item in stage.get("deliverables", [])):
             if not has_stage_complete_event(stage_log, stage_id):
                 missing.append("(stage-complete event)")
         if missing:
+            if list(preconditions.get("missingInputs", [])):
+                return precondition_failure_action(stage, index, preconditions)
             return {
                 "status": "run-stage",
                 "stageId": stage_id,
@@ -183,6 +207,10 @@ def next_action(
                 "roles": stage.get("roles", []),
                 "postStageRoles": stage.get("postStageRoles", []),
                 "missingDeliverables": missing,
+                "requiredInputs": preconditions.get("requiredInputs", []),
+                "artifactBaseDir": preconditions.get("artifactBaseDir"),
+                "requiredArtifactPaths": preconditions.get("requiredArtifactPaths", []),
+                "upstreamOutputsVerified": bool(preconditions.get("upstreamOutputsVerified", True)),
                 "userGate": stage.get("userGate", "none"),
                 "stageIndex": index,
             }
@@ -199,6 +227,10 @@ def next_action(
                     "dispatchMode": "serial" if len(post_roles) == 1 else "parallel",
                     "roles": post_roles,
                     "missingDeliverables": missing_post,
+                    "requiredInputs": preconditions.get("requiredInputs", []),
+                    "artifactBaseDir": preconditions.get("artifactBaseDir"),
+                    "requiredArtifactPaths": preconditions.get("requiredArtifactPaths", []),
+                    "upstreamOutputsVerified": bool(preconditions.get("upstreamOutputsVerified", True)),
                     "userGate": "none",
                     "stageIndex": index,
                     "postStage": True,
@@ -213,6 +245,16 @@ def next_action(
                     "label": stage.get("label"),
                     "reason": rejection.get("last_reason", "Rejected 3 times"),
                 }
+            artifact_validation = validate_stage_artifacts(report_dir, stage)
+            if not bool(artifact_validation.get("ok", False)):
+                return {
+                    "status": "artifact-validation-failed",
+                    "stageId": stage_id,
+                    "label": stage.get("label"),
+                    "name": stage.get("name"),
+                    "artifactValidation": artifact_validation,
+                    "stageIndex": index,
+                }
             if not approval_satisfied(record):
                 return {
                     "status": "await-approval",
@@ -221,6 +263,7 @@ def next_action(
                     "name": stage.get("name"),
                     "gate": stage.get("userGate"),
                     "approvalRecord": record,
+                    "artifactValidation": artifact_validation,
                     "stageIndex": index,
                 }
     return {"status": "complete", "stageCount": len(stages)}
@@ -250,6 +293,9 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
         ),
     )
     artifacts = available_report_artifacts(report_dir)
+    artifact_base_dir = str(action.get("artifactBaseDir") or report_dir.resolve())
+    required_artifact_paths = [str(item) for item in action.get("requiredArtifactPaths", []) if str(item).strip()]
+    upstream_outputs_verified = bool(action.get("upstreamOutputsVerified", True))
     for index, role in enumerate(roles):
         role_id = str(role.get("id"))
         role_file = resolve_path(str(role.get("file")))
@@ -265,6 +311,9 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
                 "stageName": action.get("name"),
                 "dispatchMode": action.get("dispatchMode"),
                 "reportDir": str(report_dir),
+                "artifactBaseDir": artifact_base_dir,
+                "requiredArtifactPaths": required_artifact_paths,
+                "upstreamOutputsVerified": upstream_outputs_verified,
                 "runMode": run_mode,
                 "executionProfile": execution_profile,
                 "strictReal": strict_real,
@@ -296,6 +345,16 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
                 ),
             }
         )
+        payloads[-1]["launchPrompt"] = "\n".join(
+            [
+                f"执行 {action.get('label')} {action.get('name')}。",
+                f"角色文件: {role_file}",
+                f"报告目录: {report_dir}",
+                f"当前需要补齐的交付物: {', '.join(str(item) for item in action.get('missingDeliverables', [])) or '(none)'}",
+                f"必须优先读取这些完整路径: {', '.join(required_artifact_paths) or '(none)'}",
+                "不要自行推断其它路径，也不要在工作区根目录搜索同名替代文件。只负责本角色执行和写结果，不直接向用户请求批准。",
+            ]
+        )
 
     result = dict(action)
     result["dispatchPayloads"] = validate_dispatch_payload_list(payloads)
@@ -313,9 +372,11 @@ def render_dispatch_prompt(payload: dict[str, object]) -> str:
         f"- Stage: {payload['stageLabel']} {payload['stageName']}",
         f"- Role File: `{payload['roleFile']}`",
         f"- Report Dir: `{payload['reportDir']}`",
+        f"- Artifact Base Dir: `{payload.get('artifactBaseDir', payload['reportDir'])}`",
         f"- Run Mode: `{payload.get('runMode', 'test')}`",
         f"- Execution Profile: `{payload.get('executionProfile', 'internal-fast')}`",
         f"- Strict Real: `{str(bool(payload.get('strictReal', False))).lower()}`",
+        f"- Upstream Outputs Verified: `{str(bool(payload.get('upstreamOutputsVerified', True))).lower()}`",
         f"- Missing Deliverables: {', '.join(str(item) for item in payload.get('missingDeliverables', [])) or '(none)'}",
         f"- Available Report Artifacts: {', '.join(str(item) for item in payload.get('availableArtifacts', [])) or '(none)'}",
         "",
@@ -323,6 +384,18 @@ def render_dispatch_prompt(payload: dict[str, object]) -> str:
         "",
         f"- Description: {payload.get('description') or '(none)'}",
     ]
+    required_artifact_paths = list(payload.get("requiredArtifactPaths", []))
+    if required_artifact_paths:
+        lines.extend(["", "## Required Artifact Paths", ""] + [f"- `{item}`" for item in required_artifact_paths])
+        lines.extend(
+            [
+                "",
+                "## Artifact Path Contract",
+                "",
+                "- Read the exact paths listed above before judging missing inputs.",
+                "- Do not infer alternate paths or substitute files with the same name from elsewhere in the workspace.",
+            ]
+        )
     best_for = list(payload.get("bestFor", []))
     if best_for:
         lines.extend(["- Best For:"] + [f"  - {item}" for item in best_for])
@@ -574,6 +647,9 @@ def record_approval_request(report_dir: Path, stage_id: str, transport: str, int
         "sent_at": now_text(),
         "user_response": None,
         "response_at": None,
+        "stageLabel": gate.get("label"),
+        "stageName": gate.get("name"),
+        "artifactValidation": gate.get("artifactValidation", {}),
     }
     save_json(report_dir / "approval-records.json", approvals)
     append_stage_log(
@@ -588,7 +664,14 @@ def record_approval_request(report_dir: Path, stage_id: str, transport: str, int
             "event": "approval-requested",
         },
     )
-    return {"status": "recorded", "event": "approval-requested", "stageId": stage_id}
+    return {
+        "status": "recorded",
+        "event": "approval-requested",
+        "stageId": stage_id,
+        "stageLabel": gate.get("label"),
+        "stageName": gate.get("name"),
+        "artifactValidation": gate.get("artifactValidation", {}),
+    }
 
 
 def record_approval_response(report_dir: Path, stage_id: str, response: str, reason: str | None) -> dict[str, object]:
@@ -650,7 +733,12 @@ def record_approval_response(report_dir: Path, stage_id: str, response: str, rea
             "reason": reason,
         },
     )
-    return {"status": "recorded", "event": f"approval-{response}", "stageId": stage_id}
+    return {
+        "status": "recorded",
+        "event": f"approval-{response}",
+        "stageId": stage_id,
+        "artifactValidation": gate.get("artifactValidation", {}),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:

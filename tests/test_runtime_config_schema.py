@@ -18,12 +18,15 @@ import nexus_testing.runtime_config_schema as runtime_config_schema
 def test_generated_presets_validate() -> None:
     mock = runtime_config_schema.validate_runtime_config(mock_config())
     claude = runtime_config_schema.validate_runtime_config(
-        claude_config("claude", "bypassPermissions", None, ["Read", "Write"])
+        claude_config("claude", "bypassPermissions", None, ["Read", "Write"], 300)
     )
     openclaw = runtime_config_schema.validate_runtime_config(
-        openclaw_config("openclaw", "telegram", "D:/repo/nexus-testing")
+        openclaw_config("openclaw", "telegram", "D:/repo/nexus-testing", 300)
     )
     assert_equal(mock["name"], "mock-runtime", "mock runtime name")
+    assert_equal(mock["default"]["stallTimeoutSeconds"], 10, "mock stall timeout")
+    assert_equal(claude["default"]["stallTimeoutSeconds"], 300, "claude stall timeout")
+    assert_equal(openclaw["default"]["stallTimeoutSeconds"], 300, "openclaw stall timeout")
     assert_equal("default" in claude, True, "claude default exists")
     assert_equal("default" in openclaw, True, "openclaw default exists")
     print("  [PASS] test_generated_presets_validate")

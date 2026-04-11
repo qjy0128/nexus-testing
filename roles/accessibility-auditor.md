@@ -10,7 +10,9 @@ best_for:
   - "验证 WCAG 合规性"
 takeover_enabled: true
 takeover_statuses:
-  - "blocked"
+  - "blocked-env"
+  - "blocked-policy"
+  - "stalled"
 takeover_patterns:
   - "blocked-no-openclaw"
   - "blocked-live-telemetry"

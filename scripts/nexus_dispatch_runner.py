@@ -101,6 +101,7 @@ def prepare_bundle(report_dir: Path) -> dict[str, object]:
                     "resultFile": None,
                     "note": None,
                     "runtime": None,
+                    "runtimeStatus": None,
                 },
             )
         role_state = load_json(state_path, {}, label=f"role state {state_path.name}")
@@ -150,6 +151,7 @@ def start_role(report_dir: Path, stage_id: str, role_id: str, runtime: str) -> d
                 "resultFile": None,
                 "note": None,
                 "runtime": runtime,
+                "runtimeStatus": "running",
             }
         ),
     )
@@ -169,7 +171,15 @@ def start_role(report_dir: Path, stage_id: str, role_id: str, runtime: str) -> d
     return state
 
 
-def complete_role(report_dir: Path, stage_id: str, role_id: str, result_file: str | None, note: str | None) -> dict[str, object]:
+def complete_role(
+    report_dir: Path,
+    stage_id: str,
+    role_id: str,
+    result_file: str | None,
+    note: str | None,
+    *,
+    runtime_status: str | None = None,
+) -> dict[str, object]:
     resolved_result: str | None = None
     if result_file:
         path = resolve_path(result_file)
@@ -193,6 +203,7 @@ def complete_role(report_dir: Path, stage_id: str, role_id: str, result_file: st
                 "takeoverFile": None,
                 "resultFile": resolved_result,
                 "note": note,
+                "runtimeStatus": runtime_status or "completed",
             }
         ),
     )
@@ -207,12 +218,20 @@ def complete_role(report_dir: Path, stage_id: str, role_id: str, result_file: st
             "gate_check_passed": False,
             "event": "role-completed",
             "role_id": role_id,
+            "runtime_status": runtime_status or "completed",
         },
     )
     return state
 
 
-def fail_role(report_dir: Path, stage_id: str, role_id: str, note: str | None) -> dict[str, object]:
+def fail_role(
+    report_dir: Path,
+    stage_id: str,
+    role_id: str,
+    note: str | None,
+    *,
+    runtime_status: str | None = None,
+) -> dict[str, object]:
     state = update_role_state(
         report_dir,
         stage_id,
@@ -225,6 +244,7 @@ def fail_role(report_dir: Path, stage_id: str, role_id: str, note: str | None) -
                 "takeoverAt": None,
                 "takeoverFile": None,
                 "note": note,
+                "runtimeStatus": runtime_status or "failed",
             }
         ),
     )
@@ -240,6 +260,7 @@ def fail_role(report_dir: Path, stage_id: str, role_id: str, note: str | None) -
             "event": "role-failed",
             "role_id": role_id,
             "reason": note,
+            "runtime_status": runtime_status or "failed",
         },
     )
     return state
@@ -251,6 +272,8 @@ def takeover_role(
     role_id: str,
     note: str | None,
     takeover_file: str | None,
+    *,
+    runtime_status: str | None = None,
 ) -> dict[str, object]:
     resolved_takeover: str | None = None
     if takeover_file:
@@ -274,6 +297,7 @@ def takeover_role(
                 "takeoverAt": now_text(),
                 "takeoverFile": resolved_takeover,
                 "note": note,
+                "runtimeStatus": runtime_status or "takeover-required",
             }
         ),
     )
@@ -289,6 +313,7 @@ def takeover_role(
             "event": "role-takeover-required",
             "role_id": role_id,
             "reason": note,
+            "runtime_status": runtime_status or "takeover-required",
         },
     )
     return state
@@ -306,6 +331,12 @@ def stage_run_status(report_dir: Path, stage_id: str) -> dict[str, object]:
     takeover_required = [item for item in role_states if item.get("status") == "takeover-required"]
     running = [item for item in role_states if item.get("status") == "running"]
     pending = [item for item in role_states if item.get("status") == "pending"]
+    runtime_status_counts: dict[str, int] = {}
+    for item in role_states:
+        runtime_status = str(item.get("runtimeStatus") or "").strip()
+        if not runtime_status:
+            continue
+        runtime_status_counts[runtime_status] = runtime_status_counts.get(runtime_status, 0) + 1
     return {
         "stageId": stage_id,
         "roleStates": role_states,
@@ -316,6 +347,7 @@ def stage_run_status(report_dir: Path, stage_id: str) -> dict[str, object]:
         "pendingCount": len(pending),
         "totalCount": len(role_states),
         "allCompleted": len(role_states) > 0 and len(completed) == len(role_states),
+        "runtimeStatusCounts": runtime_status_counts,
     }
 
 

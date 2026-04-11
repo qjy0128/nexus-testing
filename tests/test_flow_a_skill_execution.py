@@ -79,6 +79,33 @@ def write_full_coverage(plan: dict[str, object], coverage_path: Path) -> None:
     write_text(coverage_path, json.dumps(coverage, ensure_ascii=False, indent=2) + "\n")
 
 
+def write_execution_meta(
+    reports_dir: Path,
+    *,
+    generated_by: str = "scripts/run_flow_a_skill_execution.py",
+    runner: str = "flow-a-stage5",
+) -> None:
+    execution_dir = reports_dir / "TEST-EXECUTION"
+    write_text(
+        execution_dir / "skill-results.meta.json",
+        json.dumps(
+            {
+                "generatedBy": generated_by,
+                "runner": runner,
+                "executionProfile": "internal-fast",
+                "strictReal": False,
+                "validatedBy": "scripts/validate_flow_a_skill_results.py",
+                "surfacePlan": str((reports_dir / "SURFACE-EXECUTION-PLAN.json").resolve()),
+                "skillResults": str((execution_dir / "skill-results.md").resolve()),
+                "surfaceCoverage": str((execution_dir / "SURFACE-COVERAGE.json").resolve()),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+    )
+
+
 def run_stage_five_setup(target: Path, reports_dir: Path) -> tuple[dict[str, object], Path]:
     for command in (
         [
@@ -156,6 +183,7 @@ def test_surface_execution_workflow() -> None:
         write_full_coverage(plan, coverage_path)
         skill_results_path = reports_dir / "TEST-EXECUTION" / "skill-results.md"
         write_text(skill_results_path, build_full_skill_results(plan))
+        write_execution_meta(reports_dir)
 
         validator = subprocess.run(
             [
@@ -175,6 +203,39 @@ def test_surface_execution_workflow() -> None:
         assert_equal(validator.returncode, 0, "surface result validator exit code")
         assert_contains(validator.stdout, "STATUS=passed", "surface result validator status")
         print("  [PASS] test_surface_execution_workflow")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_surface_execution_validator_requires_provenance_metadata() -> None:
+    temp_root = make_temp_root("flowa-exec-missing-meta-")
+    try:
+        target = build_mixed_fixture(temp_root)
+        reports_dir = temp_root / "reports"
+        plan, coverage_path = run_stage_five_setup(target, reports_dir)
+        write_full_coverage(plan, coverage_path)
+
+        skill_results_path = reports_dir / "TEST-EXECUTION" / "skill-results.md"
+        write_text(skill_results_path, build_full_skill_results(plan))
+
+        validator = subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATOR),
+                "--surface-plan",
+                str(reports_dir / "SURFACE-EXECUTION-PLAN.json"),
+                "--skill-results",
+                str(skill_results_path),
+            ],
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert_equal(validator.returncode == 0, False, "missing provenance validator should fail")
+        assert_contains(validator.stderr, "execution meta does not exist", "missing provenance error")
+        print("  [PASS] test_surface_execution_validator_requires_provenance_metadata")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -211,6 +272,7 @@ def test_surface_execution_validator_rejects_weak_verified_notes() -> None:
 
         skill_results_path = reports_dir / "TEST-EXECUTION" / "skill-results.md"
         write_text(skill_results_path, "\n".join(lines))
+        write_execution_meta(reports_dir)
         validator = subprocess.run(
             [
                 sys.executable,
@@ -271,6 +333,7 @@ def test_surface_execution_validator_rejects_live_extension_without_runtime_note
 
         skill_results_path = reports_dir / "TEST-EXECUTION" / "skill-results.md"
         write_text(skill_results_path, "\n".join(lines))
+        write_execution_meta(reports_dir)
         validator = subprocess.run(
             [
                 sys.executable,
@@ -326,6 +389,7 @@ def test_surface_execution_validator_rejects_plan_drift_and_pending_cases() -> N
         )
         skill_results_path = reports_dir / "TEST-EXECUTION" / "skill-results.md"
         write_text(skill_results_path, "\n".join(lines))
+        write_execution_meta(reports_dir)
 
         validator = subprocess.run(
             [
@@ -412,6 +476,7 @@ def test_surface_execution_validator_allows_none_executed_case_ids() -> None:
 
         skill_results_path = reports_dir / "TEST-EXECUTION" / "skill-results.md"
         write_text(skill_results_path, "\n".join(lines))
+        write_execution_meta(reports_dir)
 
         validator = subprocess.run(
             [
@@ -449,6 +514,7 @@ def main() -> int:
     print("=" * 40)
     for test in (
         test_surface_execution_workflow,
+        test_surface_execution_validator_requires_provenance_metadata,
         test_surface_execution_validator_rejects_weak_verified_notes,
         test_surface_execution_validator_rejects_live_extension_without_runtime_notes,
         test_surface_execution_validator_rejects_plan_drift_and_pending_cases,

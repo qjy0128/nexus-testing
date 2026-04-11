@@ -89,18 +89,73 @@ def test_rejection_tracking() -> None:
         report_dir = temp_root / "reports"
         run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
         run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
-        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        approval = run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        assert_equal(bool(approval["artifactValidation"]["fileSummaries"]), True, "approval request includes artifact summaries")
         run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
         write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
         write_text(report_dir / "SPEC.md", "# Spec\n")
         write_text(report_dir / "SPEC-CONSISTENCY-REVIEW.md", "# Review\n")
-        write_text(report_dir / "PRODUCT-QUALITY-REVIEW.md", "# Quality\n")
+        quality_meta = executor_module.parse_role_doc(PROJECT_DIR / "roles" / "quality-assessor.md")
+        quality_lines = ["# Product Quality Review", ""]
+        for heading in quality_meta["minimumOutput"]:
+            quality_lines.extend([f"## {heading}", "This section contains substantive review content for the approval gate.", ""])
+        write_text(
+            report_dir / "PRODUCT-QUALITY-REVIEW.md",
+            "\n".join(quality_lines),
+        )
 
         run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-2", "--transport", "text")
         run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-2", "--response", "rejected", "--reason", "need-more-detail")
         rejections = json.loads(read_text(report_dir / "rejection-count.json"))
         assert_equal(rejections["stage_2"]["count"], 1, "rejection count")
         print("  [PASS] test_rejection_tracking")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_stage_cannot_enter_approval_when_artifact_validation_fails() -> None:
+    temp_root = make_temp_root("stage-exec-artifact-validation-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
+        write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
+        write_text(report_dir / "SPEC.md", "# Spec\n")
+        write_text(report_dir / "SPEC-CONSISTENCY-REVIEW.md", "# Review\n")
+        write_text(report_dir / "PRODUCT-QUALITY-REVIEW.md", "\n")
+
+        next_result = run_json("next", "--report-dir", str(report_dir))
+        assert_equal(next_result["status"], "artifact-validation-failed", "artifact validation status")
+        assert_equal(next_result["stageId"], "stage-2", "artifact validation stage")
+        assert_equal("PRODUCT-QUALITY-REVIEW.md is empty" in " | ".join(next_result["artifactValidation"]["issues"]), True, "artifact validation issue")
+        print("  [PASS] test_stage_cannot_enter_approval_when_artifact_validation_fails")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_stage_placeholder_only_sections_fail_artifact_validation() -> None:
+    temp_root = make_temp_root("stage-exec-placeholder-validation-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
+        write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
+        write_text(report_dir / "SPEC.md", "# Spec\n")
+        write_text(report_dir / "SPEC-CONSISTENCY-REVIEW.md", "# Review\n")
+        quality_meta = executor_module.parse_role_doc(PROJECT_DIR / "roles" / "quality-assessor.md")
+        quality_lines = ["# Product Quality Review", ""]
+        for heading in quality_meta["minimumOutput"]:
+            quality_lines.extend([f"## {heading}", "- mock", ""])
+        write_text(report_dir / "PRODUCT-QUALITY-REVIEW.md", "\n".join(quality_lines))
+
+        next_result = run_json("next", "--report-dir", str(report_dir))
+        assert_equal(next_result["status"], "artifact-validation-failed", "placeholder-only quality review must fail")
+        assert_equal("does not contain substantive content" in " | ".join(next_result["artifactValidation"]["issues"]), True, "placeholder validation issue")
+        print("  [PASS] test_stage_placeholder_only_sections_fail_artifact_validation")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -148,6 +203,9 @@ def test_dispatch_payloads() -> None:
         assert_equal(payloads[0]["executionProfile"], "internal-fast", "dispatch execution profile")
         assert_equal(payloads[0]["executionPolicy"]["default_sender_backend"], "relay-only", "dispatch execution policy")
         assert_equal(payloads[0]["delivery"]["autoSendOnComplete"], True, "dispatch delivery auto-send")
+        assert_equal(payloads[0]["artifactBaseDir"], str(report_dir.resolve()), "dispatch artifact base dir")
+        assert_equal(payloads[0]["requiredArtifactPaths"], [], "dispatch required artifact paths")
+        assert_equal(payloads[0]["upstreamOutputsVerified"], True, "dispatch upstream verification")
         print("  [PASS] test_dispatch_payloads")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -197,6 +255,34 @@ def test_serial_stage_dispatches_one_role_at_a_time() -> None:
             "dispatch payload should list existing report artifacts",
         )
         print("  [PASS] test_serial_stage_dispatches_one_role_at_a_time")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_quality_assessor_dispatch_includes_required_artifact_paths() -> None:
+    temp_root = make_temp_root("stage-exec-quality-paths-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
+        write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
+        write_text(report_dir / "SPEC.md", "# Spec\n")
+        write_text(report_dir / "SPEC-CONSISTENCY-REVIEW.md", "# Review\n")
+
+        dispatch = run_json("dispatch", "--report-dir", str(report_dir))
+        payload = dispatch["dispatchPayloads"][0]
+        assert_equal(payload["roleId"], "quality-assessor", "stage two role id")
+        expected = [
+            str((report_dir / "PRODUCT-FINGERPRINT.json").resolve()),
+            str((report_dir / "SPEC.md").resolve()),
+            str((report_dir / "SPEC-CONSISTENCY-REVIEW.md").resolve()),
+        ]
+        assert_equal(payload["artifactBaseDir"], str(report_dir.resolve()), "quality artifact base dir")
+        assert_equal(payload["requiredArtifactPaths"], expected, "quality required artifact paths")
+        assert_equal(payload["upstreamOutputsVerified"], True, "quality upstream verification")
+        print("  [PASS] test_quality_assessor_dispatch_includes_required_artifact_paths")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -256,7 +342,7 @@ def test_parse_role_doc_takeover_policy() -> None:
     parsed = executor_module.parse_role_doc(PROJECT_DIR / "roles" / "skill-tester.md")
     assert_equal(parsed["mainAgentTakeoverPolicy"], {
         "enabled": True,
-        "statuses": ["blocked"],
+        "statuses": ["blocked-env", "blocked-policy", "stalled"],
         "patterns": [
             "blocked-no-openclaw",
             "blocked-live-telemetry",
@@ -350,11 +436,14 @@ def main() -> int:
         test_init_and_next,
         test_stage_progression_with_approval,
         test_rejection_tracking,
+        test_stage_cannot_enter_approval_when_artifact_validation_fails,
+        test_stage_placeholder_only_sections_fail_artifact_validation,
         test_invalid_executor_json_state_reports_clear_error,
         test_approval_stage_must_match_current_gate,
         test_dispatch_payloads,
         test_bundle_dispatch,
         test_serial_stage_dispatches_one_role_at_a_time,
+        test_quality_assessor_dispatch_includes_required_artifact_paths,
         test_parse_role_doc_minimum_output_structure,
         test_parse_role_doc_takeover_policy,
         test_frontmatter_metadata_overrides_sections,

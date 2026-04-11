@@ -25,6 +25,13 @@
 - **真实执行和静态分析被严格区分**：`live` / `shim-live` / `trace` 三层执行有硬门禁，没有真实执行证据时不能写成功能通过。
 - **subagent 跑不动时有正式 takeover 机制**：不是简单报 blocked 就结束。Flow A 现在会优先尝试 fallback runtime，再由 host takeover executor 自动接管剩余 blocked/pending 的通用真实调用 case。
 - **结果质量有二次校验**：阶段五结束后会用 `validate_flow_a_skill_results.py` 校验 `skill-results.md` 和 `SURFACE-COVERAGE.json`，防止“有文件但没真正覆盖 case”的空壳结果。
+- **阶段输入路径被强约束**：阶段二及后续关键角色现在会收到 `requiredArtifactPaths` 的完整绝对路径清单，必须先按这些路径核验输入，不允许在工作区里自行猜路径或拿同名文件替代。
+- **审批前有轻量自动校验**：阶段二、四等审批门在进入 `await-approval` 前，会先检查关键交付物是否存在、非空且满足最小结构，避免用户只看摘要就放行空壳文件。
+- **审批前会拦截“有标题但没内容”的空心报告**：关键 markdown 交付物现在不只校验 heading 存在，还会校验每个必需 section 是否有实质内容，`TODO`/`mock`/占位句不会再混进审批门。
+- **静默降级会被拉回接管**：runtime bridge 现在会把 “工具不可用后改走 fallback/web_fetch” 这种静默替代识别为 `blocked-policy`，不再允许表面 PASS 混入真实执行率。
+- **Flow A 执行器有 provenance**：`scripts/run_flow_a_skill_execution.py` 和 `scripts/run_flow_a_takeover_execution.py` 现在都会输出 `skill-results.meta.json`，并由 `validate_flow_a_skill_results.py` 强制校验来源与路径一致性。
+- **长时间无产出会被判 stalled**：runtime bridge 现在会监控 stdout/stderr 和报告目录产物变化；运行中长期无新增输出时，不再只能等总超时，而是提前标记为 `stalled` 并按 takeover 规则处理。
+- **失败状态会保留细分类**：`RUNS/<stage>/<role>.state.json` 现在会额外记录 `runtimeStatus`，区分 `blocked-env`、`blocked-policy`、`stalled` 等真实失败类型，而不是全部压扁成 `failed`。
 
 ## 现阶段明确不做什么
 
@@ -80,6 +87,7 @@
 - 阶段五和 Flow B 体验阶段按 Flow 模板并行启动多个 subagent
 - `evidence-collector` 只在所有执行角色完成后独立启动
 - subagent 因宿主环境不足无法继续时，runtime bridge 应先尝试该角色的 fallback runtime；仍无法完成时生成 `takeover-required` 工单，由主 agent 在当前 host session 接管
+- approval request 不应只依赖 subagent 自述摘要；编排层会把 `artifactValidation.fileSummaries` 一并返回给主 agent，用于发送审批时附上真实交付物概览
 
 ## 标准执行流程
 

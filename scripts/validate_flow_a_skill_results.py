@@ -200,11 +200,52 @@ def validate(surface_plan: dict[str, object], skill_results: str, coverage: dict
     return issues
 
 
+def validate_execution_meta(
+    meta: object,
+    surface_plan_path: Path,
+    skill_results_path: Path,
+    coverage_path: Path,
+) -> list[str]:
+    issues: list[str] = []
+    if not isinstance(meta, dict):
+        return ["execution meta must be a JSON object"]
+
+    generated_by = str(meta.get("generatedBy", ""))
+    runner = str(meta.get("runner", ""))
+    allowed_pairs = {
+        ("scripts/run_flow_a_skill_execution.py", "flow-a-stage5"),
+        ("scripts/run_flow_a_takeover_execution.py", "flow-a-host-takeover"),
+    }
+    if (generated_by, runner) not in allowed_pairs:
+        issues.append(
+            "execution meta must come from scripts/run_flow_a_skill_execution.py/flow-a-stage5 "
+            "or scripts/run_flow_a_takeover_execution.py/flow-a-host-takeover"
+        )
+    if str(meta.get("validatedBy", "")) != "scripts/validate_flow_a_skill_results.py":
+        issues.append("execution meta validatedBy must be scripts/validate_flow_a_skill_results.py")
+
+    expected_paths = {
+        "surfacePlan": surface_plan_path.resolve(),
+        "skillResults": skill_results_path.resolve(),
+        "surfaceCoverage": coverage_path.resolve(),
+    }
+    for key, expected_path in expected_paths.items():
+        value = meta.get(key)
+        if not value:
+            issues.append(f"execution meta is missing {key}")
+            continue
+        actual_path = Path(str(value)).expanduser().resolve()
+        if actual_path != expected_path:
+            issues.append(f"execution meta {key} does not match the validated file path")
+    return issues
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--surface-plan", required=True, help="Path to SURFACE-EXECUTION-PLAN.json")
     parser.add_argument("--skill-results", required=True, help="Path to TEST-EXECUTION/skill-results.md")
     parser.add_argument("--surface-coverage", help="Optional path to TEST-EXECUTION/SURFACE-COVERAGE.json")
+    parser.add_argument("--execution-meta", help="Optional path to TEST-EXECUTION/skill-results.meta.json")
     return parser.parse_args(argv)
 
 
@@ -222,16 +263,25 @@ def main(argv: list[str] | None = None) -> int:
         if args.surface_coverage
         else skill_results_path.parent / "SURFACE-COVERAGE.json"
     )
+    meta_path = (
+        Path(args.execution_meta).expanduser().resolve()
+        if args.execution_meta
+        else skill_results_path.parent / "skill-results.meta.json"
+    )
     if not surface_plan_path.exists():
         raise SystemExit(f"ERROR: surface plan does not exist: {surface_plan_path}")
     if not skill_results_path.exists():
         raise SystemExit(f"ERROR: skill results do not exist: {skill_results_path}")
     if not coverage_path.exists():
         raise SystemExit(f"ERROR: surface coverage does not exist: {coverage_path}")
+    if not meta_path.exists():
+        raise SystemExit(f"ERROR: execution meta does not exist: {meta_path}")
 
     plan = load_json(surface_plan_path)
     coverage = load_json(coverage_path)
+    meta = load_json(meta_path)
     issues = validate(plan, read_text(skill_results_path), coverage)
+    issues.extend(validate_execution_meta(meta, surface_plan_path, skill_results_path, coverage_path))
     if issues:
         for issue in issues:
             print(f"ISSUE={issue}")

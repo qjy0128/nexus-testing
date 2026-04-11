@@ -11,7 +11,9 @@ best_for:
   - "验证触发、能力、边界、错误处理和输出"
 takeover_enabled: true
 takeover_statuses:
-  - "blocked"
+  - "blocked-env"
+  - "blocked-policy"
+  - "stalled"
 takeover_patterns:
   - "blocked-no-openclaw"
   - "blocked-live-telemetry"
@@ -54,6 +56,7 @@ takeover_on_process_failure: false
 - `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md`
 - `TEST-EXECUTION/SURFACE-COVERAGE.json`
 - Skill 来源：本地路径、仓库、入口 `SKILL.md` 或可安装包
+- 框架下发的 `requiredArtifactPaths`。必须按完整路径读取这些输入，不得在工作区里自行搜索同名替代文件。
 
 ## 输出
 
@@ -103,7 +106,7 @@ takeover_on_process_failure: false
 - 渠道适配或格式声明必须有真实输出证据，不能只看文档。
 - 负向触发、上下文保持、渠道送达优先通过 `sandbox-skill-invoke` / `sandbox-multi-turn` 的断言参数自动判定。
 - `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的顺序逐条写出每个 `surface-id` 的执行记录。
-- 推荐直接使用 `scripts/run_flow_a_skill_execution.py` 驱动阶段五执行，避免人工漏掉某个 surface；当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据；`openclaw-extension` 优先走 `testing.json.openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若两者都没有但 OpenClaw live runtime 可用，则先做 live probe，并把 `runtime-probed=true` 写入结果；`mcp` 继续验证协议交互，只有 probe-only 结果时才记为 `incomplete`。
+- Flow A 阶段五必须使用 `scripts/run_flow_a_skill_execution.py` 驱动执行，不能直接用 `web_fetch`、手写 `skill-results.md` 或其他临时路径替代；标准 runner 必须输出 `skill-results.meta.json` 作为 provenance 证据。当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据；`openclaw-extension` 优先走 `testing.json.openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若两者都没有但 OpenClaw live runtime 可用，则先做 live probe，并把 `runtime-probed=true` 写入结果；`mcp` 继续验证协议交互，只有 probe-only 结果时才记为 `incomplete`。
 - 执行结束后必须运行 `scripts/validate_flow_a_skill_results.py`；若缺任何 surface，当前轮执行视为不完整。
 
 ### 6. 特殊场景

@@ -17,6 +17,7 @@ ALLOWED_SPEC_KEYS = {
     "cwd",
     "env",
     "timeoutSeconds",
+    "stallTimeoutSeconds",
     "fallback",
     "mainAgentTakeover",
     "mainAgentTakeoverPatterns",
@@ -119,6 +120,14 @@ def validate_runtime_spec(spec: object, *, field: str = "runtime spec", require_
         if not isinstance(timeout_value, int) or timeout_value <= 0:
             raise ValueError(f"{field}.timeoutSeconds must be a positive integer")
         normalized["timeoutSeconds"] = timeout_value
+
+    stall_timeout_value = spec.get("stallTimeoutSeconds")
+    if stall_timeout_value is not None:
+        if not isinstance(stall_timeout_value, int) or stall_timeout_value <= 0:
+            raise ValueError(f"{field}.stallTimeoutSeconds must be a positive integer")
+        if isinstance(timeout_value, int) and stall_timeout_value >= timeout_value:
+            raise ValueError(f"{field}.stallTimeoutSeconds must be smaller than timeoutSeconds")
+        normalized["stallTimeoutSeconds"] = stall_timeout_value
 
     main_agent_takeover = spec.get("mainAgentTakeover")
     if main_agent_takeover is not None:

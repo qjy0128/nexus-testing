@@ -42,6 +42,9 @@ LOCALIZATION = {
             "status: optional. Use `completed` when done, or `blocked` if you need takeover.",
             "needsMainAgentTakeover: optional boolean. Set true when the host/main agent must continue the work because your environment is insufficient.",
             "blockers: optional array of short blocker reasons.",
+            "consumedArtifactPaths: optional array. List the exact report artifact paths you actually read.",
+            "producedArtifactPaths: optional array. List the exact report artifact paths you wrote or updated.",
+            "executionMethod: optional string. For Flow A skill-tester, record the exact standard runner you used.",
         ],
     },
     "zh": {
@@ -100,6 +103,8 @@ def build_runtime_prompt(
     missing = ", ".join(str(item) for item in payload.get("missingDeliverables", [])) or "(none)"
     run_mode = str(payload.get("runMode", "test"))
     available_artifacts = ", ".join(str(item) for item in payload.get("availableArtifacts", [])) or "(none)"
+    artifact_base_dir = str(payload.get("artifactBaseDir") or payload.get("reportDir"))
+    required_artifact_paths = [str(item).strip() for item in payload.get("requiredArtifactPaths", []) if str(item).strip()]
     lines = [
         messages["intro"].format(
             role_id=str(payload["roleId"]),
@@ -108,6 +113,7 @@ def build_runtime_prompt(
         ),
         messages["role_file"].format(role_file=str(payload["roleFile"])),
         messages["report_dir"].format(report_dir=str(payload["reportDir"])),
+        f"Artifact base dir: {artifact_base_dir}",
         messages["run_mode"].format(run_mode=run_mode),
         messages["missing"].format(missing=missing),
         messages["available_artifacts"].format(artifacts=available_artifacts),
@@ -115,6 +121,17 @@ def build_runtime_prompt(
         messages["rules_title"],
         *[f"- {item}" for item in messages["rules"]],
     ]
+    if required_artifact_paths:
+        lines.extend(
+            [
+                "- Read the exact required artifact paths before judging any upstream input as missing.",
+                "- Do not substitute same-name files from elsewhere in the workspace.",
+                "- Return consumedArtifactPaths with the exact required paths you used.",
+                "",
+                "Required artifact paths:",
+                *[f"- {item}" for item in required_artifact_paths],
+            ]
+        )
     if run_mode == "test":
         lines.append(
             "- Do not modify the target repository under test; record defects in the report directory and stop."

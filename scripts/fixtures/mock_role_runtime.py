@@ -6,7 +6,18 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
+
+SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+if str(SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_ROOT))
+
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
+from nexus_testing.role_metadata import parse_role_doc
 
 ROLE_OUTPUTS = {
     "environment-checker": ["RUNS/{stage_id}/environment-readiness.md"],
@@ -40,6 +51,12 @@ ROLE_OUTPUTS = {
     ],
 }
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def role_file(role_id: str) -> Path:
+    return PROJECT_ROOT / "roles" / f"{role_id}.md"
+
 
 def default_surface_plan(stage_id: str) -> dict[str, object]:
     return {
@@ -63,72 +80,59 @@ def write_role_output(path: Path, role_id: str, stage_id: str) -> None:
         payload = {"generatedBy": role_id, "stageId": stage_id, "status": "mock"}
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return
-    path.write_text(f"# Mock Output\n\nrole={role_id}\nstage={stage_id}\n", encoding="utf-8")
-
-
-def write_quality_assessor_output(report_dir: Path, stage_id: str) -> list[str]:
-    path = report_dir / "PRODUCT-QUALITY-REVIEW.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "\n".join(
             [
-                "# Mock Product Quality Review",
+                "# Mock Output",
                 "",
-                "## 规格完整性",
-                "- mock",
-                "",
-                "## 可测试性",
-                "- mock",
-                "",
-                "## 主要风险",
-                "- mock",
-                "",
-                "## 测试设计建议",
-                "- mock",
-                "",
-                "## 结论与是否需要重新进入前一阶段",
-                "- mock",
+                f"role={role_id}",
+                f"stage={stage_id}",
+                "This output contains substantive mock content for smoke tests.",
                 "",
             ]
         ),
         encoding="utf-8",
     )
+
+
+def write_structured_markdown(path: Path, title: str, sections: list[tuple[str, str]]) -> None:
+    lines = [f"# {title}", ""]
+    for heading, content in sections:
+        lines.extend([f"## {heading}", content, ""])
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_quality_assessor_output(report_dir: Path) -> list[str]:
+    path = report_dir / "PRODUCT-QUALITY-REVIEW.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    metadata = parse_role_doc(role_file("quality-assessor"))
+    headings = list(metadata.get("minimumOutput", []))
+    sections = [
+        (headings[0], "The current specification defines the main workflow, key inputs, and expected artifacts for this target."),
+        (headings[1], "Most requirements can be translated into executable checks, but live delivery confirmation still needs explicit runtime evidence."),
+        (headings[2], "The main risk is silent downgrade during execution when a missing tool is replaced with a weaker path."),
+        (headings[3], "Keep Flow A on the standard runner path and escalate to takeover whenever the runtime cannot finish real execution."),
+        (headings[4], "No rollback is required in this mock scenario because the required upstream artifacts are already present."),
+    ]
+    write_structured_markdown(path, "Mock Product Quality Review", sections)
     return [str(path)]
 
 
 def write_test_designer_outputs(report_dir: Path, stage_id: str) -> list[str]:
     design_path = report_dir / "TEST-DESIGN.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
-    design_path.write_text(
-        "\n".join(
-            [
-                "# Mock Test Design",
-                "",
-                "## 测试策略",
-                "- mock",
-                "",
-                "## 测试用例集",
-                "- TC-01",
-                "",
-                "## 逻辑分支覆盖矩阵",
-                "- mock",
-                "",
-                "## 能力 × 维度覆盖矩阵（Flow A）",
-                "- mock",
-                "",
-                "## 测试数据方案（正常/异常/边界）",
-                "- mock",
-                "",
-                "## 测试夹具方案（如适用）",
-                "- mock",
-                "",
-                "## 风险与备注",
-                "- mock",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    metadata = parse_role_doc(role_file("test-designer"))
+    headings = list(metadata.get("minimumOutput", []))
+    sections = [
+        (headings[0], "Start with the primary skill surface, then expand to boundary and recovery scenarios after the baseline path is stable."),
+        (headings[1], "TC-01 covers the primary acceptance path with executable evidence and a clear expected outcome."),
+        (headings[2], "The branch matrix includes success, validation failure, and runtime degradation branches."),
+        (headings[3], "Capability coverage is mapped across trigger, execution, evidence, and delivery dimensions."),
+        (headings[4], "Use one nominal payload, one malformed payload, and one boundary payload with long text input."),
+        (headings[5], "Reuse the standard surface worklist and validator artifacts instead of bespoke case scaffolding."),
+        (headings[6], "If live runtime or verifier evidence is unavailable, stop the stage and escalate to takeover instead of weakening the verdict."),
+    ]
+    write_structured_markdown(design_path, "Mock Test Design", sections)
 
     plan_path = report_dir / "SURFACE-EXECUTION-PLAN.json"
     plan_path.write_text(json.dumps(default_surface_plan(stage_id), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -162,17 +166,16 @@ def write_skill_tester_outputs(report_dir: Path, stage_id: str) -> list[str]:
         if not isinstance(surface, dict):
             continue
         surface_id = str(surface.get("surfaceId") or f"SURFACE-{index:02d}")
-        case_ids = [str(item) for item in surface.get("testCaseIds", []) if str(item).strip()]
-        if not case_ids:
-            case_ids = [f"TC-{index:02d}"]
+        case_ids = [str(item) for item in surface.get("testCaseIds", []) if str(item).strip()] or [f"TC-{index:02d}"]
         worklist_lines.append(f"- {surface_id}")
+        evidence_path = execution_dir / f"{surface_id}.json"
         result_lines.extend(
             [
                 f"### Mock Surface {index}",
                 f"- surface-id: `{surface_id}`",
                 "- execution-level: `trace`",
                 "- status: `passed`",
-                f"- evidence: `{execution_dir / f'{surface_id}.json'}`",
+                f"- evidence: `{evidence_path}`",
                 f"- notes: `case-coverage={len(case_ids)}/{len(case_ids)}; executed-case-count={len(case_ids)}`",
                 f"- executed-case-ids: `{', '.join(case_ids)}`",
                 "",
@@ -190,13 +193,13 @@ def write_skill_tester_outputs(report_dir: Path, stage_id: str) -> list[str]:
                     {
                         "caseId": case_id,
                         "status": "passed",
-                        "evidence": [str(execution_dir / f"{surface_id}.json")],
+                        "evidence": [str(evidence_path)],
                     }
                     for case_id in case_ids
                 ],
             }
         )
-        (execution_dir / f"{surface_id}.json").write_text(
+        evidence_path.write_text(
             json.dumps({"surfaceId": surface_id, "stageId": stage_id, "status": "mock"}, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
@@ -209,37 +212,52 @@ def write_skill_tester_outputs(report_dir: Path, stage_id: str) -> list[str]:
         json.dumps({"generatedBy": "mock-role-runtime", "stageId": stage_id, "surfaces": coverage_surfaces}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (execution_dir / "skill-results.meta.json").write_text(
+        json.dumps(
+            {
+                "generatedBy": "scripts/run_flow_a_skill_execution.py",
+                "runner": "flow-a-stage5",
+                "executionProfile": "internal-fast",
+                "strictReal": False,
+                "validatedBy": "scripts/validate_flow_a_skill_results.py",
+                "surfacePlan": str(plan_path.resolve()),
+                "skillResults": str(skill_results_path.resolve()),
+                "surfaceCoverage": str(coverage_path.resolve()),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return [str(skill_results_path), str(worklist_path), str(coverage_path)]
 
 
-def write_report_integrator_output(report_dir: Path, stage_id: str) -> list[str]:
+def write_report_integrator_output(report_dir: Path) -> list[str]:
     path = report_dir / "FINAL-TEST-REPORT.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "\n".join(
-            [
-                "# Mock Final Test Report",
-                "",
-                "## 测试概览",
-                "- mock",
-                "",
-                "## 各维度结果",
-                "- mock",
-                "",
-                "## 缺陷摘要",
-                "- mock",
-                "",
-                "## 未覆盖范围与残余风险",
-                "- mock",
-                "",
-                "## 发布建议",
-                "- mock",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    metadata = parse_role_doc(role_file("report-integrator"))
+    headings = list(metadata.get("minimumOutput", []))
+    sections = [
+        (headings[0], "This report consolidates environment readiness, specification quality, design outputs, execution evidence, and residual risks."),
+        (headings[1], "All mocked dimensions completed with standardized artifacts and an explicit delivery record."),
+        (headings[2], "No blocking product defects were found in the mock path, but runtime shortcut detection remains under active review."),
+        (headings[3], "Residual risk remains when live delivery confirmation depends on external channels or runtime availability."),
+        (headings[4], "Release is acceptable for the mock scenario when takeover rules and delivery receipt checks remain enabled."),
+    ]
+    write_structured_markdown(path, "Mock Final Test Report", sections)
     return [str(path)]
+
+
+def build_success_result(role_id: str, created: list[str]) -> dict[str, object]:
+    result: dict[str, object] = {
+        "resultFile": created[0] if created else None,
+        "note": f"mock runtime completed for {role_id}",
+        "producedArtifactPaths": created,
+    }
+    if role_id == "skill-tester":
+        result["executionMethod"] = "scripts/run_flow_a_skill_execution.py"
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -249,7 +267,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fail-role")
     parser.add_argument("--takeover-role")
     parser.add_argument("--blocked-role")
+    parser.add_argument("--policy-fallback-role")
     parser.add_argument("--weak-role")
+    parser.add_argument("--stall-role")
+    parser.add_argument("--stall-seconds", type=int, default=5)
     args = parser.parse_args(argv)
 
     payload = json.loads(Path(args.payload_file).read_text(encoding="utf-8"))
@@ -290,9 +311,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.stall_role and args.stall_role == role_id:
+        time.sleep(max(1, int(args.stall_seconds)))
+        print(json.dumps({"resultFile": None, "note": f"stall mock runtime eventually resumed for {role_id}"}, ensure_ascii=False))
+        return 0
+
     if args.weak_role and args.weak_role == role_id:
         outputs = ROLE_OUTPUTS.get(role_id, [])
-        created = []
+        created: list[str] = []
         for relative in outputs:
             resolved = report_dir / relative.format(stage_id=stage_id)
             resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -302,13 +328,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if role_id == "quality-assessor":
-        created = write_quality_assessor_output(report_dir, stage_id)
+        created = write_quality_assessor_output(report_dir)
     elif role_id == "test-designer":
         created = write_test_designer_outputs(report_dir, stage_id)
     elif role_id == "skill-tester":
         created = write_skill_tester_outputs(report_dir, stage_id)
     elif role_id == "report-integrator":
-        created = write_report_integrator_output(report_dir, stage_id)
+        created = write_report_integrator_output(report_dir)
     else:
         outputs = ROLE_OUTPUTS.get(role_id, [])
         created = []
@@ -318,10 +344,10 @@ def main(argv: list[str] | None = None) -> int:
             write_role_output(resolved, role_id, stage_id)
             created.append(str(resolved))
 
-    result = {
-        "resultFile": created[0] if created else None,
-        "note": f"mock runtime completed for {role_id}",
-    }
+    result = build_success_result(role_id, created)
+    if args.policy_fallback_role and args.policy_fallback_role == role_id:
+        result["note"] = f"webReader unavailable; switched to web_fetch fallback for {role_id}"
+        result["blockers"] = ["webReader unavailable", "web_fetch fallback"]
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

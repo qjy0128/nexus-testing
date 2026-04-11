@@ -31,6 +31,7 @@ def mock_config() -> dict[str, object]:
             ],
             "cwd": "{workspace_root}",
             "timeoutSeconds": 30,
+            "stallTimeoutSeconds": 10,
         },
     }
 
@@ -39,6 +40,7 @@ def openclaw_config(
     openclaw_command: str,
     channel: str,
     skill_path: str,
+    stall_timeout_seconds: int,
 ) -> dict[str, object]:
     return {
         "name": "openclaw-role-runtime",
@@ -59,6 +61,7 @@ def openclaw_config(
             ],
             "cwd": "{workspace_root}",
             "timeoutSeconds": 900,
+            "stallTimeoutSeconds": stall_timeout_seconds,
         },
     }
 
@@ -68,6 +71,7 @@ def claude_config(
     permission_mode: str,
     model: str | None,
     allowed_tools: list[str],
+    stall_timeout_seconds: int,
 ) -> dict[str, object]:
     command = [
         "{python_executable}",
@@ -93,6 +97,7 @@ def claude_config(
             "command": command,
             "cwd": "{workspace_root}",
             "timeoutSeconds": 900,
+            "stallTimeoutSeconds": stall_timeout_seconds,
         },
     }
 
@@ -108,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--openclaw-command", default="openclaw")
     parser.add_argument("--channel", default="telegram")
     parser.add_argument("--skill-path", default=".")
+    parser.add_argument("--stall-timeout-seconds", type=int, default=300)
     args = parser.parse_args(argv)
 
     if args.preset == "mock":
@@ -117,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             openclaw_command=args.openclaw_command,
             channel=args.channel,
             skill_path=args.skill_path,
+            stall_timeout_seconds=args.stall_timeout_seconds,
         )
     elif args.preset == "claude":
         config = claude_config(
@@ -124,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
             permission_mode=args.permission_mode,
             model=args.model,
             allowed_tools=args.allowed_tools or [],
+            stall_timeout_seconds=args.stall_timeout_seconds,
         )
     else:
         raise SystemExit(f"ERROR: unsupported preset {args.preset}")

@@ -34,6 +34,7 @@ def test_generate_mock_config() -> None:
         assert_equal(proc.returncode, 0, "mock config exit")
         payload = json.loads(output_path.read_text(encoding="utf-8"))
         assert_equal(payload["name"], "mock-runtime", "mock config name")
+        assert_equal(payload["default"]["stallTimeoutSeconds"], 10, "mock stall timeout")
         print("  [PASS] test_generate_mock_config")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -69,6 +70,7 @@ def test_generate_claude_config() -> None:
         payload = json.loads(output_path.read_text(encoding="utf-8"))
         command = payload["default"]["command"]
         assert_equal("nexus_claude_role_runtime.py" in " ".join(command), True, "claude adapter referenced")
+        assert_equal(payload["default"]["stallTimeoutSeconds"], 300, "claude stall timeout")
         print("  [PASS] test_generate_claude_config")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -101,6 +103,7 @@ def test_generate_openclaw_config() -> None:
         payload = json.loads(output_path.read_text(encoding="utf-8"))
         command = payload["default"]["command"]
         assert_equal("nexus_openclaw_role_runtime.py" in " ".join(command), True, "openclaw adapter referenced")
+        assert_equal(payload["default"]["stallTimeoutSeconds"], 300, "openclaw stall timeout")
         print("  [PASS] test_generate_openclaw_config")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

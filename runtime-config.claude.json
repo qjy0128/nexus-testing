@@ -19,6 +19,7 @@
       "Bash"
     ],
     "cwd": "{workspace_root}",
-    "timeoutSeconds": 900
+    "timeoutSeconds": 900,
+    "stallTimeoutSeconds": 300
   }
 }
