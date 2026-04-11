@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import subprocess
@@ -11,7 +15,8 @@ import time
 from pathlib import Path
 
 from sandbox_skill_invoke import PROJECT_DIR
-from sandbox_skill_invoke.core import kv, read_text, write_text
+
+from nexus_testing.sandbox_skill_invoke.core import kv, read_text, write_text
 
 
 def parse_kv_output(output: str) -> dict[str, str]:

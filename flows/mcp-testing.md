@@ -1,4 +1,4 @@
-# 流程 D：MCP Server 测试
+﻿# 流程 D：MCP Server 测试
 
 > **所有阶段、角色、输出文件、超时配置均以 `DEFINITIONS.md` 为单一事实源。**
 
@@ -106,7 +106,7 @@
 - 超时处理
 
 
-> **沙箱执行**：当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师可使用沙箱隔离执行 MCP Server 启动、JSON-RPC 调用、协议测试等操作。沙箱规格详见 `reference-sandbox-spec.md`。
+> **沙箱执行**：当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师可使用沙箱隔离执行 MCP Server 启动、JSON-RPC 调用、协议测试等操作。沙箱规格详见 `docs/references/reference-sandbox-spec.md`。
 **证据收集**（独立角色，非并行）：
 
 `roles/evidence-collector.md` 在阶段五所有 subagent 完成后执行一次性验证，收集证据并输出到 `DEFECTS/evidence-collection.md`
@@ -128,3 +128,4 @@
 输出：
 - `FINAL-TEST-REPORT.md`（报告整合师）
 任务：缺陷定级、汇总所有问题、输出 Go/No-Go 建议
+

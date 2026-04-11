@@ -3,13 +3,17 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
 from generate_stage_subagent_plan import normalize_flow, normalize_mode
-from nexus_runtime_bridge import load_runtime_config, run_until_gate
+from nexus_runtime_bridge import load_runtime_config, orchestration_settings, run_until_gate
 from nexus_stage_executor import (
     init_executor,
     read_executor_state,
@@ -105,14 +109,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "start":
         init_result = ensure_initialized(report_dir, args.flow, args.mode)
-        runtime_result = run_until_gate(report_dir, runtime_config, args.max_cycles)
+        runtime_result = run_until_gate(report_dir, runtime_config, args.max_cycles, orchestration_settings(report_dir))
         result = {
             "command": "start",
             "initResult": init_result,
             "summary": build_summary(report_dir, runtime_result),
         }
     elif args.command == "continue":
-        runtime_result = run_until_gate(report_dir, runtime_config, args.max_cycles)
+        runtime_result = run_until_gate(report_dir, runtime_config, args.max_cycles, orchestration_settings(report_dir))
         result = {
             "command": "continue",
             "summary": build_summary(report_dir, runtime_result),
@@ -124,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             "approval": approval_result,
         }
         if args.continue_run:
-            runtime_result = run_until_gate(report_dir, runtime_config, args.max_cycles)
+            runtime_result = run_until_gate(report_dir, runtime_config, args.max_cycles, orchestration_settings(report_dir))
             result["summary"] = build_summary(report_dir, runtime_result)
     else:
         raise SystemExit(f"ERROR: unsupported command {args.command}")

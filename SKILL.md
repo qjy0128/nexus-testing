@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-testing
 description: Nexus AI 测试体系入口。根据用户目标自动分流到 Skill、网页+接口、安卓、MCP 四类流程，并按统一阶段产出结构化测试文档。
 ---
@@ -59,7 +59,7 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 - 缺陷、追溯、准入准出是否完整
 - 占位符或未完成项是否残留
 
-报告格式统一参考 `reference-report-format.md`。
+报告格式统一参考 `docs/references/reference-report-format.md`。
 
 ## 三、单一事实源
 
@@ -133,9 +133,9 @@ Flow A 额外要求：
 - 识别 Node / npm、Python、外部插件、系统命令依赖
 - 使用 `scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir>` 优先生成阶段一三件套；其内部先调用 `scripts/extract_product_fingerprint.py` 抽取事实指纹，再写规格
 - 使用 `scripts/generate_stage_subagent_plan.py --flow <skill|web-api|android|mcp> --mode <standard|b> --output-file <report-dir>/STAGE-SUBAGENT-PLAN.json` 在阶段零生成机器可读调度计划
-- 使用 `scripts/role_metadata.py` 作为 role frontmatter / 兼容章节的统一解析层；新增 role metadata 时优先扩展这个模块，而不是继续把 schema 细节堆进 `nexus_stage_executor.py`
-- 使用 `scripts/dispatch_payload_schema.py` 作为 dispatch payload / DISPATCH manifest 的统一校验层；新增 payload 字段时先扩展这个模块，再修改 `nexus_stage_executor.py`、`nexus_dispatch_runner.py` 和 `nexus_runtime_bridge.py`
-- 使用 `scripts/runtime_config_schema.py` 作为 runtime-config 的统一校验层；新增 runtime 字段时先扩展这个模块，再修改 `generate_runtime_bridge_config.py` 和 `nexus_runtime_bridge.py`
+- 使用 `src/nexus_testing/role_metadata.py` 作为 role frontmatter / 兼容章节的统一解析层；新增 role metadata 时优先扩展这个模块，而不是继续把 schema 细节堆进 `nexus_stage_executor.py`
+- 使用 `src/nexus_testing/dispatch_payload_schema.py` 作为 dispatch payload / DISPATCH manifest 的统一校验层；新增 payload 字段时先扩展这个模块，再修改 `nexus_stage_executor.py`、`nexus_dispatch_runner.py` 和 `nexus_runtime_bridge.py`
+- 使用 `src/nexus_testing/runtime_config_schema.py` 作为 runtime-config 的统一校验层；新增 runtime 字段时先扩展这个模块，再修改 `generate_runtime_bridge_config.py` 和 `nexus_runtime_bridge.py`
 - 使用 `scripts/nexus_stage_executor.py init --report-dir <report-dir> --flow <skill|web-api|android|mcp> --mode <standard|b>` 初始化阶段执行状态
 - 使用 `scripts/nexus_stage_executor.py next --report-dir <report-dir>` 判断当前应启动哪个阶段角色、是否等待批准、或是否进入完成态
 - 使用 `scripts/nexus_stage_executor.py dispatch --report-dir <report-dir>` 为当前阶段生成每个 subagent 的启动载荷
@@ -151,9 +151,9 @@ Flow A 额外要求：
 - 使用 `scripts/nexus_runtime_bridge.py run-once --report-dir <report-dir> --runtime-config <runtime.json>` 将当前阶段 dispatch bundle 真正交给宿主 runtime 执行
 - 使用 `scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config <runtime.json>` 连续执行多个阶段，直到遇到审批门、No-Go、执行失败或完成
 - 当 `skill-tester` 因真实执行环境缺失进入 `takeover-required` 时，优先使用 `scripts/run_flow_a_takeover_execution.py --report-dir <report-dir>` 在 host 环境自动接管剩余 blocked/pending case；该路径默认消费 `CASE-EXECUTION-PLAN.json` 里的 `executionHints.hostTakeover`
-- role metadata 统一优先从 frontmatter 读取：结构校验使用 `output_validation` / `minimum_output` / `minimum_output_aliases`，接管策略使用 `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure`；旧章节写法只作为兼容回退；`scripts/role_metadata.py` 会在解析阶段直接校验 schema，发现非法 key/type/组合时应直接修 role 文档，不要把坏配置继续传到 runtime
-- dispatch payload 和 `DISPATCH/.../manifest.json` 统一由 `scripts/dispatch_payload_schema.py` 校验；若字段缺失、类型不对、角色顺序冲突或 `minimumOutputAliases` / `mainAgentTakeoverPolicy` 结构非法，应在 dispatch 阶段直接失败，不要等到外部 runtime 才暴露
-- `runtime-config` 统一由 `scripts/runtime_config_schema.py` 校验；若 default/roles/fallback 缺命令、超时非法、环境变量结构错误或 takeover policy 结构不完整，应在生成或加载配置时直接失败
+- role metadata 统一优先从 frontmatter 读取：结构校验使用 `output_validation` / `minimum_output` / `minimum_output_aliases`，接管策略使用 `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure`；旧章节写法只作为兼容回退；`src/nexus_testing/role_metadata.py` 会在解析阶段直接校验 schema，发现非法 key/type/组合时应直接修 role 文档，不要把坏配置继续传到 runtime
+- dispatch payload 和 `DISPATCH/.../manifest.json` 统一由 `src/nexus_testing/dispatch_payload_schema.py` 校验；若字段缺失、类型不对、角色顺序冲突或 `minimumOutputAliases` / `mainAgentTakeoverPolicy` 结构非法，应在 dispatch 阶段直接失败，不要等到外部 runtime 才暴露
+- `runtime-config` 统一由 `src/nexus_testing/runtime_config_schema.py` 校验；若 default/roles/fallback 缺命令、超时非法、环境变量结构错误或 takeover policy 结构不完整，应在生成或加载配置时直接失败
 - `runtime-config` 至少提供 `default.command`，支持按角色覆盖；命令模板可使用 `{payload_file}`、`{prompt_file}`、`{report_dir}`、`{stage_id}`、`{role_id}` 等变量；外部 runtime 若 stdout 返回 `{"resultFile":"...", "note":"..."}`，bridge 会自动回写 `RUNS` 状态
 - OpenClaw preset 通过 `nexus_openclaw_role_runtime.py` 调 `openclaw invoke`，更贴近这个 Skill 的原生使用方式；若 OpenClaw 结果 JSON 未直接给出主交付物，适配器会按当前阶段缺失交付物自动探测
 - `run_openclaw_stage_demo.py` 是推荐的 OpenClaw 演练入口，会把初始化、运行到审批门、记录批准和继续推进串成一条可复用命令链
@@ -189,7 +189,7 @@ Flow A 额外要求：
 - 每个阶段交付物必须单独发送，禁止合并两个阶段的输出
 - 在收到批准前，禁止提前执行下一阶段
 
-批准实现细节、拒绝计数、阶段回退入口、无响应处理统一引用 `reference-approval-mechanism.md`。
+批准实现细节、拒绝计数、阶段回退入口、无响应处理统一引用 `docs/references/reference-approval-mechanism.md`。
 
 ## 八、沟通约束
 
@@ -272,25 +272,26 @@ message(action: "send", filePath: "files/nexus-reports/{date}-{test-type}-{flow}
 | 文件 | 用途 |
 |------|------|
 | `DEFINITIONS.md` | 阶段、角色、目录、超时、门禁单一事实源 |
-| `reference-report-format.md` | 报告格式与占位符规范 |
-| `reference-approval-mechanism.md` | 批准、拒绝、无响应与 No-Go 规则 |
-| `reference-sandbox-spec.md` | 沙箱目录、生命周期与安全边界 |
-| `reference-security-scan.md` | 安全扫描维度与判定规则 |
-| `reference-security-blacklist.md` | 安全黑名单与禁用模式 |
-| `reference-external-case-sourcing.md` | 外部测试用例获取方法 |
-| `reference-test-case-templates.md` | 用例模板与反模式清单 |
-| `reference-skill-tier-requirements.md` | Skill 分层要求与层级判定 |
-| `reference-skill-review-framework.md` | Skill 文档与结构审查框架 |
-| `reference-agent-evaluation-methodology.md` | Agent/Skill 测试方法论 |
-| `reference-flow-skill.md` | Flow A 详细模板 |
-| `reference-flow-web-api.md` | Flow B 详细模板 |
-| `reference-flow-android.md` | Flow C 详细模板 |
-| `reference-flow-mcp.md` | Flow D 详细模板 |
-| `reference-expected-outputs.md` | 各阶段预期输出清单 |
-| `reference-output-verification-examples.md` | 输出验证示例 |
-| `reference-production-readiness.md` | 测试完成后的生产就绪检查项 |
-| `reference-recovery.md` | 测试中断后的恢复与续跑机制 |
+| `docs/references/reference-report-format.md` | 报告格式与占位符规范 |
+| `docs/references/reference-approval-mechanism.md` | 批准、拒绝、无响应与 No-Go 规则 |
+| `docs/references/reference-sandbox-spec.md` | 沙箱目录、生命周期与安全边界 |
+| `docs/references/reference-security-scan.md` | 安全扫描维度与判定规则 |
+| `docs/references/reference-security-blacklist.md` | 安全黑名单与禁用模式 |
+| `docs/references/reference-external-case-sourcing.md` | 外部测试用例获取方法 |
+| `docs/references/reference-test-case-templates.md` | 用例模板与反模式清单 |
+| `docs/references/reference-skill-tier-requirements.md` | Skill 分层要求与层级判定 |
+| `docs/references/reference-skill-review-framework.md` | Skill 文档与结构审查框架 |
+| `docs/references/reference-agent-evaluation-methodology.md` | Agent/Skill 测试方法论 |
+| `docs/references/reference-flow-skill.md` | Flow A 详细模板 |
+| `docs/references/reference-flow-web-api.md` | Flow B 详细模板 |
+| `docs/references/reference-flow-android.md` | Flow C 详细模板 |
+| `docs/references/reference-flow-mcp.md` | Flow D 详细模板 |
+| `docs/references/reference-expected-outputs.md` | 各阶段预期输出清单 |
+| `docs/references/reference-output-verification-examples.md` | 输出验证示例 |
+| `docs/references/reference-production-readiness.md` | 测试完成后的生产就绪检查项 |
+| `docs/references/reference-recovery.md` | 测试中断后的恢复与续跑机制 |
 
 维护约束：
 
 - 任何修改入口、流程、角色、参考文档、校验器或执行语义时，必须同步更新 `README.md` 和 `CHANGELOG.md`
+

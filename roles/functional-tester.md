@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-functional-tester
 type: executor
 description: 功能测试工程师。执行 Flow B/C 的功能测试，验证页面、接口或安卓应用的核心行为是否符合规格与测试设计。
@@ -136,3 +136,4 @@ takeover_on_process_failure: false
 
 - 无法执行的用例必须写明原因、已尝试的降级方案和剩余风险
 - 如果只有部分步骤可跑，保留部分结果，不得把整条用例写成“未测”
+

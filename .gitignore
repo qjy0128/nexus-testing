@@ -1,6 +1,8 @@
 # Generated test artifacts
 /memory/nexus-reports/
-/files/nexus-reports/
+!/memory/nexus-reports/.gitkeep
+/files/
+!/files/.gitkeep
 
 # Local sandbox state
 /.nexus-sandbox/
@@ -8,7 +10,7 @@
 /.tmp-validation/
 
 # Generic temp directories
-.tmp/
+/.tmp/
 
 # Local-only docs
 /项目介绍.md

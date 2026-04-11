@@ -3,14 +3,18 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from flow_a_localization import add_output_language_argument
-from json_utils import load_json
-from sandbox_skill_invoke.core import read_text, write_text
+from nexus_testing.flow_a_localization import add_output_language_argument
+from nexus_testing.json_utils import load_json
+from nexus_testing.sandbox_skill_invoke.core import write_text
 
 
 def text(language: str, zh: str, en: str) -> str:

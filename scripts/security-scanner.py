@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Automated security scanner for Nexus Testing Framework.
 
-Implements S1–S4 detection rules from reference-security-scan.md.
+Implements S1–S4 detection rules from docs/references/reference-security-scan.md.
 S5 (supply chain) and S6 (permissions) require runtime context and are
 left as future enhancements; the scanner reports them as SKIPPED.
 
@@ -20,7 +20,6 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import NamedTuple
-
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -622,7 +621,7 @@ class SecurityScanner:
         lines.append("=" * 60)
         lines.append(f"SECURITY SCAN — {self.skill_dir.name}")
         lines.append(f"Path: {self.skill_dir}")
-        lines.append(f"Scanner: nexus-security-scanner (S1-S4 automated)")
+        lines.append("Scanner: nexus-security-scanner (S1-S4 automated)")
         lines.append("=" * 60)
 
         # Per-stage summary
@@ -630,8 +629,6 @@ class SecurityScanner:
             stage_findings = [f for f in self.findings if f.category == stage]
             high_count = sum(1 for f in stage_findings if f.severity in ("CRITICAL", "HIGH"))
             med_count = sum(1 for f in stage_findings if f.severity == "MEDIUM")
-            low_count = sum(1 for f in stage_findings if f.severity in ("LOW", "INFO"))
-
             if not stage_findings:
                 status = "PASS"
             elif high_count:
@@ -725,3 +722,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

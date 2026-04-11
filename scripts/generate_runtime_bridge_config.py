@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
-import sys
 from pathlib import Path
 
-from runtime_config_schema import validate_runtime_config
-from sandbox_skill_invoke.core import write_text
+from nexus_testing.runtime_config_schema import validate_runtime_config
+from nexus_testing.sandbox_skill_invoke.core import write_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -19,8 +22,8 @@ def mock_config() -> dict[str, object]:
         "name": "mock-runtime",
         "default": {
             "command": [
-                sys.executable,
-                str(ROOT / "scripts" / "fixtures" / "mock_role_runtime.py"),
+                "{python_executable}",
+                "{workspace_root}/scripts/fixtures/mock_role_runtime.py",
                 "--payload-file",
                 "{payload_file}",
                 "--prompt-file",
@@ -41,8 +44,8 @@ def openclaw_config(
         "name": "openclaw-role-runtime",
         "default": {
             "command": [
-                sys.executable,
-                str(ROOT / "scripts" / "nexus_openclaw_role_runtime.py"),
+                "{python_executable}",
+                "{workspace_root}/scripts/nexus_openclaw_role_runtime.py",
                 "--payload-file",
                 "{payload_file}",
                 "--prompt-file",
@@ -67,8 +70,8 @@ def claude_config(
     allowed_tools: list[str],
 ) -> dict[str, object]:
     command = [
-        sys.executable,
-        str(ROOT / "scripts" / "nexus_claude_role_runtime.py"),
+        "{python_executable}",
+        "{workspace_root}/scripts/nexus_claude_role_runtime.py",
         "--payload-file",
         "{payload_file}",
         "--prompt-file",
@@ -104,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allowed-tools", nargs="*")
     parser.add_argument("--openclaw-command", default="openclaw")
     parser.add_argument("--channel", default="telegram")
-    parser.add_argument("--skill-path", default=str(ROOT))
+    parser.add_argument("--skill-path", default=".")
     args = parser.parse_args(argv)
 
     if args.preset == "mock":

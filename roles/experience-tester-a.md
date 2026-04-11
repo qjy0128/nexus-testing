@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-experience-tester-a
 type: executor
 description: 体验工程师 A。按自然用户路径独立深度体验产品，记录页面、交互、异常和证据，不与体验工程师 B 预先分工。
@@ -76,3 +76,4 @@ best_for:
 - 证据：
 - 备注：
 ```
+

@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import re
@@ -14,12 +18,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
-from flow_a_synthetic_data import build_dataset
-from json_utils import load_json
 from run_flow_a_browser_execution import run_browser_probe
 from run_flow_a_multi_source_execution import run_multi_source_probe
-from sandbox_skill_invoke.core import read_text, write_text
 
+from nexus_testing.flow_a_synthetic_data import build_dataset
+from nexus_testing.json_utils import load_json
+from nexus_testing.sandbox_skill_invoke.core import write_text
 
 URL_PATTERN = re.compile(r"https?://[^\s`)>]+", re.IGNORECASE)
 HTTP_PROVIDER_ALIASES: dict[str, list[str]] = {
@@ -542,7 +546,7 @@ def render_skill_results(plan: dict[str, object], coverage_map: dict[str, dict[s
             [
                 f"### {surface_id} takeover result",
                 f"- surface-id: `{surface_id}`",
-                f"- execution-level: `shim-live`",
+                "- execution-level: `shim-live`",
                 f"- status: `{entry.get('status', 'pending')}`",
                 f"- evidence: `{(entry.get('caseResults', [{}])[0].get('evidence', [''])[0] if entry.get('caseResults') else '')}`",
                 f"- notes: `{' ; '.join(notes).replace(' ; ', '; ')}`",

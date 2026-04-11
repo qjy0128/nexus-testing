@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import os
@@ -10,14 +14,23 @@ import re
 import shlex
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-from flow_a_localization import add_output_language_argument
-from flow_a_command_builders import build_bin_command, build_launch_command, build_module_probe_command
-from flow_a_mcp_client import StdioJsonRpcClient, choose_tool_for_call
-from json_utils import load_json
-from sandbox_skill_invoke.core import detect_command, find_bash_executable, read_text, write_text
+from nexus_testing.flow_a_command_builders import (
+    build_bin_command,
+    build_launch_command,
+    build_module_probe_command,
+)
+from nexus_testing.flow_a_localization import add_output_language_argument
+from nexus_testing.flow_a_mcp_client import StdioJsonRpcClient, choose_tool_for_call
+from nexus_testing.json_utils import load_json
+from nexus_testing.runtime.policy import EXECUTION_PROFILES, resolve_execution_policy
+from nexus_testing.sandbox_skill_invoke.core import (
+    detect_command,
+    find_bash_executable,
+    read_text,
+    write_text,
+)
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 INVOKE_SCRIPT = PROJECT_DIR / "scripts" / "sandbox_skill_invoke.py"
@@ -904,7 +917,7 @@ def build_provider_case_result(
     summary: str,
     execution_level: str = "shim-live",
 ) -> dict[str, object]:
-    notes = [f"inferred-provider=agentguard", f"inferred-capability={capability}", summary]
+    notes = ["inferred-provider=agentguard", f"inferred-capability={capability}", summary]
     if "error" in probe:
         notes.append(f"probe-error={probe.get('error')}")
     return {
@@ -2700,6 +2713,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sandbox-root", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--channel", default="telegram")
+    parser.add_argument("--execution-profile", choices=EXECUTION_PROFILES, default="internal-fast")
     parser.add_argument("--strict-real", action="store_true")
     parser.add_argument("--verification-manifest")
     add_output_language_argument(parser)
@@ -2729,6 +2743,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.verification_manifest
         else None
     )
+    execution_policy = resolve_execution_policy(args.execution_profile, args.strict_real)
+    effective_strict_real = execution_policy.strict_real
 
     if not surface_plan_path.exists():
         raise SystemExit(f"ERROR: surface plan does not exist: {surface_plan_path}")
@@ -2799,7 +2815,7 @@ def main(argv: list[str] | None = None) -> int:
                             args.session_id,
                             sandbox_root,
                             args.channel,
-                            args.strict_real,
+                            effective_strict_real,
                             verification_manifest,
                         )
                         for case in surface_cases
@@ -2825,7 +2841,7 @@ def main(argv: list[str] | None = None) -> int:
                         session_id=args.session_id,
                         sandbox_root=sandbox_root,
                         channel=args.channel,
-                        strict_real=args.strict_real,
+                        strict_real=effective_strict_real,
                         verification_manifest=verification_manifest,
                     )
                 )
@@ -2891,7 +2907,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.session_id,
                         sandbox_root,
                         args.channel,
-                        args.strict_real,
+                        effective_strict_real,
                         execution_dir,
                     )
                 )
@@ -2937,6 +2953,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"PASSED_SURFACES={passed}")
     print(f"BLOCKED_SURFACES={blocked}")
     print(f"INCOMPLETE_SURFACES={incomplete}")
+    print(f"EXECUTION_PROFILE={execution_policy.name}")
+    print(f"EFFECTIVE_STRICT_REAL={'true' if effective_strict_real else 'false'}")
     print(f"SKILL_RESULTS={execution_dir / 'skill-results.md'}")
     print(f"SURFACE_COVERAGE={coverage_path}")
     return 0

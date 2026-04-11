@@ -1,4 +1,4 @@
-# 流程 C：安卓应用测试
+﻿# 流程 C：安卓应用测试
 
 > **所有阶段、角色、输出文件、超时配置均以 `DEFINITIONS.md` 为单一事实源。**
 
@@ -118,7 +118,7 @@
 - 电量/内存压力测试
 
 
-> **沙箱执行**：当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师可使用沙箱隔离执行 `adb` 命令、APK 安装验证、logcat 捕获等操作。沙箱规格详见 `reference-sandbox-spec.md`。
+> **沙箱执行**：当 TEST-DESIGN.md 中有用例标注 `执行环境：sandbox` 时，测试工程师可使用沙箱隔离执行 `adb` 命令、APK 安装验证、logcat 捕获等操作。沙箱规格详见 `docs/references/reference-sandbox-spec.md`。
 #### 阶段五完成后（后置角色）：证据收集
 
 **执行角色**：`roles/evidence-collector.md`
@@ -142,3 +142,4 @@
 输入：所有测试结果 + `DEFECTS/DEFECT-REPORT.md`
 输出：`FINAL-TEST-REPORT.md`
 任务：缺陷定级、汇总所有问题、输出 Go/No-Go 建议
+

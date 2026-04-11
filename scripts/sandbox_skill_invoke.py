@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import os
@@ -13,7 +17,14 @@ import subprocess
 import time
 from pathlib import Path
 
-from sandbox_skill_invoke.core import (
+from nexus_testing.sandbox_skill_invoke.adapter import detect_adapter
+from nexus_testing.sandbox_skill_invoke.assertions import (
+    collect_delivery_metadata,
+    evaluate_assertions,
+    normalize_context_references,
+)
+from nexus_testing.sandbox_skill_invoke.audit import append_audit_entry
+from nexus_testing.sandbox_skill_invoke.core import (
     PROJECT_DIR,
     bool_text,
     detect_command,
@@ -32,14 +43,7 @@ from sandbox_skill_invoke.core import (
     snapshot_skill_source,
     write_text,
 )
-from sandbox_skill_invoke.adapter import detect_adapter
-from sandbox_skill_invoke.assertions import (
-    collect_delivery_metadata,
-    evaluate_assertions,
-    normalize_context_references,
-)
-from sandbox_skill_invoke.audit import append_audit_entry
-from sandbox_skill_invoke.telemetry import (
+from nexus_testing.sandbox_skill_invoke.telemetry import (
     LIVE_TELEMETRY_PROTOCOL_VERSION,
     LIVE_TELEMETRY_SOURCE,
     inspect_live_runtime_telemetry,
@@ -47,8 +51,8 @@ from sandbox_skill_invoke.telemetry import (
     merge_telemetry_payload,
     write_preferred_output,
 )
-from sandbox_skill_invoke.trace import build_trace
-from sandbox_skill_invoke.verifier import load_verifier_manifest
+from nexus_testing.sandbox_skill_invoke.trace import build_trace
+from nexus_testing.sandbox_skill_invoke.verifier import load_verifier_manifest
 
 
 def main() -> int:

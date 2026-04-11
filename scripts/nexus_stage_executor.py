@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import sys
@@ -10,12 +14,18 @@ import threading
 import time
 from pathlib import Path
 
-from dispatch_payload_schema import validate_bundle_files, validate_bundle_manifest, validate_dispatch_payload_list
 from generate_stage_subagent_plan import build_plan, normalize_flow, normalize_mode
-from json_utils import load_json
-from path_utils import resolve_path
-from role_metadata import parse_role_doc as load_role_doc_metadata
-from sandbox_skill_invoke.core import read_text, write_text
+
+from nexus_testing.dispatch_payload_schema import (
+    validate_bundle_files,
+    validate_bundle_manifest,
+    validate_dispatch_payload_list,
+)
+from nexus_testing.json_utils import load_json
+from nexus_testing.path_utils import resolve_path
+from nexus_testing.role_metadata import parse_role_doc as load_role_doc_metadata
+from nexus_testing.runtime.policy import EXECUTION_PROFILES, resolve_execution_policy
+from nexus_testing.sandbox_skill_invoke.core import write_text
 
 STATE_LOCK = threading.RLock()
 
@@ -24,6 +34,33 @@ def now_text() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 def save_json(path: Path, value: object) -> None:
     write_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
+def build_delivery_config(
+    *,
+    backend: str | None,
+    channel: str,
+    caption: str,
+    command: list[str] | None,
+    timeout_seconds: int,
+    auto_send_on_complete: bool,
+    default_backend: str,
+) -> dict[str, object]:
+    normalized_backend = str(backend or default_backend).strip().lower()
+    if normalized_backend not in {"relay-only", "command"}:
+        normalized_backend = default_backend
+    normalized_command = [str(item).strip() for item in (command or []) if str(item).strip()]
+    if normalized_backend == "command" and not normalized_command:
+        normalized_backend = "relay-only"
+    return {
+        "enabled": True,
+        "autoSendOnComplete": auto_send_on_complete,
+        "channel": str(channel or "telegram").strip() or "telegram",
+        "caption": str(caption or ""),
+        "backend": normalized_backend,
+        "command": normalized_command,
+        "timeoutSeconds": max(1, int(timeout_seconds)),
+    }
 
 
 def stage_key(stage_id: str) -> str:
@@ -197,6 +234,21 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
     payloads: list[dict[str, object]] = []
     roles = actionable_roles_for_stage(report_dir, action)
     run_mode = str(plan.get("runMode", "test"))
+    execution_profile = str(plan.get("executionProfile", "internal-fast"))
+    strict_real = bool(plan.get("strictReal", False))
+    execution_policy = plan.get("executionPolicy", resolve_execution_policy(execution_profile, strict_real).to_dict())
+    delivery = plan.get(
+        "delivery",
+        build_delivery_config(
+            backend=None,
+            channel="telegram",
+            caption="",
+            command=None,
+            timeout_seconds=60,
+            auto_send_on_complete=True,
+            default_backend=resolve_execution_policy(execution_profile, strict_real).default_sender_backend,
+        ),
+    )
     artifacts = available_report_artifacts(report_dir)
     for index, role in enumerate(roles):
         role_id = str(role.get("id"))
@@ -214,6 +266,10 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
                 "dispatchMode": action.get("dispatchMode"),
                 "reportDir": str(report_dir),
                 "runMode": run_mode,
+                "executionProfile": execution_profile,
+                "strictReal": strict_real,
+                "executionPolicy": execution_policy,
+                "delivery": delivery,
                 "missingDeliverables": action.get("missingDeliverables", []),
                 "availableArtifacts": artifacts,
                 "inputSources": role_meta.get("inputSources", []),
@@ -258,6 +314,8 @@ def render_dispatch_prompt(payload: dict[str, object]) -> str:
         f"- Role File: `{payload['roleFile']}`",
         f"- Report Dir: `{payload['reportDir']}`",
         f"- Run Mode: `{payload.get('runMode', 'test')}`",
+        f"- Execution Profile: `{payload.get('executionProfile', 'internal-fast')}`",
+        f"- Strict Real: `{str(bool(payload.get('strictReal', False))).lower()}`",
         f"- Missing Deliverables: {', '.join(str(item) for item in payload.get('missingDeliverables', [])) or '(none)'}",
         f"- Available Report Artifacts: {', '.join(str(item) for item in payload.get('availableArtifacts', [])) or '(none)'}",
         "",
@@ -318,6 +376,20 @@ def render_dispatch_prompt(payload: dict[str, object]) -> str:
             else:
                 rendered = str(value)
             lines.append(f"- {key}: {rendered}")
+    execution_policy = payload.get("executionPolicy", {})
+    if isinstance(execution_policy, dict) and execution_policy:
+        lines.extend(["", "## Execution Policy", ""])
+        for key in ("name", "strict_real", "prefer_host_execution", "run_security_scan", "default_sender_backend"):
+            if key not in execution_policy:
+                continue
+            lines.append(f"- {key}: {execution_policy[key]}")
+    delivery = payload.get("delivery", {})
+    if isinstance(delivery, dict) and delivery:
+        lines.extend(["", "## Delivery Defaults", ""])
+        for key in ("enabled", "autoSendOnComplete", "channel", "backend", "timeoutSeconds"):
+            if key not in delivery:
+                continue
+            lines.append(f"- {key}: {delivery[key]}")
     lines.extend(["", "## Launch Prompt", "", str(payload["launchPrompt"]), ""])
     return "\n".join(lines)
 
@@ -369,13 +441,41 @@ def bundle_dispatch(report_dir: Path, payload_result: dict[str, object]) -> dict
     return result
 
 
-def init_executor(report_dir: Path, flow: str, mode: str, run_mode: str = "test") -> dict[str, object]:
+def init_executor(
+    report_dir: Path,
+    flow: str,
+    mode: str,
+    run_mode: str = "test",
+    *,
+    execution_profile: str = "internal-fast",
+    strict_real: bool = False,
+    delivery_backend: str | None = None,
+    delivery_channel: str = "telegram",
+    delivery_caption: str = "",
+    delivery_command: list[str] | None = None,
+    delivery_timeout_seconds: int = 60,
+    auto_delivery: bool = True,
+) -> dict[str, object]:
     report_dir.mkdir(parents=True, exist_ok=True)
     flow_id = normalize_flow(flow)
     normalized_mode = normalize_mode(flow_id, mode)
     normalized_run_mode = "repair" if str(run_mode).strip().lower() == "repair" else "test"
+    execution_policy = resolve_execution_policy(execution_profile, strict_real)
+    delivery = build_delivery_config(
+        backend=delivery_backend,
+        channel=delivery_channel,
+        caption=delivery_caption,
+        command=delivery_command,
+        timeout_seconds=delivery_timeout_seconds,
+        auto_send_on_complete=auto_delivery,
+        default_backend=execution_policy.default_sender_backend,
+    )
     plan = build_plan(flow_id, normalized_mode)
     plan["runMode"] = normalized_run_mode
+    plan["executionProfile"] = execution_policy.name
+    plan["strictReal"] = execution_policy.strict_real
+    plan["executionPolicy"] = execution_policy.to_dict()
+    plan["delivery"] = delivery
     plan_path = report_dir / "STAGE-SUBAGENT-PLAN.json"
     approval_path = report_dir / "approval-records.json"
     rejection_path = report_dir / "rejection-count.json"
@@ -396,6 +496,10 @@ def init_executor(report_dir: Path, flow: str, mode: str, run_mode: str = "test"
         "flowId": flow_id,
         "mode": normalized_mode,
         "runMode": normalized_run_mode,
+        "executionProfile": execution_policy.name,
+        "strictReal": execution_policy.strict_real,
+        "executionPolicy": execution_policy.to_dict(),
+        "delivery": delivery,
     }
 
 
@@ -558,6 +662,14 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--flow", required=True)
     init_parser.add_argument("--mode", default="standard")
     init_parser.add_argument("--run-mode", default="test")
+    init_parser.add_argument("--execution-profile", choices=EXECUTION_PROFILES, default="internal-fast")
+    init_parser.add_argument("--strict-real", action="store_true")
+    init_parser.add_argument("--delivery-backend", choices=("relay-only", "command"))
+    init_parser.add_argument("--delivery-channel", default="telegram")
+    init_parser.add_argument("--delivery-caption", default="")
+    init_parser.add_argument("--delivery-command", nargs="+")
+    init_parser.add_argument("--delivery-timeout-seconds", type=int, default=60)
+    init_parser.add_argument("--no-auto-delivery", action="store_true")
 
     status_parser = sub.add_parser("status", help="Inspect current orchestration state")
     status_parser.add_argument("--report-dir", required=True)
@@ -600,7 +712,20 @@ def main(argv: list[str] | None = None) -> int:
     report_dir = resolve_path(args.report_dir)
 
     if args.command == "init":
-        result = init_executor(report_dir, args.flow, args.mode, args.run_mode)
+        result = init_executor(
+            report_dir,
+            args.flow,
+            args.mode,
+            args.run_mode,
+            execution_profile=args.execution_profile,
+            strict_real=args.strict_real,
+            delivery_backend=args.delivery_backend,
+            delivery_channel=args.delivery_channel,
+            delivery_caption=args.delivery_caption,
+            delivery_command=args.delivery_command,
+            delivery_timeout_seconds=args.delivery_timeout_seconds,
+            auto_delivery=not args.no_auto_delivery,
+        )
     elif args.command == "status":
         plan, approvals, rejections, stage_log = read_executor_state(report_dir)
         result = {

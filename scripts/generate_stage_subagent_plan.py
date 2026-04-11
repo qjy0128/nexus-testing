@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from sandbox_skill_invoke.core import write_text
-
+from nexus_testing.sandbox_skill_invoke.core import write_text
 
 FLOW_ALIASES = {
     "a": "A",

@@ -801,3 +801,25 @@ eference-flow-skill.md、README.md，同步阶段五 runner 的真实执行语�
 - 更新：`scripts/nexus_stage_executor.py`、`scripts/dispatch_payload_schema.py`、`scripts/role_runtime_prompt.py`，新增 `runMode=test|repair` 和 `availableArtifacts`；默认测试模式下明确禁止修改被测仓库，只允许在报告目录写产物
 - 更新：`scripts/generate_flow_a_test_design.py` 与 `scripts/test_flow_a_test_design.py`，阶段三会把 `CASE-EXECUTION-PLAN.json.coverageSummary` 作为机器统计来源写出，并在 `TEST-DESIGN.md` 标注 machine-derived coverage，避免阶段三口头统计与阶段四机器校验打架
 - 更新：`scripts/run_flow_a_takeover_execution.py`、`scripts/nexus_runtime_bridge.py` 及相关 smoke tests，host takeover 现在会输出 `TEST-EXECUTION/REMAINING-CASES.json|md`，并把 `remainingIncompleteCases` 也纳入门禁；只要还有 blocked/incomplete case，就不会把 `skill-tester` 记为 completed
+### v0.9.46（2026-04-11）**执行链路收口 + reference 收敛**
+
+- 更新：`runtime-config.claude.json`、`runtime-config.openclaw.json`、`scripts/generate_runtime_bridge_config.py`、`scripts/nexus_runtime_bridge.py`，移除本机绝对路径依赖，统一改成 `{python_executable}` / `{workspace_root}` 占位，并把 Python 可执行路径注入到 runtime payload context。
+- 更新：`.github/workflows/validate-framework.yml`，CI 现在会 `pip install -e .[dev]`、显式执行 `ruff check .`、`pytest -q` 和 `python scripts/validate-framework.py`，不再只跑单一自定义校验脚本。
+- 更新：`scripts/nexus_stage_executor.py`、`scripts/nexus_dispatch_runner.py`、`scripts/nexus_runtime_bridge.py`、`src/nexus_testing/dispatch_payload_schema.py` 与相关 smoke tests，把 `executionProfile` / `strictReal` / `executionPolicy` / `delivery` 贯通到主编排链路；流程完成后可自动生成 delivery record、镜像 `files/` 并要求用户确认回执。
+- 更新：`scripts/*` 入口全面切到 `nexus_testing.sandbox_skill_invoke.*` 和 `src/nexus_testing/*` 的 canonical import，消除 `sandbox_skill_invoke` 双模块身份；删除 `scripts/test_*.py`、`scripts/dispatch_payload_schema.py`、`scripts/runtime_config_schema.py`、`scripts/role_metadata.py`、`scripts/validate_contracts.py` 等纯 shim 兼容层。
+- 新增：`validation-manifest.json`，把 required files / critical smoke tests 从 `scripts/validate-framework.py` 的硬编码清单改成 manifest 驱动；补齐 `reference-recovery`、runtime-config 和关键 smoke test 注册。
+- 更新：`docs/references/`，将全部 `reference-*.md` 收敛到统一目录；同步 `README.md`、`SKILL.md`、`CLAUDE.md`、`DEFINITIONS.md`、`flows/*.md`、`roles/*.md`、`src/nexus_testing/validate_contracts.py` 和 `scripts/validate-framework.py` 的引用路径。
+- 更新：`docs/references/reference-sandbox-spec.md`、`docs/references/reference-test-case-templates.md` 与 `DEFINITIONS.md`，统一 7 级降级阶梯口径，补齐 `Sanity` 回归套件层级。
+- 更新：`.gitignore`、`memory/nexus-reports/.gitkeep`、`files/.gitkeep`、`docs/README.md`、`tests/README.md`、`CLAUDE.md`，明确运行期目录策略、测试根目录和文档目录状态。
+
+### v0.9.45（2026-04-11）**工程骨架收口 + delivery 闭环补齐**
+
+- 新增：`pyproject.toml`，为仓库补齐 Python 工程元数据、`pytest` 入口和 `ruff` 配置。
+- 新增：`src/nexus_testing/`、`tests/`、`docs/` 目录骨架，把主实现与测试目录从 `scripts/` 中抽离，并保留旧入口兼容层。
+- 更新：`scripts/_bootstrap.py` 与 `tests/_bootstrap.py`，统一注入仓库根、`src/`、`scripts/`、`tests/` 路径，保证兼容入口和直跑测试都能工作。
+- 更新：`scripts/frontmatter_utils.py`、`scripts/path_utils.py`、`scripts/json_utils.py`、`scripts/dispatch_payload_schema.py`、`scripts/runtime_config_schema.py`、`scripts/role_runtime_prompt.py`、`scripts/role_metadata.py`、`scripts/validate_contracts.py`、`scripts/flow_a_*`、`scripts/extract_product_fingerprint.py`、`scripts/prepare_report_delivery.py` 与 `scripts/sandbox_skill_invoke/`，主实现迁入 `src/nexus_testing/`，`scripts/` 侧改为兼容 wrapper。
+- 更新：全部 `scripts/test_*.py` 主测试迁入 `tests/`，`scripts/test_*.py` 保留兼容入口；`validate-framework.py` 改为从 `tests/test_*.py` 动态发现 runtime smoke tests，并同时校验 `scripts/`、`src/`、`tests/` 的 Python 语法。
+- 新增：`src/nexus_testing/delivery/`、`src/nexus_testing/nexus_delivery.py`、`scripts/nexus_delivery.py` 与 `tests/test_nexus_delivery.py`，补齐报告 relay、发送、receipt 落盘、用户确认和状态查询的通用闭环；可先走 `relay-only`，也可用 `--backend command --command ...` 接入真实外部 sender。
+- 新增：`src/nexus_testing/runtime/policy.py`，提供 `internal-fast` / `balanced` / `strict` 三档执行策略；`scripts/run_flow_a_skill_execution.py` 新增 `--execution-profile`，默认走 `internal-fast`。
+- 更新：`src/nexus_testing/prepare_report_delivery.py` 改为复用 `delivery/relay.py`，避免中转路径逻辑继续散落。
+- 更新：`README.md`，同步仓库结构、测试目录迁移、delivery CLI 和 execution profile 的使用说明。

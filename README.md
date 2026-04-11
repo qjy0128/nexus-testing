@@ -44,6 +44,8 @@
 - **静态分析结论限制**：没有真实执行证据时，不得给出 `PASS` / `PARTIAL PASS`，只能给 `blocked` 或 `incomplete`。
 - **输出语言**：所有交付物的描述性内容必须使用用户发起测试请求的语言；Flow A 生成器和 runner 支持显式传 `--language <request-language>`。
 - **交付物发送路径**：报告先写入 `memory/nexus-reports/...`，对外发送前使用 `python scripts/prepare_report_delivery.py --report-file <memory-report-file>` 镜像到 `files/...`。
+- **交付物发送闭环**：需要真实发送和用户确认时，使用 `python scripts/nexus_delivery.py send|confirm|status ...` 记录 receipt、evidence 和确认状态，而不再只停留在文件中转。
+- **内部测试默认策略**：Flow A runner 新增 `--execution-profile internal-fast|balanced|strict`，默认 `internal-fast`，优先 host 执行并降低不必要的强门禁。
 
 `sandbox-exec.sh` 支持 `--backend host-logged|container` 双后端，其中 `container` 可通过 Docker/Podman 运行容器化命令，默认断网并挂载当前 session workspace。
 
@@ -140,9 +142,9 @@ python scripts/nexus_stage_executor.py init --report-dir <report-dir> --flow <sk
 python scripts/nexus_stage_executor.py next --report-dir <report-dir> # 读取调度计划、交付物和审批状态，给出下一步该启动的阶段角色
 python scripts/nexus_stage_executor.py dispatch --report-dir <report-dir> # 输出当前阶段每个 subagent 的 dispatch payload（角色文件、输入、输出、启动提示）
 python scripts/nexus_stage_executor.py bundle-dispatch --report-dir <report-dir> # 将当前阶段 dispatch payload 落成 DISPATCH/ 目录下的 manifest、payload.json 和 prompt.md 文件
-python scripts/test_role_metadata.py   # 校验 role frontmatter / 章节兼容解析是否正确
-python scripts/test_dispatch_payload_schema.py # 校验 dispatch payload / bundle manifest schema 是否正确并能拦截坏配置
-python scripts/test_runtime_config_schema.py # 校验 runtime-config schema 是否正确并能拦截坏配置
+python tests/test_role_metadata.py   # 校验 role frontmatter / 章节兼容解析是否正确
+python tests/test_dispatch_payload_schema.py # 校验 dispatch payload / bundle manifest schema 是否正确并能拦截坏配置
+python tests/test_runtime_config_schema.py # 校验 runtime-config schema 是否正确并能拦截坏配置
 python scripts/nexus_dispatch_runner.py prepare --report-dir <report-dir> # 将当前 DISPATCH bundle 转成 RUNS/ 目录下的运行清单
 python scripts/nexus_dispatch_runner.py start-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> # 标记某个角色已开始执行
 python scripts/nexus_dispatch_runner.py complete-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --result-file <artifact> # 标记角色完成并记录结果文件
@@ -162,11 +164,13 @@ python scripts/diagnose_bash_runtime.py     # 诊断为什么当前环境没有�
 python scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir> # 生成 Flow A 阶段一三件套
 python scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language> # 生成多表面 TEST-DESIGN + SURFACE-EXECUTION-PLAN + CASE-EXECUTION-PLAN
 python scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir> --language <request-language> # 生成阶段五 surface 工单与初始 SURFACE-COVERAGE
-python scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --case-plan <CASE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --language <request-language> # 优先按 case plan 执行 skill-tester；若 testing.json 提供 caseExecutionHarness / caseExecutionHarnesses，则逐 case 真实执行并回填 case coverage；否则对 skill surface 启用框架内置 generic case executor，自动逐 case 调用 skill，并对缺少强断言的 case 保守记为 incomplete；非 skill surface 默认按 surface 级能力生成单条 structural case，避免设计/执行错配
+python scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --case-plan <CASE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --execution-profile <internal-fast|balanced|strict> --language <request-language> # 优先按 case plan 执行 skill-tester；若 testing.json 提供 caseExecutionHarness / caseExecutionHarnesses，则逐 case 真实执行并回填 case coverage；否则对 skill surface 启用框架内置 generic case executor，自动逐 case 调用 skill，并对缺少强断言的 case 保守记为 incomplete；非 skill surface 默认按 surface 级能力生成单条 structural case，避免设计/执行错配
 python scripts/prepare_report_delivery.py --report-file memory/nexus-reports/<date>-<type>-<flow>/<artifact>.md # 镜像阶段交付物到 files/... 供平台发送
+python scripts/nexus_delivery.py send --report-file memory/nexus-reports/<date>-<type>-<flow>/<artifact>.md --backend relay-only # 记录发送动作；若接入外部 sender，可改用 --backend command --command ...
 python scripts/security-scanner.py <dir>     # 安全扫描
-python scripts/test_sandbox_lifecycle.py     # E2E 生命周期测试
-python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke test
+python tests/test_sandbox_lifecycle.py       # E2E 生命周期测试
+python tests/test_sandbox_exec_container.py  # sandbox-exec 容器后端 smoke test
+python tests/test_nexus_delivery.py          # delivery 闭环与执行策略 smoke test
 ```
 
 `validate-framework.py` 当前会校验：
@@ -178,7 +182,7 @@ python scripts/test_sandbox_exec_container.py # sandbox-exec 容器后端 smoke 
 - 仓库内自带 JS helper 的 `package-lock.json` 是否存在且未被 `.gitignore` 错误忽略
 - Flow 文件是否保留对 `DEFINITIONS.md` 的单一事实源声明
 - Python 辅助脚本是否能通过 `py_compile`
-- `reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
+- `docs/references/reference-approval-mechanism.md` 与 `DEFINITIONS.md` 的关键工件定义是否一致
 - 阶段调度、dispatch runner 和 runtime bridge 是否都接入文档与脚本契约
 - runtime bridge 是否能在角色失败时区分 `role-failed` 与 `takeover-required`，并为主 agent 留下可执行的接管工单
 - Flow A 的 `skill-tester` 在纯指令型 Skill 被真实执行环境卡住时，是否能优先触发 host takeover executor，自动接管剩余 blocked/pending case，而不是只能人工补跑或要求仓库预置 `testing.json`
@@ -250,11 +254,11 @@ python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> 
 
 `nexus_claude_role_runtime.py` 会读取 `payload.json` 和 `prompt.md`，拼出当前阶段角色的完整执行 prompt，然后用 `claude --print --output-format json --json-schema ...` 非交互执行，并把 Claude 返回的 `resultFile/note` 交回 runtime bridge。prompt 会显式携带角色职责、执行规则、证据要求和反模式，减少 subagent 只交空壳文件的概率。
 
-现在 role metadata 统一优先从 frontmatter 读取。对 markdown 结构校验，使用 `output_validation`、`minimum_output`、`minimum_output_aliases`；对主 agent 接管，使用 `takeover_enabled`、`takeover_statuses`、`takeover_patterns`、`takeover_on_process_failure`。`scripts/role_metadata.py` 负责解析这些字段并兼容旧章节写法；`nexus_stage_executor.py` 只负责把解析结果写进 dispatch payload。若旧角色还保留 `输出结构校验` / `输出结构校验别名` / `主Agent接管策略` 章节，parser 仍兼容，但新角色应优先使用 frontmatter schema。`role_metadata.py` 还会在解析阶段校验 frontmatter key/type/组合是否合法，提前拦截无效 alias、无效 takeover 配置和不受支持的 validation rule。
+现在 role metadata 统一优先从 frontmatter 读取。对 markdown 结构校验，使用 `output_validation`、`minimum_output`、`minimum_output_aliases`；对主 agent 接管，使用 `takeover_enabled`、`takeover_statuses`、`takeover_patterns`、`takeover_on_process_failure`。`src/nexus_testing/role_metadata.py` 负责解析这些字段并兼容旧章节写法；`nexus_stage_executor.py` 只负责把解析结果写进 dispatch payload。若旧角色还保留 `输出结构校验` / `输出结构校验别名` / `主Agent接管策略` 章节，parser 仍兼容，但新角色应优先使用 frontmatter schema。`role_metadata.py` 还会在解析阶段校验 frontmatter key/type/组合是否合法，提前拦截无效 alias、无效 takeover 配置和不受支持的 validation rule。
 
-dispatch payload 现在也有独立 schema。`scripts/dispatch_payload_schema.py` 会校验 `nexus_stage_executor.py` 产出的 payload 和 `DISPATCH/.../manifest.json` 的字段、类型、角色顺序、别名映射与 takeover policy 结构；`nexus_dispatch_runner.py` / `nexus_runtime_bridge.py` 在消费前会再次校验，避免损坏的 dispatch bundle 混入运行阶段。
+dispatch payload 现在也有独立 schema。`src/nexus_testing/dispatch_payload_schema.py` 会校验 `nexus_stage_executor.py` 产出的 payload 和 `DISPATCH/.../manifest.json` 的字段、类型、角色顺序、别名映射与 takeover policy 结构；`nexus_dispatch_runner.py` / `nexus_runtime_bridge.py` 在消费前会再次校验，避免损坏的 dispatch bundle 混入运行阶段。
 
-`runtime-config` 现在也有独立 schema。`scripts/runtime_config_schema.py` 会校验 root/default/roles/fallback 的字段、命令数组、超时、环境变量和 takeover 配置；`generate_runtime_bridge_config.py` 生成后会先自校验，`nexus_runtime_bridge.py` 读取时也会再次校验，避免坏 config 直到真正起外部命令时才失败。
+`runtime-config` 现在也有独立 schema。`src/nexus_testing/runtime_config_schema.py` 会校验 root/default/roles/fallback 的字段、命令数组、超时、环境变量和 takeover 配置；`generate_runtime_bridge_config.py` 生成后会先自校验，`nexus_runtime_bridge.py` 读取时也会再次校验，避免坏 config 直到真正起外部命令时才失败。
 
 如果宿主 runtime 是 OpenClaw CLI，更符合这个 Skill 的主目标定位，可直接这样起步：
 
@@ -288,32 +292,34 @@ nexus-testing/
 │   ├── android-testing.md      #   Flow C — 安卓测试
 │   └── mcp-testing.md          #   Flow D — MCP 测试
 ├── roles/                      # 21 个活跃角色
+├── src/nexus_testing/            # 主实现代码
+│   ├── delivery/                 # 交付物 relay/send/confirm/store
+│   ├── runtime/                  # 执行策略与运行时政策
+│   └── sandbox_skill_invoke/     # Python 沙箱包主实现
+├── tests/                        # 主测试目录
+│   ├── test_nexus_delivery.py    # delivery 闭环 smoke test
+│   ├── test_sandbox_lifecycle.py # E2E 生命周期测试
+│   └── test_flow_a_*.py          # Flow A 回归测试
 ├── scripts/
 │   ├── sandbox-*.sh            # 沙箱执行脚本（invoke/exec/multi-turn/...）
-│   ├── extract_product_fingerprint.py # Flow A 产品事实指纹提取
+│   ├── nexus_delivery.py       # delivery CLI 兼容入口
+│   ├── extract_product_fingerprint.py # Flow A 产品事实指纹提取兼容入口
 │   ├── generate_flow_a_stage1.py # Flow A 阶段一产物生成
 │   ├── generate_flow_a_test_design.py # Flow A 阶段三多表面测试设计生成
 │   ├── generate_flow_a_skill_execution.py # Flow A 阶段五 surface 工单生成
 │   ├── run_flow_a_skill_execution.py # Flow A 阶段五 case/surface 执行 runner
-│   ├── sandbox_skill_invoke/   # Python 沙箱包（源码快照+安全复制）
 │   ├── security-scanner.py     # 安全扫描
 │   ├── validate-framework.py   # 框架结构校验
 │   ├── skill-structure-validator.py
-│   ├── test_sandbox_lifecycle.py
-│   ├── test_sandbox_exec_container.py
-│   ├── test_flow_a_*.py        # Flow A 行为级回归测试
-│   ├── test_flow_a_stage1.py   # 阶段一生成链 smoke test
-│   ├── test_flow_a_skill_execution.py # 阶段五 surface 执行链 smoke test
-│   ├── test_flow_a_surface_runner.py # 阶段五 surface runner smoke test
-│   ├── test_flow_a_test_design.py # 阶段三多表面设计 smoke test
-│   ├── test_product_fingerprint.py # 产品事实指纹 smoke test
 │   ├── validate_flow_a_skill_results.py # 校验 skill-results 是否覆盖全部 surface
 │   └── fixtures/               # 元测试固件（pass/defect/extreme）
-├── reference-*.md              # 17 个参考文档
+├── docs/
+│   ├── references/             # 18 个参考文档
+│   └── *.md                    # 计划、评估和执行文档
 ├── archive/                    # 已归档的历史模板和 changelog
 ├── .github/workflows/          # CI
 ├── memory/nexus-reports/       # 运行期产物（不入库）
-└── files/nexus-reports/        # 对外发送前的工作区中转附件（不入库）
+└── files/                      # 对外发送前的工作区中转附件（不入库）
 ```
 
 角色目录包含 21 个活跃角色和 1 个已归档模板（`archive/roles/compatibility-tester-skill.md`）。
@@ -344,33 +350,35 @@ nexus-testing/
 - 运行期文件写入 `memory/nexus-reports/`、`.nexus-sandbox/`、`.tmp-test-runs/`、`.tmp-validation/` 等目录，不要把这些产物提交回仓库。
 - 任何修改入口、流程、角色或参考文档后，都应先跑一次 `python scripts/validate-framework.py`。
 - 任何修改入口、流程、角色、参考文档、校验器或执行语义时，必须同步更新 `README.md` 和 `CHANGELOG.md`。
+- 主实现优先放在 `src/nexus_testing/`，`scripts/` 默认只保留 CLI 和兼容入口。
+- 主测试统一放在 `tests/`，直接执行 `python tests/test_*.py` 或 `pytest` 即可。
 - 仓库内维护的 JS helper 需要提交对应 `package-lock.json`，保证 Playwright 等依赖可复现安装。
 - Shell 脚本默认按 LF 换行维护，避免在 Git Bash / Linux 环境中出现执行异常。
-- 新增脚本文件需要在 `validate-framework.py` 的 `REQUIRED_*` 列表中注册。
+- 新增核心脚本、源码模块或测试支持文件需要在 `validation-manifest.json` 注册，新增 smoke test 会由 `tests/test_*.py` 自动发现。
 
 ## 参考文档一览
 
 | 文件 | 用途 |
 |------|------|
 | `DEFINITIONS.md` | 阶段、角色、门禁、超时单一事实源 |
-| `reference-sandbox-spec.md` | 沙箱执行环境完整规格 |
-| `reference-security-scan.md` | 安全扫描规则 |
-| `reference-security-blacklist.md` | 安全黑名单 |
-| `reference-approval-mechanism.md` | 批准/拒绝/无响应规则 |
-| `reference-recovery.md` | 测试中断后的恢复/续跑机制 |
-| `reference-report-format.md` | 报告输出格式规范 |
-| `reference-production-readiness.md` | 生产就绪检查清单 |
-| `reference-flow-skill.md` | Flow A 详细参考 |
-| `reference-flow-web-api.md` | Flow B 详细参考 |
-| `reference-flow-android.md` | Flow C 详细参考 |
-| `reference-flow-mcp.md` | Flow D 详细参考 |
-| `reference-expected-outputs.md` | 各阶段预期输出 |
-| `reference-output-verification-examples.md` | 输出验证示例 |
-| `reference-test-case-templates.md` | 用例模板 |
-| `reference-external-case-sourcing.md` | 外部用例来源 |
-| `reference-skill-tier-requirements.md` | Skill 分层要求 |
-| `reference-skill-review-framework.md` | Skill 评审框架 |
-| `reference-agent-evaluation-methodology.md` | Agent 评估方法论 |
+| `docs/references/reference-sandbox-spec.md` | 沙箱执行环境完整规格 |
+| `docs/references/reference-security-scan.md` | 安全扫描规则 |
+| `docs/references/reference-security-blacklist.md` | 安全黑名单 |
+| `docs/references/reference-approval-mechanism.md` | 批准/拒绝/无响应规则 |
+| `docs/references/reference-recovery.md` | 测试中断后的恢复/续跑机制 |
+| `docs/references/reference-report-format.md` | 报告输出格式规范 |
+| `docs/references/reference-production-readiness.md` | 生产就绪检查清单 |
+| `docs/references/reference-flow-skill.md` | Flow A 详细参考 |
+| `docs/references/reference-flow-web-api.md` | Flow B 详细参考 |
+| `docs/references/reference-flow-android.md` | Flow C 详细参考 |
+| `docs/references/reference-flow-mcp.md` | Flow D 详细参考 |
+| `docs/references/reference-expected-outputs.md` | 各阶段预期输出 |
+| `docs/references/reference-output-verification-examples.md` | 输出验证示例 |
+| `docs/references/reference-test-case-templates.md` | 用例模板 |
+| `docs/references/reference-external-case-sourcing.md` | 外部用例来源 |
+| `docs/references/reference-skill-tier-requirements.md` | Skill 分层要求 |
+| `docs/references/reference-skill-review-framework.md` | Skill 评审框架 |
+| `docs/references/reference-agent-evaluation-methodology.md` | Agent 评估方法论 |
 
 ## 支持渠道
 
@@ -378,4 +386,5 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 
 ## 当前版本
 
-v0.9.44 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.46 — 详见 [CHANGELOG.md](CHANGELOG.md)
+

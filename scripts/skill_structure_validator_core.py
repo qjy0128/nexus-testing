@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Core validation logic for the Nexus skill structure validator."""
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import ast
 import re
 import subprocess
@@ -9,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from frontmatter_utils import parse_frontmatter
+from nexus_testing.frontmatter_utils import parse_frontmatter
 
 # Version
 VERSION = "1.1.0"
@@ -205,7 +209,7 @@ class SkillStructureValidator:
 
         try:
             content = skill_md_path.read_text(encoding='utf-8-sig')
-            lines = [l for l in content.split('\n') if l.strip()]
+            lines = [line for line in content.split('\n') if line.strip()]
             line_count = len(lines)
             self.skill_md_line_count = line_count
 
@@ -690,7 +694,7 @@ class SkillStructureValidator:
 
         if not missing_dirs:
             self.report.add_check("tier_dirs", True,
-                                 f"All required directories present", 1.0)
+                                 "All required directories present", 1.0)
         else:
             self.report.add_check("tier_dirs", False,
                                  f"Missing directories: {', '.join(missing_dirs)}", 0.0)

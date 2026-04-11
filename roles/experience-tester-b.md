@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-experience-tester-b
 type: executor
 description: 体验工程师 B。以差异化路径独立深度体验产品，优先覆盖边缘入口、移动端和异常状态，不与体验工程师 A 预先分工。
@@ -76,3 +76,4 @@ best_for:
 - 实际结果：
 - 证据：
 ```
+

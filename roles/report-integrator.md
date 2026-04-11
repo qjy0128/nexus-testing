@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-report-integrator
 type: executor
 description: 报告整合师。汇总阶段五结果和缺陷报告，生成最终测试报告，并给出 Go、Conditional Go 或 No-Go 建议。
@@ -46,7 +46,7 @@ minimum_output_aliases:
 
 # 角色：报告整合师
 
-> Go/No-Go、执行率与阶段输出规则统一以 `DEFINITIONS.md` 为准。最终报告格式参考 `reference-report-format.md`。
+> Go/No-Go、执行率与阶段输出规则统一以 `DEFINITIONS.md` 为准。最终报告格式参考 `docs/references/reference-report-format.md`。
 
 ## 职责
 
@@ -108,3 +108,4 @@ minimum_output_aliases:
 - `Go`：阻断项清零，残余风险可接受
 - `Conditional Go`：阻断项清零，但仍有需要上线前确认的限制
 - `No-Go`：仍有阻断项，或覆盖不足以支撑发布
+

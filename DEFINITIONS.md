@@ -1,4 +1,4 @@
-# Nexus Testing Framework — 单一事实源
+﻿# Nexus Testing Framework — 单一事实源
 
 > 此文件定义共享阶段、角色、文件、超时和 Flow 基线；Flow/Reference 文件可按第六节-B 的优先级补充更具体的场景规则，主入口和 Role 文件默认引用这里的公共定义。
 
@@ -642,7 +642,7 @@ test-designer 分析被测产品功能
 
 ## 十四、沙箱执行环境
 
-> **完整规格统一引用** `reference-sandbox-spec.md`。以下为关键定义速查。
+> **完整规格统一引用** `docs/references/reference-sandbox-spec.md`。以下为关键定义速查。
 
 ### 沙箱根路径
 
@@ -670,20 +670,23 @@ test-designer 分析被测产品功能
 
 ### 与降级阶梯的关系
 
-> **完整降级阶梯定义见** `reference-sandbox-spec.md` **第八节。**以下仅为速查映射。
+> **完整降级阶梯定义见** `docs/references/reference-sandbox-spec.md` **第八节。**以下仅为速查映射。
 
 | 降级阶梯级别 | 沙箱状态 |
 |------------|---------|
-| 1–2 (`live` / `shim-live`) | 真实执行，沙箱提供隔离目录和运行时 |
+| 1 (`live`) | 真实执行，OpenClaw live runtime |
+| 2 (`shim-live`) | 本地适配器真实执行 |
 | 3 (`trace`) | 仅静态路径追踪 |
 | 4 (`sandbox-exec`) | 通用命令执行，可信 `host-logged` / 不可信 `container` |
-| 5–7 | 沙箱不可用或能力不足时的降级手段 |
+| 5（构造模拟） | 手工构造输入/输出并明确说明边界 |
+| 6（部分执行） | 仅执行可执行子步骤并标注未覆盖范围 |
+| 7（静态分析） | 最后手段，必须明确未执行 |
 
 ---
 
 ## 十五、外部测试用例获取
 
-> **完整规格统一引用** `reference-external-case-sourcing.md`。以下为关键定义速查。
+> **完整规格统一引用** `docs/references/reference-external-case-sourcing.md`。以下为关键定义速查。
 
 ### 编号约定
 
@@ -715,7 +718,7 @@ TEST-DESIGN.md 中引用的外部用例必须包含来源追溯表：
 
 ### 评估最低分
 
-外部用例必须通过评估评分卡（6 维度加权），加权平均分 ≥ 2.0/3.0 方可采纳。详见 `reference-external-case-sourcing.md`。
+外部用例必须通过评估评分卡（6 维度加权），加权平均分 ≥ 2.0/3.0 方可采纳。详见 `docs/references/reference-external-case-sourcing.md`。
 
 ---
 
@@ -841,3 +844,4 @@ TEST-DESIGN.md 中引用的外部用例必须包含来源追溯表：
 - TEST-DESIGN.md 中每个用例标注 `capability-id` + `test-dimension`
 - 阶段四构建 CAP × TD 覆盖矩阵，验证必测维度被覆盖
 - 阶段六/七根据 CAP-ID 定位缺陷和展示覆盖率
+

@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-test-designer
 type: executor
 description: 测试设计师。根据 SPEC.md 设计完整的测试用例集、测试策略和测试数据方案，为各测试工程师提供执行依据。
@@ -206,3 +206,4 @@ TEST-DESIGN.md 末尾必须包含**能力 × 维度覆盖矩阵**。
 ## 输出结构校验别名
 - 测试用例集 => 测试用例
 - 风险与备注 => 风险
+

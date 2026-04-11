@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import os
@@ -17,209 +21,106 @@ from pathlib import Path
 from shutil import which
 from urllib.parse import unquote
 
-from frontmatter_utils import parse_frontmatter
-from role_metadata import validate_frontmatter_schema as validate_role_frontmatter_schema
-from sandbox_skill_invoke.core import (
+from nexus_testing.frontmatter_utils import parse_frontmatter
+from nexus_testing.role_metadata import (
+    validate_frontmatter_schema as validate_role_frontmatter_schema,
+)
+from nexus_testing.sandbox_skill_invoke.core import (
     find_bash_executable as _core_find_bash_executable,
+)
+from nexus_testing.sandbox_skill_invoke.core import (
     read_text as _core_read_text,
 )
-from validate_contracts import (
+from nexus_testing.validate_contracts import (
     validate_claude_runtime_contract,
-    validate_dispatch_runner_contract,
     validate_definition_consistency,
+    validate_dispatch_runner_contract,
     validate_flow_a_case_depth_contract,
     validate_flow_a_fact_contract,
     validate_flow_a_runtime_harness_contract,
     validate_flow_a_surface_execution_contract,
     validate_flow_a_surface_plan_contract,
-    validate_flow_role_consistency as _validate_flow_role_consistency,
     validate_message_send_contract,
-    validate_output_language_contract,
-    validate_openclaw_runtime_contract,
     validate_openclaw_demo_contract,
+    validate_openclaw_runtime_contract,
+    validate_output_language_contract,
     validate_required_references,
     validate_role_definitions_ref,
-    validate_role_references as _validate_role_references,
     validate_role_version_tags,
     validate_runtime_bridge_contract,
     validate_stage_executor_contract,
     validate_stage_subagent_plan_contract,
 )
+from nexus_testing.validate_contracts import (
+    validate_flow_role_consistency as _validate_flow_role_consistency,
+)
+from nexus_testing.validate_contracts import (
+    validate_role_references as _validate_role_references,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATION_TMP_ROOT = ROOT / ".tmp-validation"
+VALIDATION_MANIFEST_FILE = ROOT / "validation-manifest.json"
 
-REQUIRED_ROOT_FILES = (
-    "SKILL.md",
-    "README.md",
-    "DEFINITIONS.md",
-    "CHANGELOG.md",
-    "reference-approval-mechanism.md",
-    "reference-report-format.md",
-    "reference-security-scan.md",
-    "reference-security-blacklist.md",
-    "reference-agent-evaluation-methodology.md",
-    "reference-test-case-templates.md",
-    "reference-sandbox-spec.md",
-    "reference-external-case-sourcing.md",
-    "reference-production-readiness.md",
-    "reference-expected-outputs.md",
-    "reference-output-verification-examples.md",
-    "reference-skill-review-framework.md",
-    "reference-skill-tier-requirements.md",
-    "reference-flow-skill.md",
-    "reference-flow-web-api.md",
-    "reference-flow-android.md",
-    "reference-flow-mcp.md",
-)
 
-REQUIRED_GOVERNANCE_FILES = (
-    ".gitignore",
-    ".gitattributes",
-    ".editorconfig",
-)
+def _string_list(payload: object, field: str) -> tuple[str, ...]:
+    if not isinstance(payload, list):
+        raise SystemExit(f"ERROR: validation manifest {field} must be a list")
+    values = tuple(str(item).strip() for item in payload if str(item).strip())
+    if len(values) != len(payload):
+        raise SystemExit(f"ERROR: validation manifest {field} contains empty entries")
+    return values
 
-REQUIRED_FLOW_FILES = (
-    "flows/skill-testing.md",
-    "flows/web-api-testing.md",
-    "flows/android-testing.md",
-    "flows/mcp-testing.md",
-)
 
-REQUIRED_SHELL_SCRIPT_FILES = (
-    "scripts/sandbox-create.sh",
-    "scripts/sandbox-exec.sh",
-    "scripts/sandbox-cleanup.sh",
-    "scripts/sandbox-skill-invoke.sh",
-    "scripts/sandbox-mock-service.sh",
-    "scripts/sandbox-multi-turn.sh",
-    "scripts/sandbox-compare-output.sh",
-    "scripts/sandbox-verify-output.sh",
-)
+def load_validation_manifest() -> dict[str, tuple[str, ...]]:
+    if not VALIDATION_MANIFEST_FILE.exists():
+        raise SystemExit(f"ERROR: validation manifest is missing: {VALIDATION_MANIFEST_FILE}")
+    try:
+        payload = json.loads(VALIDATION_MANIFEST_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"ERROR: invalid JSON in validation manifest: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit("ERROR: validation manifest must be a JSON object")
+    fields = (
+        "requiredRootFiles",
+        "requiredReferenceFiles",
+        "requiredGovernanceFiles",
+        "requiredFlowFiles",
+        "requiredShellScriptFiles",
+        "requiredPythonScriptFiles",
+        "requiredSrcPackageFiles",
+        "requiredTestFiles",
+        "requiredFixtureDirs",
+        "criticalRuntimeSmokeTests",
+    )
+    return {field: _string_list(payload.get(field, []), field) for field in fields}
 
-REQUIRED_PYTHON_SCRIPT_FILES = (
-    "scripts/diagnose_bash_runtime.py",
-    "scripts/frontmatter_utils.py",
-    "scripts/path_utils.py",
-    "scripts/json_utils.py",
-    "scripts/role_runtime_prompt.py",
-    "scripts/generate_runtime_bridge_config.py",
-    "scripts/generate_stage_subagent_plan.py",
-    "scripts/role_metadata.py",
-    "scripts/dispatch_payload_schema.py",
-    "scripts/runtime_config_schema.py",
-    "scripts/nexus_claude_role_runtime.py",
-    "scripts/nexus_openclaw_role_runtime.py",
-    "scripts/run_openclaw_stage_demo.py",
-    "scripts/nexus_stage_executor.py",
-    "scripts/nexus_dispatch_runner.py",
-    "scripts/nexus_runtime_bridge.py",
-    "scripts/extract_product_fingerprint.py",
-    "scripts/generate_flow_a_stage1.py",
-    "scripts/generate_flow_a_test_design.py",
-    "scripts/generate_flow_a_skill_execution.py",
-    "scripts/flow_a_command_builders.py",
-    "scripts/flow_a_localization.py",
-    "scripts/flow_a_mcp_client.py",
-    "scripts/flow_a_synthetic_data.py",
-    "scripts/run_flow_a_browser_execution.py",
-    "scripts/run_flow_a_multi_source_execution.py",
-    "scripts/run_flow_a_skill_execution.py",
-    "scripts/run_flow_a_takeover_execution.py",
-    "scripts/prepare_report_delivery.py",
-    "scripts/validate_contracts.py",
-    "scripts/skill-structure-validator.py",
-    "scripts/skill_structure_validator_core.py",
-    "scripts/sandbox_skill_invoke.py",
-    "scripts/sandbox_multi_turn.py",
-    "scripts/sandbox_skill_invoke/__init__.py",
-    "scripts/sandbox_skill_invoke/adapter.py",
-    "scripts/sandbox_skill_invoke/assertions.py",
-    "scripts/sandbox_skill_invoke/audit.py",
-    "scripts/sandbox_skill_invoke/core.py",
-    "scripts/sandbox_skill_invoke/telemetry.py",
-    "scripts/sandbox_skill_invoke/trace.py",
-    "scripts/sandbox_skill_invoke/verifier.py",
-    "scripts/test_flow_a_strict.py",
-    "scripts/test_flow_a_live_telemetry.py",
-    "scripts/test_flow_a_stage1.py",
-    "scripts/test_flow_a_skill_execution.py",
-    "scripts/test_flow_a_browser_execution.py",
-    "scripts/test_flow_a_multi_source_execution.py",
-    "scripts/test_flow_a_synthetic_data.py",
-    "scripts/test_flow_a_takeover_execution.py",
-    "scripts/test_flow_a_surface_runner.py",
-    "scripts/test_flow_a_test_design.py",
-    "scripts/test_product_fingerprint.py",
-    "scripts/test_sandbox_exec_container.py",
-    "scripts/test_flow_a_integration.py",
-    "scripts/test_prepare_report_delivery.py",
-    "scripts/test_stage_subagent_plan.py",
-    "scripts/test_role_metadata.py",
-    "scripts/test_dispatch_payload_schema.py",
-    "scripts/test_runtime_config_schema.py",
-    "scripts/test_nexus_stage_executor.py",
-    "scripts/test_nexus_dispatch_runner.py",
-    "scripts/test_nexus_claude_role_runtime.py",
-    "scripts/test_nexus_openclaw_role_runtime.py",
-    "scripts/test_run_openclaw_stage_demo.py",
-    "scripts/test_generate_runtime_bridge_config.py",
-    "scripts/test_nexus_runtime_bridge.py",
-    "scripts/test_helpers.py",
-    "scripts/security-scanner.py",
-    "scripts/test_sandbox_lifecycle.py",
-    "scripts/validate_flow_a_skill_results.py",
-    "scripts/fixtures/mock_openclaw_cli.py",
-    "scripts/fixtures/mock_browser_dump.py",
-    "scripts/fixtures/mock_role_runtime.py",
-)
 
-REQUIRED_FIXTURE_DIRS = (
-    "scripts/fixtures/fixture-pass-skill",
-    "scripts/fixtures/fixture-defect-skill",
-    "scripts/fixtures/fixture-extreme-skill",
-)
-
-RUNTIME_SMOKE_TEST_FILES = (
-    "scripts/test_product_fingerprint.py",
-    "scripts/test_flow_a_stage1.py",
-    "scripts/test_flow_a_skill_execution.py",
-    "scripts/test_flow_a_browser_execution.py",
-    "scripts/test_flow_a_multi_source_execution.py",
-    "scripts/test_flow_a_synthetic_data.py",
-    "scripts/test_flow_a_takeover_execution.py",
-    "scripts/test_flow_a_surface_runner.py",
-    "scripts/test_flow_a_test_design.py",
-    "scripts/test_flow_a_strict.py",
-    "scripts/test_flow_a_live_telemetry.py",
-    "scripts/test_sandbox_exec_container.py",
-    "scripts/test_flow_a_integration.py",
-    "scripts/test_sandbox_lifecycle.py",
-    "scripts/test_prepare_report_delivery.py",
-    "scripts/test_stage_subagent_plan.py",
-    "scripts/test_role_metadata.py",
-    "scripts/test_dispatch_payload_schema.py",
-    "scripts/test_runtime_config_schema.py",
-    "scripts/test_nexus_stage_executor.py",
-    "scripts/test_nexus_dispatch_runner.py",
-    "scripts/test_nexus_claude_role_runtime.py",
-    "scripts/test_nexus_openclaw_role_runtime.py",
-    "scripts/test_run_openclaw_stage_demo.py",
-    "scripts/test_generate_runtime_bridge_config.py",
-    "scripts/test_nexus_runtime_bridge.py",
-    "scripts/test_helpers.py",
-)
+VALIDATION_MANIFEST = load_validation_manifest()
+REQUIRED_ROOT_FILES = VALIDATION_MANIFEST["requiredRootFiles"]
+REQUIRED_REFERENCE_FILES = VALIDATION_MANIFEST["requiredReferenceFiles"]
+REQUIRED_GOVERNANCE_FILES = VALIDATION_MANIFEST["requiredGovernanceFiles"]
+REQUIRED_FLOW_FILES = VALIDATION_MANIFEST["requiredFlowFiles"]
+REQUIRED_SHELL_SCRIPT_FILES = VALIDATION_MANIFEST["requiredShellScriptFiles"]
+REQUIRED_PYTHON_SCRIPT_FILES = VALIDATION_MANIFEST["requiredPythonScriptFiles"]
+REQUIRED_SRC_PACKAGE_FILES = VALIDATION_MANIFEST["requiredSrcPackageFiles"]
+REQUIRED_TEST_FILES = VALIDATION_MANIFEST["requiredTestFiles"]
+REQUIRED_FIXTURE_DIRS = VALIDATION_MANIFEST["requiredFixtureDirs"]
+CRITICAL_RUNTIME_SMOKE_TESTS = VALIDATION_MANIFEST["criticalRuntimeSmokeTests"]
 
 RUNTIME_SMOKE_TEST_TIMEOUTS = {
-    "scripts/test_flow_a_surface_runner.py": 300,
+    "tests/test_flow_a_surface_runner.py": 300,
 }
 
 FRONTMATTER_FILES = ("SKILL.md",)
 
 GITIGNORE_EXPECTED_ENTRIES = (
     "/memory/nexus-reports/",
-    "/files/nexus-reports/",
+    "!/memory/nexus-reports/.gitkeep",
+    "/files/",
+    "!/files/.gitkeep",
     "/.nexus-sandbox/",
+    "/.tmp/",
     "/.tmp-test-runs/",
     "/.tmp-validation/",
     ".claude/settings.local.json",
@@ -296,6 +197,11 @@ def find_readme_version(readme_text: str) -> str | None:
     return match.group(0) if match else None
 
 
+def find_pyproject_version(pyproject_text: str) -> str | None:
+    match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject_text, re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def validate_markdown_links(markdown_files: list[Path]) -> list[str]:
     issues: list[str] = []
 
@@ -327,10 +233,13 @@ def validate_required_files() -> list[str]:
 
     for relative_path in (
         *REQUIRED_ROOT_FILES,
+        *REQUIRED_REFERENCE_FILES,
         *REQUIRED_GOVERNANCE_FILES,
         *REQUIRED_FLOW_FILES,
         *REQUIRED_SHELL_SCRIPT_FILES,
         *REQUIRED_PYTHON_SCRIPT_FILES,
+        *REQUIRED_SRC_PACKAGE_FILES,
+        *REQUIRED_TEST_FILES,
     ):
         if not (ROOT / relative_path).exists():
             issues.append(f"Missing required file: {relative_path}")
@@ -342,6 +251,18 @@ def validate_required_files() -> list[str]:
             issues.append(f"Fixture directory missing SKILL.md: {relative_path}")
 
     return issues
+
+
+def iter_runtime_smoke_test_paths() -> list[Path]:
+    tests_dir = ROOT / "tests"
+    if not tests_dir.exists():
+        return []
+    test_files: list[Path] = []
+    for path in tests_dir.glob("test_*.py"):
+        if not path.is_file() or path.name == "test_helpers.py":
+            continue
+        test_files.append(path)
+    return sorted(test_files)
 
 
 def validate_frontmatter() -> list[str]:
@@ -374,9 +295,11 @@ def validate_version_sync() -> list[str]:
     issues: list[str] = []
     changelog_text = read_text(ROOT / "CHANGELOG.md")
     readme_text = read_text(ROOT / "README.md")
+    pyproject_text = read_text(ROOT / "pyproject.toml")
 
     latest_version = find_latest_version(changelog_text)
     readme_version = find_readme_version(readme_text)
+    pyproject_version = find_pyproject_version(pyproject_text)
 
     if latest_version is None:
         issues.append("Unable to determine the latest version from CHANGELOG.md")
@@ -386,6 +309,13 @@ def validate_version_sync() -> list[str]:
         issues.append(
             "README.md current version does not match CHANGELOG.md latest version: "
             f"{readme_version} != {latest_version}"
+        )
+    if pyproject_version is None:
+        issues.append("Unable to determine the project version from pyproject.toml")
+    elif latest_version and latest_version.lstrip("v") != pyproject_version:
+        issues.append(
+            "pyproject.toml version does not match CHANGELOG.md latest version: "
+            f"{pyproject_version} != {latest_version.lstrip('v')}"
         )
 
     return issues
@@ -405,7 +335,10 @@ def validate_docs_updated_with_core_changes() -> list[str]:
     ]
     tracked_targets.extend(str(path.relative_to(ROOT)).replace("\\", "/") for path in sorted((ROOT / "flows").glob("*.md")))
     tracked_targets.extend(str(path.relative_to(ROOT)).replace("\\", "/") for path in sorted((ROOT / "roles").glob("*.md")))
-    tracked_targets.extend(str(path.relative_to(ROOT)).replace("\\", "/") for path in sorted(ROOT.glob("reference-*.md")))
+    tracked_targets.extend(
+        str(path.relative_to(ROOT)).replace("\\", "/")
+        for path in sorted((ROOT / "docs" / "references").glob("reference-*.md"))
+    )
 
     result = subprocess.run(
         ["git", "status", "--porcelain", "--", *tracked_targets],
@@ -430,7 +363,7 @@ def validate_docs_updated_with_core_changes() -> list[str]:
         return issues
 
     doc_paths = {"README.md", "CHANGELOG.md"}
-    core_prefixes = ("flows/", "roles/", "reference-")
+    core_prefixes = ("flows/", "roles/", "docs/references/")
     core_paths = {"SKILL.md", "DEFINITIONS.md", "scripts/validate-framework.py"}
     core_changed = any(
         path in core_paths or path.startswith(core_prefixes)
@@ -553,16 +486,16 @@ def validate_shell_scripts() -> list[str]:
 
 
 def iter_python_script_paths() -> list[Path]:
-    scripts_dir = ROOT / "scripts"
-    if not scripts_dir.exists():
-        return []
     python_files: list[Path] = []
-    for path in scripts_dir.rglob("*.py"):
-        if not path.is_file():
+    for base_dir in (ROOT / "scripts", ROOT / "src", ROOT / "tests"):
+        if not base_dir.exists():
             continue
-        if "__pycache__" in path.parts:
-            continue
-        python_files.append(path)
+        for path in base_dir.rglob("*.py"):
+            if not path.is_file():
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            python_files.append(path)
     return sorted(python_files)
 
 
@@ -616,10 +549,15 @@ def summarize_process_output(stdout: str, stderr: str, limit: int = 400) -> str:
 
 def validate_runtime_smoke_tests() -> list[str]:
     issues: list[str] = []
-    for relative_path in RUNTIME_SMOKE_TEST_FILES:
-        path = ROOT / relative_path
-        if not path.exists():
-            continue
+    test_paths = iter_runtime_smoke_test_paths()
+    if not test_paths:
+        return ["No runtime smoke tests discovered under tests/"]
+    discovered = {rel(path) for path in test_paths}
+    for relative_path in CRITICAL_RUNTIME_SMOKE_TESTS:
+        if relative_path not in discovered:
+            issues.append(f"Missing required runtime smoke test: {relative_path}")
+    for path in test_paths:
+        relative_path = rel(path)
         timeout_seconds = RUNTIME_SMOKE_TEST_TIMEOUTS.get(relative_path, 180)
         try:
             result = subprocess.run(

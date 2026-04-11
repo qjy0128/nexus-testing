@@ -3,14 +3,16 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import sys
 import threading
 from pathlib import Path
 
-from dispatch_payload_schema import validate_dispatch_payload_list
-from json_utils import load_json
 from nexus_stage_executor import (
     append_stage_log,
     bundle_dispatch,
@@ -21,8 +23,10 @@ from nexus_stage_executor import (
     read_executor_state,
     resolve_path,
 )
-from sandbox_skill_invoke.core import read_text, write_text
 
+from nexus_testing.dispatch_payload_schema import validate_dispatch_payload_list
+from nexus_testing.json_utils import load_json
+from nexus_testing.sandbox_skill_invoke.core import write_text
 
 STATE_LOCK = threading.RLock()
 
@@ -55,6 +59,7 @@ def prepare_bundle(report_dir: Path) -> dict[str, object]:
     if status not in {"run-stage", "run-post-stage"}:
         return bundle
     bundle["dispatchPayloads"] = validate_dispatch_payload_list(bundle.get("dispatchPayloads", []))
+    payloads = bundle["dispatchPayloads"]
 
     stage_id = str(bundle["stageId"])
     run_dir = runner_root(report_dir, stage_id)
@@ -70,10 +75,14 @@ def prepare_bundle(report_dir: Path) -> dict[str, object]:
         "bundleManifest": bundle.get("manifestFile"),
         "missingDeliverables": bundle.get("missingDeliverables", []),
         "preparedAt": now_text(),
+        "executionProfile": payloads[0].get("executionProfile") if payloads else "internal-fast",
+        "strictReal": payloads[0].get("strictReal") if payloads else False,
+        "executionPolicy": payloads[0].get("executionPolicy", {}) if payloads else {},
+        "delivery": payloads[0].get("delivery", {}) if payloads else {},
         "roles": [],
     }
 
-    for payload in bundle.get("dispatchPayloads", []):
+    for payload in payloads:
         role_id = str(payload["roleId"])
         state_path = role_state_path(report_dir, stage_id, role_id)
         if not state_path.exists():

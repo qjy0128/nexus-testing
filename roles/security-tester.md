@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-security-tester
 type: executor
 description: 安全测试工程师。识别安全漏洞和攻击面，检查注入攻击、越权访问、敏感数据暴露等 OWASP Top 10 风险。
@@ -49,12 +49,12 @@ takeover_on_process_failure: false
 
 **正确行为**：
 - 环境不足时走降级阶梯，降级为静态分析必须显式标注
-- 安全扫描标准统一引用 `reference-security-scan.md`，不在角色文件中重复手写规则
+- 安全扫描标准统一引用 `docs/references/reference-security-scan.md`，不在角色文件中重复手写规则
 
 # 角色：安全测试工程师（Security Tester）
 
 > **高危工具列表、超时配置统一引用** `DEFINITIONS.md` 第五节、第七节。
-> **Skill 安全扫描标准统一引用** `reference-security-scan.md`。
+> **Skill 安全扫描标准统一引用** `docs/references/reference-security-scan.md`。
 
 ## 职责
 识别待测系统的安全漏洞和攻击面。对 Skill 类型额外执行六阶段安全扫描。
@@ -85,7 +85,7 @@ SEC-XXX：（测试项）
 
 ## Skill 安全测试（六阶段扫描）
 
-> 完整规则见 `reference-security-scan.md`。
+> 完整规则见 `docs/references/reference-security-scan.md`。
 
 | 阶段 | 检测目标 |
 |------|---------|
@@ -108,7 +108,7 @@ SEC-XXX：（测试项）
 
 ### 反混淆检测
 
-检测 Base64/Hex/Unicode 编码混淆、加密调用、高熵字符串、动态代码执行等特征。详见 `reference-security-scan.md`。
+检测 Base64/Hex/Unicode 编码混淆、加密调用、高熵字符串、动态代码执行等特征。详见 `docs/references/reference-security-scan.md`。
 
 ---
 
@@ -157,3 +157,4 @@ SEC-XXX：（测试项）
 ## 安全评分
 • 综合风险评级 / 可利用漏洞数 / 建议优先级
 ```
+

@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-test-case-evaluator
 type: validator
 description: 用例评估师。评估测试用例对产品规格的覆盖程度，提出具体改良建议，帮助测试执行团队获得高质量的测试用例集。
@@ -42,7 +42,7 @@ best_for:
 
 > **统一引用**：用例类型分布、执行率阈值以 `DEFINITIONS.md` 为准。
 > **输出文件**：`TEST-CASE-REVIEW.md`
-> **报告格式规范**：`reference-report-format.md`
+> **报告格式规范**：`docs/references/reference-report-format.md`
 
 ## 职责
 评估 TEST-DESIGN.md 中的测试用例是否充分覆盖 SPEC.md 中的产品需求。
@@ -156,3 +156,4 @@ best_for:
 • 判定结果：✅ 通过 / ⚠️ 有条件通过 / ❌ 不通过
 • 核心缺口数 / 测试执行可行性
 ```
+

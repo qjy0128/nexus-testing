@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-evidence-collector
 type: validator
 description: 证据收集者。收集测试过程中发现的所有缺陷证据，审计执行证明合规性，确保每份缺陷报告无需补充即可开始修复。
@@ -113,3 +113,4 @@ evidence-collector 在**阶段五所有 subagent 完成后**执行一次性验�
 ### 证据完整的缺陷
 ### 证据缺失的缺陷（含处理方式）
 ```
+

@@ -1,4 +1,4 @@
-# 流程 B：网页 + 接口测试
+﻿# 流程 B：网页 + 接口测试
 
 > **所有阶段、角色、输出文件、超时配置均以 `DEFINITIONS.md` 为单一事实源。**
 
@@ -34,7 +34,7 @@ Flow B 有两种模式：
 - 两者都不可用时，退化为手动测试或受限沙箱验证
 - 主 agent 应在阶段零先生成 `STAGE-SUBAGENT-PLAN.json`，后续按计划启动阶段角色
 
-详细工具模板见 `reference-flow-web-api.md`。
+详细工具模板见 `docs/references/reference-flow-web-api.md`。
 
 ## A 模式流程
 
@@ -46,7 +46,7 @@ Flow B 有两种模式：
 | 阶段三 | `roles/test-designer.md` | `TEST-DESIGN.md` + `SURFACE-EXECUTION-PLAN.json` |
 | 阶段四 | `roles/test-case-evaluator.md` | `TEST-CASE-REVIEW.md` |
 | 阶段五 | 并行测试角色 | `TEST-EXECUTION/*.md` |
-| 阶段五完成后（后置角色） | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
+| 阶段五后置校验 | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
 | 阶段六 | `roles/defect-analyst.md` | `DEFECTS/DEFECT-REPORT.md` |
 | 阶段七 | `roles/report-integrator.md` | `FINAL-TEST-REPORT.md` |
 
@@ -71,7 +71,7 @@ Flow B 有两种模式：
 | B-阶段六 | `roles/test-designer.md` | `TEST-DESIGN.md` |
 | B-阶段七 | `roles/test-case-evaluator.md` | `TEST-CASE-REVIEW.md` |
 | B-阶段八 | 并行测试角色 | `TEST-EXECUTION/*.md` |
-| B-阶段八完成后（后置角色） | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
+| B-阶段八后置校验 | `roles/evidence-collector.md` | `DEFECTS/evidence-collection.md` |
 | B-阶段九 | `roles/defect-analyst.md` | `DEFECTS/DEFECT-REPORT.md` |
 | B-阶段十 | `roles/report-integrator.md` | `FINAL-TEST-REPORT.md` |
 
@@ -121,7 +121,8 @@ Flow B 有两种模式：
 
 ## 参考文档
 
-- `reference-flow-web-api.md`：网页/接口测试细化模板
-- `reference-test-case-templates.md`：用例模板与反模式
-- `reference-report-format.md`：交付物格式
-- `reference-security-scan.md`：安全测试规则
+- `docs/references/reference-flow-web-api.md`：网页/接口测试细化模板
+- `docs/references/reference-test-case-templates.md`：用例模板与反模式
+- `docs/references/reference-report-format.md`：交付物格式
+- `docs/references/reference-security-scan.md`：安全测试规则
+

@@ -8,7 +8,6 @@ import json
 import sys
 from pathlib import Path
 
-
 ROLE_OUTPUTS = {
     "environment-checker": ["RUNS/{stage_id}/environment-readiness.md"],
     "requirement-analyst": ["PRODUCT-FINGERPRINT.json", "SPEC.md"],

@@ -2,8 +2,8 @@
   "name": "claude-role-runtime",
   "default": {
     "command": [
-      "C:\\Python314\\python.exe",
-      "D:\\GoPlus\\AI skill\\nexus-testing\\scripts\\nexus_claude_role_runtime.py",
+      "{python_executable}",
+      "{workspace_root}/scripts/nexus_claude_role_runtime.py",
       "--payload-file",
       "{payload_file}",
       "--prompt-file",

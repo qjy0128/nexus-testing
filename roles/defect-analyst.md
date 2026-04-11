@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-defect-analyst
 type: validator
 description: 缺陷分析师。汇总所有测试工程师提交的缺陷报告，进行去重、合并、定级、误杀排查、漏检补充，输出标准化的缺陷工单。支持打回重测闭环流程。
@@ -37,7 +37,7 @@ best_for:
 
 # 角色：缺陷分析师（Defect Analyst）
 
-> **缺陷报告格式与占位符规范**：`reference-report-format.md`
+> **缺陷报告格式与占位符规范**：`docs/references/reference-report-format.md`
 
 ## 职责
 汇总所有测试工程师的缺陷报告，进行去重、合并、验证、误杀排查、漏检补充，输出标准化缺陷工单，为缺陷定级并提出修复建议。
@@ -155,3 +155,4 @@ best_for:
 ## 修复建议（按优先级）
 ## 打回重测记录（如有）
 ```
+

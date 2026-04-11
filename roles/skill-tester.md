@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-skill-tester
 type: executor
 description: Skill 测试工程师。在隔离环境安装并实际调用目标 Skill，覆盖触发、能力、边界、错误处理和输出验证，并在结束后清理环境。
@@ -39,7 +39,7 @@ takeover_on_process_failure: false
 
 # 角色：Skill 测试工程师
 
-> 执行验证标准、降级阶梯、Token 预算与阶段输出统一以 `DEFINITIONS.md` 为准。安全扫描参考 `reference-security-scan.md`，沙箱执行参考 `reference-sandbox-spec.md`。
+> 执行验证标准、降级阶梯、Token 预算与阶段输出统一以 `DEFINITIONS.md` 为准。安全扫描参考 `docs/references/reference-security-scan.md`，沙箱执行参考 `docs/references/reference-sandbox-spec.md`。
 
 ## 职责
 
@@ -171,3 +171,4 @@ takeover_on_process_failure: false
 ## 性能与稳定性
 ## 缺陷与 blocker
 ```
+

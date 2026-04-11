@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import os
@@ -12,26 +16,37 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from dispatch_payload_schema import validate_bundle_manifest, validate_dispatch_payload_list
-from json_utils import load_json
 from nexus_dispatch_runner import (
     advance,
     complete_role,
     fail_role,
     prepare_bundle,
-    role_state_path,
     runner_root,
     stage_run_status,
     start_role,
     takeover_role,
 )
-from nexus_stage_executor import resolve_path
-from runtime_config_schema import validate_runtime_config
-from sandbox_skill_invoke.core import read_text, write_text
+from nexus_stage_executor import append_stage_log, now_text, read_executor_state, resolve_path
+
+from nexus_testing.delivery.models import DeliveryRequest
+from nexus_testing.delivery.relay import mirror_report
+from nexus_testing.delivery.sender import relay_only_receipt, run_command_sender
+from nexus_testing.delivery.store import delivery_record_path
+from nexus_testing.delivery.store import read_json as read_delivery_record
+from nexus_testing.delivery.store import write_json as write_delivery_record
+from nexus_testing.dispatch_payload_schema import (
+    validate_bundle_manifest,
+    validate_dispatch_payload_list,
+)
+from nexus_testing.json_utils import load_json
+from nexus_testing.runtime.policy import EXECUTION_PROFILES, resolve_execution_policy
+from nexus_testing.runtime_config_schema import validate_runtime_config
+from nexus_testing.sandbox_skill_invoke.core import read_text, write_text
 
 ROOT = Path(__file__).resolve().parents[1]
 FLOW_A_SKILL_VALIDATOR = ROOT / "scripts" / "validate_flow_a_skill_results.py"
 FLOW_A_TAKEOVER_EXECUTOR = ROOT / "scripts" / "run_flow_a_takeover_execution.py"
+FINAL_REPORT_FILE = "FINAL-TEST-REPORT.md"
 
 
 def load_runtime_config(path_value: str | None) -> dict[str, object]:
@@ -77,7 +92,58 @@ def role_bundle_info(bundle: dict[str, object], role_id: str) -> dict[str, objec
     raise SystemExit(f"ERROR: role {role_id} not found in bundle manifest")
 
 
-def payload_context(report_dir: Path, bundle: dict[str, object], payload: dict[str, object]) -> dict[str, str]:
+def orchestration_settings(
+    report_dir: Path,
+    *,
+    execution_profile_override: str | None = None,
+    strict_real_override: bool = False,
+    delivery_backend_override: str | None = None,
+    delivery_channel_override: str | None = None,
+    delivery_caption_override: str | None = None,
+    delivery_command_override: list[str] | None = None,
+    delivery_timeout_override: int | None = None,
+    auto_delivery_override: bool | None = None,
+) -> dict[str, object]:
+    plan, _, _, _ = read_executor_state(report_dir)
+    base_profile = str(plan.get("executionProfile", "internal-fast"))
+    base_strict_real = bool(plan.get("strictReal", False))
+    policy = resolve_execution_policy(execution_profile_override or base_profile, strict_real_override or base_strict_real)
+    base_delivery = plan.get("delivery", {})
+    if not isinstance(base_delivery, dict):
+        base_delivery = {}
+    delivery_command = delivery_command_override
+    if delivery_command is None:
+        raw_command = base_delivery.get("command", [])
+        delivery_command = [str(item).strip() for item in raw_command if str(item).strip()] if isinstance(raw_command, list) else []
+    backend = str(delivery_backend_override or base_delivery.get("backend") or policy.default_sender_backend).strip().lower()
+    if backend not in {"relay-only", "command"}:
+        backend = policy.default_sender_backend
+    if backend == "command" and not delivery_command:
+        backend = "relay-only"
+    timeout_seconds = delivery_timeout_override if delivery_timeout_override is not None else int(base_delivery.get("timeoutSeconds", 60) or 60)
+    delivery = {
+        "enabled": bool(base_delivery.get("enabled", True)),
+        "autoSendOnComplete": bool(base_delivery.get("autoSendOnComplete", True)) if auto_delivery_override is None else bool(auto_delivery_override),
+        "channel": str(delivery_channel_override or base_delivery.get("channel") or "telegram").strip() or "telegram",
+        "caption": str(delivery_caption_override if delivery_caption_override is not None else base_delivery.get("caption", "")),
+        "backend": backend,
+        "command": delivery_command,
+        "timeoutSeconds": max(1, int(timeout_seconds)),
+    }
+    return {
+        "executionProfile": policy.name,
+        "strictReal": policy.strict_real,
+        "executionPolicy": policy.to_dict(),
+        "delivery": delivery,
+    }
+
+
+def payload_context(
+    report_dir: Path,
+    bundle: dict[str, object],
+    payload: dict[str, object],
+    execution_settings: dict[str, object] | None = None,
+) -> dict[str, str]:
     role_info = role_bundle_info(bundle, str(payload["roleId"]))
     bundle_dir = Path(str(bundle["bundleDir"]))
     run_dir = runner_root(report_dir, str(payload["stageId"]))
@@ -87,8 +153,9 @@ def payload_context(report_dir: Path, bundle: dict[str, object], payload: dict[s
         raise SystemExit(f"ERROR: dispatch payload file is missing: {payload_file}")
     if not prompt_file.is_file():
         raise SystemExit(f"ERROR: dispatch prompt file is missing: {prompt_file}")
-    return {
+    context = {
         "workspace_root": str(ROOT),
+        "python_executable": sys.executable,
         "report_dir": str(report_dir),
         "bundle_dir": str(bundle_dir),
         "run_dir": str(run_dir),
@@ -102,6 +169,13 @@ def payload_context(report_dir: Path, bundle: dict[str, object], payload: dict[s
         "role_type": str(payload["roleType"]),
         "role_file": str(payload["roleFile"]),
     }
+    if isinstance(execution_settings, dict):
+        context["execution_profile"] = str(execution_settings.get("executionProfile", "internal-fast"))
+        context["strict_real"] = "true" if bool(execution_settings.get("strictReal", False)) else "false"
+        execution_policy = execution_settings.get("executionPolicy", {})
+        if isinstance(execution_policy, dict):
+            context["default_sender_backend"] = str(execution_policy.get("default_sender_backend", "relay-only"))
+    return context
 
 
 def runtime_spec(config: dict[str, object], role_id: str) -> dict[str, object]:
@@ -551,10 +625,16 @@ def attempt_flow_a_host_takeover(
     return payload_data
 
 
-def execute_role(report_dir: Path, bundle: dict[str, object], payload: dict[str, object], config: dict[str, object]) -> dict[str, object]:
+def execute_role(
+    report_dir: Path,
+    bundle: dict[str, object],
+    payload: dict[str, object],
+    config: dict[str, object],
+    settings: dict[str, object],
+) -> dict[str, object]:
     role_id = str(payload["roleId"])
     stage_id = str(payload["stageId"])
-    context = payload_context(report_dir, bundle, payload)
+    context = payload_context(report_dir, bundle, payload, settings)
     raw_spec = runtime_spec(config, role_id)
     primary_spec = resolved_runtime_spec(
         str(raw_spec.get("name") or config.get("name") or "external-runtime"),
@@ -673,10 +753,95 @@ def actionable_payloads(bundle: dict[str, object]) -> list[dict[str, object]]:
         raise SystemExit(f"ERROR: invalid dispatch payloads: {exc}") from exc
 
 
-def run_stage_once(report_dir: Path, config: dict[str, object]) -> dict[str, object]:
+def final_report_path(report_dir: Path) -> Path | None:
+    candidate = report_dir / FINAL_REPORT_FILE
+    return candidate if candidate.is_file() else None
+
+
+def auto_deliver_final_report(report_dir: Path, settings: dict[str, object]) -> dict[str, object] | None:
+    delivery = settings.get("delivery", {})
+    if not isinstance(delivery, dict) or not bool(delivery.get("enabled", True)):
+        return None
+    if not bool(delivery.get("autoSendOnComplete", True)):
+        return None
+    report_file = final_report_path(report_dir)
+    if report_file is None:
+        return {"status": "skipped", "reason": "missing-final-report"}
+    existing = read_delivery_record(delivery_record_path(report_file))
+    if existing.get("receipt"):
+        return {
+            "status": "already-recorded",
+            "reportFile": str(report_file),
+            "recordFile": str(delivery_record_path(report_file)),
+            "delivery": existing,
+        }
+    relay_abs, relay_path = mirror_report(ROOT, report_dir, report_file)
+    request = DeliveryRequest(
+        report_file=report_file.relative_to(report_dir).as_posix(),
+        source_path=str(report_file),
+        relay_path=relay_path,
+        relay_abs_path=str(relay_abs),
+        channel=str(delivery.get("channel", "telegram")),
+        caption=str(delivery.get("caption", "")),
+        metadata={
+            "reportDir": str(report_dir),
+            "executionProfile": settings.get("executionProfile", "internal-fast"),
+            "strictReal": bool(settings.get("strictReal", False)),
+        },
+    )
+    backend = str(delivery.get("backend", "relay-only"))
+    command = [str(item).strip() for item in delivery.get("command", []) if str(item).strip()] if isinstance(delivery.get("command"), list) else []
+    if backend == "command" and command:
+        receipt = run_command_sender(
+            request,
+            command,
+            cwd=ROOT,
+            timeout_seconds=int(delivery.get("timeoutSeconds", 60)),
+        )
+    else:
+        backend = "relay-only"
+        receipt = relay_only_receipt()
+    payload = {
+        "request": request.to_dict(),
+        "receipt": receipt.to_dict(),
+        "userConfirmationRequired": True,
+    }
+    record_path = delivery_record_path(report_file)
+    write_delivery_record(record_path, payload)
+    append_stage_log(
+        report_dir,
+        {
+            "from_stage": "delivery",
+            "to_stage": "delivery",
+            "timestamp": now_text(),
+            "deliverable_file": FINAL_REPORT_FILE,
+            "approval_required": False,
+            "gate_check_passed": receipt.status not in {"failed"},
+            "event": "report-delivery-recorded",
+            "backend": backend,
+            "delivery_status": receipt.status,
+            "delivery_record": str(record_path),
+        },
+    )
+    return {
+        "status": receipt.status,
+        "backend": backend,
+        "reportFile": str(report_file),
+        "recordFile": str(record_path),
+        "receipt": receipt.to_dict(),
+    }
+
+
+def run_stage_once(report_dir: Path, config: dict[str, object], settings: dict[str, object]) -> dict[str, object]:
     bundle = prepare_bundle(report_dir)
     status = str(bundle.get("status"))
     if status not in {"run-stage", "run-post-stage"}:
+        if status == "complete":
+            delivered = auto_deliver_final_report(report_dir, settings)
+            if delivered is not None:
+                result = dict(bundle)
+                result["delivery"] = delivered
+                return result
         return bundle
 
     payloads = actionable_payloads(bundle)
@@ -685,12 +850,12 @@ def run_stage_once(report_dir: Path, config: dict[str, object]) -> dict[str, obj
 
     if dispatch_mode == "parallel" and len(payloads) > 1:
         with ThreadPoolExecutor(max_workers=len(payloads)) as executor:
-            futures = [executor.submit(execute_role, report_dir, bundle, payload, config) for payload in payloads]
+            futures = [executor.submit(execute_role, report_dir, bundle, payload, config, settings) for payload in payloads]
             for future in futures:
                 results.append(future.result())
     else:
         for payload in payloads:
-            results.append(execute_role(report_dir, bundle, payload, config))
+            results.append(execute_role(report_dir, bundle, payload, config, settings))
 
     run_status = stage_run_status(report_dir, str(bundle["stageId"]))
     takeover_results = [item for item in results if item.get("status") == "takeover-required"]
@@ -711,22 +876,29 @@ def run_stage_once(report_dir: Path, config: dict[str, object]) -> dict[str, obj
             "runStatus": run_status,
         }
 
+    advance_result = advance(report_dir)
+    delivery_result = None
+    if isinstance(advance_result, dict):
+        next_action = advance_result.get("nextAction", {})
+        if isinstance(next_action, dict) and str(next_action.get("status")) == "complete":
+            delivery_result = auto_deliver_final_report(report_dir, settings)
     return {
         "status": "stage-run-finished",
         "stageId": bundle["stageId"],
         "roleResults": results,
-        "advanceResult": advance(report_dir),
+        "advanceResult": advance_result,
+        "delivery": delivery_result,
     }
 
 
-def run_until_gate(report_dir: Path, config: dict[str, object], max_cycles: int) -> dict[str, object]:
+def run_until_gate(report_dir: Path, config: dict[str, object], max_cycles: int, settings: dict[str, object]) -> dict[str, object]:
     cycles: list[dict[str, object]] = []
     for _ in range(max_cycles):
-        step = run_stage_once(report_dir, config)
+        step = run_stage_once(report_dir, config, settings)
         cycles.append(step)
         status = str(step.get("status"))
         if status in {"await-approval", "no-go", "complete", "role-failed", "takeover-required"}:
-            return {"status": status, "cycles": cycles, "final": step, "gateAction": step}
+            return {"status": status, "cycles": cycles, "final": step, "gateAction": step, "delivery": step.get("delivery")}
         if status != "stage-run-finished":
             return {"status": status, "cycles": cycles, "final": step}
         advance_result = step.get("advanceResult", {})
@@ -737,7 +909,13 @@ def run_until_gate(report_dir: Path, config: dict[str, object], max_cycles: int)
             return {"status": "invalid-next-action", "cycles": cycles, "final": step}
         next_status = str(next_action.get("status"))
         if next_status in {"await-approval", "no-go", "complete"}:
-            return {"status": next_status, "cycles": cycles, "final": step, "gateAction": next_action}
+            return {
+                "status": next_status,
+                "cycles": cycles,
+                "final": step,
+                "gateAction": next_action,
+                "delivery": step.get("delivery"),
+            }
     return {"status": "max-cycles-exceeded", "cycles": cycles}
 
 
@@ -748,11 +926,33 @@ def build_parser() -> argparse.ArgumentParser:
     run_once_parser = sub.add_parser("run-once", help="Execute the current actionable stage via external runtime commands")
     run_once_parser.add_argument("--report-dir", required=True)
     run_once_parser.add_argument("--runtime-config", required=True)
+    run_once_parser.add_argument("--execution-profile", choices=EXECUTION_PROFILES)
+    run_once_parser.add_argument("--strict-real", action="store_true")
+    run_once_parser.add_argument("--delivery-backend", choices=("relay-only", "command"))
+    run_once_parser.add_argument("--delivery-channel")
+    run_once_parser.add_argument("--delivery-caption")
+    run_once_parser.add_argument("--delivery-command", nargs="+")
+    run_once_parser.add_argument("--delivery-timeout-seconds", type=int)
+    run_once_parser.set_defaults(auto_delivery=None)
+    run_once_delivery_group = run_once_parser.add_mutually_exclusive_group()
+    run_once_delivery_group.add_argument("--auto-delivery", dest="auto_delivery", action="store_true")
+    run_once_delivery_group.add_argument("--no-auto-delivery", dest="auto_delivery", action="store_false")
 
     run_until_parser = sub.add_parser("run-until-gate", help="Keep executing stages until approval/no-go/complete/failure")
     run_until_parser.add_argument("--report-dir", required=True)
     run_until_parser.add_argument("--runtime-config", required=True)
     run_until_parser.add_argument("--max-cycles", type=int, default=20)
+    run_until_parser.add_argument("--execution-profile", choices=EXECUTION_PROFILES)
+    run_until_parser.add_argument("--strict-real", action="store_true")
+    run_until_parser.add_argument("--delivery-backend", choices=("relay-only", "command"))
+    run_until_parser.add_argument("--delivery-channel")
+    run_until_parser.add_argument("--delivery-caption")
+    run_until_parser.add_argument("--delivery-command", nargs="+")
+    run_until_parser.add_argument("--delivery-timeout-seconds", type=int)
+    run_until_parser.set_defaults(auto_delivery=None)
+    run_until_delivery_group = run_until_parser.add_mutually_exclusive_group()
+    run_until_delivery_group.add_argument("--auto-delivery", dest="auto_delivery", action="store_true")
+    run_until_delivery_group.add_argument("--no-auto-delivery", dest="auto_delivery", action="store_false")
     return parser
 
 
@@ -765,11 +965,22 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     report_dir = resolve_path(args.report_dir)
     config = load_runtime_config(args.runtime_config)
+    settings = orchestration_settings(
+        report_dir,
+        execution_profile_override=args.execution_profile,
+        strict_real_override=args.strict_real,
+        delivery_backend_override=args.delivery_backend,
+        delivery_channel_override=args.delivery_channel,
+        delivery_caption_override=args.delivery_caption,
+        delivery_command_override=args.delivery_command,
+        delivery_timeout_override=args.delivery_timeout_seconds,
+        auto_delivery_override=args.auto_delivery,
+    )
 
     if args.command == "run-once":
-        result = run_stage_once(report_dir, config)
+        result = run_stage_once(report_dir, config, settings)
     elif args.command == "run-until-gate":
-        result = run_until_gate(report_dir, config, args.max_cycles)
+        result = run_until_gate(report_dir, config, args.max_cycles, settings)
     else:
         raise SystemExit(f"ERROR: unsupported command {args.command}")
 

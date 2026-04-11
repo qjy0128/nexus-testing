@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import os
@@ -10,10 +14,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from json_utils import load_json
-from path_utils import ROOT, resolve_path
-from role_runtime_prompt import build_runtime_prompt
-from sandbox_skill_invoke.core import read_text
+from nexus_testing.json_utils import load_json
+from nexus_testing.path_utils import ROOT, resolve_path
+from nexus_testing.role_runtime_prompt import build_runtime_prompt
+from nexus_testing.sandbox_skill_invoke.core import read_text
+
+
 def render_existing_artifacts(report_dir: Path, patterns: list[object]) -> set[str]:
     found: set[str] = set()
     for item in patterns:

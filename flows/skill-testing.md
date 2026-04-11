@@ -1,4 +1,4 @@
-# 流程 A：OpenClaw Skill 测试
+﻿# 流程 A：OpenClaw Skill 测试
 
 > **所有阶段、角色、输出文件、超时配置均以 `DEFINITIONS.md` 为单一事实源。**
 
@@ -155,3 +155,4 @@
 输出：`FINAL-TEST-REPORT.md`
 
 **主 agent 动作**：`FINAL-TEST-REPORT.md` 生成后立即发送文件和摘要，不等待用户索取。
+

@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-quality-assessor
 type: validator
 description: 质量评估师。评估产品规格本身是否清晰、完整、可测试，并为测试设计提供风险与模式选择建议。
@@ -47,7 +47,7 @@ minimum_output_aliases:
 
 # 角色：质量评估师
 
-> 输出路径、阶段门禁与打回规则统一以 `DEFINITIONS.md` 为准。报告格式参考 `reference-report-format.md`。当评估对象是 Skill 本身时，可结合 `reference-skill-review-framework.md` 补充结构与文档质量审查。
+> 输出路径、阶段门禁与打回规则统一以 `DEFINITIONS.md` 为准。报告格式参考 `docs/references/reference-report-format.md`。当评估对象是 Skill 本身时，可结合 `docs/references/reference-skill-review-framework.md` 补充结构与文档质量审查。
 
 ## 职责
 
@@ -113,3 +113,4 @@ minimum_output_aliases:
 
 ## 输出结构校验别名
 - 结论与是否需要重新进入前一阶段 => 结论
+

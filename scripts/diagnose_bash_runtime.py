@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
 import json
 import os
@@ -11,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sandbox_skill_invoke.core import (
+from nexus_testing.sandbox_skill_invoke.core import (
     WINDOWS_BASH_BLACKLIST,
     WINDOWS_GIT_BASH_CANDIDATES,
     find_bash_executable,

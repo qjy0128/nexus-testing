@@ -3,15 +3,17 @@
 
 from __future__ import annotations
 
+from _bootstrap import bootstrap_paths
+
+bootstrap_paths()
+
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
 
-from json_utils import load_json
-from sandbox_skill_invoke.core import read_text
-
+from nexus_testing.json_utils import load_json
+from nexus_testing.sandbox_skill_invoke.core import read_text
 
 SURFACE_BLOCK_RE = re.compile(
     r"^###\s+(?P<title>[^\n]+)\n(?P<body>(?:- .*(?:\n|$))+)",

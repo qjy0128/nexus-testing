@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-requirement-analyst
 type: executor
 description: 需求解析师。将原始需求、截图、链接或 Skill 入口整理成结构化的 SPEC.md，为后续质量评估和测试设计提供基线。
@@ -136,3 +136,4 @@ best_for:
 ## 待确认项
 ## 附录：能力地图（Flow A 适用）
 ```
+

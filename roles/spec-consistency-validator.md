@@ -1,4 +1,4 @@
----
+﻿---
 name: nexus-spec-consistency-validator
 type: validator
 description: 规格一致性校验师。核对 PRODUCT-FINGERPRINT.json、SPEC.md 与仓库真实入口，阻断技术栈、版本、许可证、接口和能力面的幻觉性描述。
@@ -79,3 +79,4 @@ best_for:
 ## 不一致与幻觉项
 ## 结论与阶段门禁
 ```
+
