@@ -1,3 +1,60 @@
+### v0.9.49（2026-04-12）
+**极简模式：3 阶段轻量测试流水线**
+
+- 新增：`scripts/generate_stage_subagent_plan.py`，`normalize_mode()` 支持 `minimal`/`lite`/`quick` 参数；新增 `build_minimal_stages()` 构建 3 阶段极简流水线（快速扫描 → 核心测试 → 报告整合）；`build_plan()` 按 mode 分支调用
+- 新增：`DEFINITIONS.md` 第六节-D，添加极简模式定义：触发条件（单文件/无外部依赖/无安全敏感操作/CAP≤3）、3 阶段流水线表格、限制说明
+- 更新：`SKILL.md` 第二节，添加极简模式路由规则及升级条件
+
+### v0.9.48（2026-04-12）
+**会话恢复协议：detect-existing 和 recover 命令**
+
+- 更新：`scripts/run_openclaw_stage_demo.py`，新增 `detect-existing` 子命令（扫描报告目录，输出当前状态与恢复建议）和 `recover` 子命令（从断点恢复，支持 `--from-stage` 强制指定恢复点）；导入 `append_stage_log`、`next_action`、`now_text`
+- 更新：`docs/references/reference-recovery.md`，新增第八节"OpenClaw CLI 会话恢复"，覆盖 `detect-existing`/`recover` 命令用法、典型场景表格
+
+### v0.9.47（2026-04-12）
+**提示词预烘焙：bundle-dispatch 阶段生成 final_prompt.md**
+
+- 更新：`scripts/nexus_stage_executor.py`，`bundle_dispatch()` 在写入 `{stem}.prompt.md` 后立即调用 `build_runtime_prompt()` 生成 `{stem}.final_prompt.md`，并在 payload 中注入 `prebaked: true` 和 `finalPromptFile`；导入 `build_runtime_prompt`；清理 dispatch_payload_schema 多余空行
+- 说明：消费侧（`nexus_openclaw_role_runtime.py`）已在 Item 3 中就绪，检测 `prebaked` 标记后直接读取 final_prompt.md，跳过重复组装
+
+### v0.9.46（2026-04-12）
+**跨进程文件锁替换 threading.RLock**
+
+- 新增：`src/nexus_testing/state_lock.py`，实现 `StateLock` 跨进程上下文管理器；Windows 使用 `msvcrt.locking`，POSIX 使用 `fcntl.flock`；锁文件路径为被保护文件路径加 `.lock` 后缀
+- 更新：`scripts/nexus_stage_executor.py`，`append_stage_log()` 改用 `StateLock(stage_log_path)` 替代 `threading.RLock`；移除 `import threading`
+- 更新：`scripts/nexus_dispatch_runner.py`，`update_role_state()` 改用 `StateLock(state_path)` 替代 `threading.RLock`；移除 `import threading`
+- 更新：`validation-manifest.json`，注册 `state_lock.py`
+
+### v0.9.45（2026-04-12）
+**角色级运行时超时配置 + require_command 修复**
+
+- 修复：`src/nexus_testing/runtime_config_schema.py`，`validate_runtime_config()` 对 roles override 调用 `validate_runtime_spec(..., require_command=False)`，允许角色只覆盖超时而无需重复指定 command
+- 更新：`scripts/nexus_runtime_bridge.py`，`runtime_spec()` 改为合并模式：先取 default，再用 role override 覆盖（而不是直接替换），确保 command 继承
+- 更新：`runtime-config.openclaw.json`，添加 `roles` 块，为 test-designer/skill-tester/security-tester/functional-tester/compatibility-tester/performance-tester/report-integrator 配置更长的超时时间
+
+### v0.9.44（2026-04-12）
+**--message-file 替代 --message，避免 CLI 参数长度限制**
+
+- 更新：`scripts/nexus_openclaw_role_runtime.py`，`build_command()` 改用 `--message-file <tmp>` 传递提示词，通过临时文件绕过 CLI 参数长度上限；`main()` 添加 `finally` 块确保临时文件清理；支持 `prebaked`/`finalPromptFile` 跳过重复组装
+- 更新：`scripts/fixtures/mock_openclaw_cli.py`，同时支持 `--message`（兼容）和 `--message-file`（新增）
+
+### v0.9.43（2026-04-12）
+**DEFINITIONS.md 按需加载**
+
+- 新增：`src/nexus_testing/definitions_loader.py`，提供 `load_sections()` / `load_sections_for_role()` 函数，按 `<!-- section:xxx -->` 标记按需提取 DEFINITIONS.md 章节，内置角色-章节依赖映射表
+- 更新：`DEFINITIONS.md`，在每个章节（一～十七及 六-B/C/D）首行添加 HTML 注释格式的 section 标记，不影响现有 markdown 渲染
+- 更新：`scripts/nexus_stage_executor.py`，`dispatch_payloads()` 函数为每个角色注入 `definitionExcerpt` 字段，按依赖矩阵只加载所需章节
+- 更新：`src/nexus_testing/dispatch_payload_schema.py`，添加 `definitionExcerpt` 字段验证（字符串类型，可为 None）
+- 更新：`validation-manifest.json`，注册 `definitions_loader.py`
+
+### v0.9.42（2026-04-12）
+**SKILL.md 瘦身 + 操作规程独立文档**
+
+- 新增：`docs/references/reference-operational-procedures.md`，承接 `SKILL.md` 中的沟通约束、执行原则、快速开始指引及参考文档索引，降低主入口 context window 占用
+- 更新：`SKILL.md`，提取 sections 八/九/十/十一 至新参考文档，精简 section 五的脚本用法说明（保留关键脚本名称引用），主文件从 297 行压缩至 ~165 行
+- 更新：`validation-manifest.json`，注册 `reference-operational-procedures.md`
+- 更新：`README.md`，参考文档数量从 18 更新为 19，新增条目
+
 ### v0.9.41（2026-04-10）
 **合同对齐 + 共享解析收口**
 

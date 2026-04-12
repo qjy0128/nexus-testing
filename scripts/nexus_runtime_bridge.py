@@ -188,15 +188,18 @@ def payload_context(
 
 
 def runtime_spec(config: dict[str, object], role_id: str) -> dict[str, object]:
+    default = config.get("default")
+    if not isinstance(default, dict):
+        raise SystemExit(f"ERROR: runtime config missing default command for role {role_id}")
     roles = config.get("roles", {})
     if isinstance(roles, dict):
-        selected = roles.get(role_id)
-        if isinstance(selected, dict):
-            return selected
-    default = config.get("default")
-    if isinstance(default, dict):
-        return default
-    raise SystemExit(f"ERROR: runtime config missing default command for role {role_id}")
+        override = roles.get(role_id)
+        if isinstance(override, dict):
+            # Merge: role override wins for keys it specifies, fall back to default for the rest.
+            merged = dict(default)
+            merged.update(override)
+            return merged
+    return default
 
 
 def parse_role_stdout(stdout: str) -> dict[str, object]:

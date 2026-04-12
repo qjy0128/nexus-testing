@@ -10,12 +10,12 @@ bootstrap_paths()
 import argparse
 import json
 import sys
-import threading
 import time
 from pathlib import Path
 
 from generate_stage_subagent_plan import build_plan, normalize_flow, normalize_mode
 
+from nexus_testing.definitions_loader import load_sections_for_role
 from nexus_testing.dispatch_payload_schema import (
     validate_bundle_files,
     validate_bundle_manifest,
@@ -24,12 +24,12 @@ from nexus_testing.dispatch_payload_schema import (
 from nexus_testing.json_utils import load_json
 from nexus_testing.path_utils import resolve_path
 from nexus_testing.role_metadata import parse_role_doc as load_role_doc_metadata
+from nexus_testing.role_runtime_prompt import build_runtime_prompt
 from nexus_testing.runtime.policy import EXECUTION_PROFILES, resolve_execution_policy
 from nexus_testing.sandbox_skill_invoke.core import write_text
 from nexus_testing.stage_contracts import verify_stage_preconditions
 from nexus_testing.stage_validation import validate_stage_artifacts
-
-STATE_LOCK = threading.RLock()
+from nexus_testing.state_lock import StateLock
 
 
 def now_text() -> str:
@@ -336,6 +336,7 @@ def dispatch_payloads(report_dir: Path, plan: dict[str, object], action: dict[st
                 "mainAgentTakeoverPolicy": role_meta.get("mainAgentTakeoverPolicy", {}),
                 "description": role_meta.get("description"),
                 "bestFor": role_meta.get("bestFor", []),
+                "definitionExcerpt": load_sections_for_role(role_id) or None,
                 "launchPrompt": (
                     f"执行 {action.get('label')} {action.get('name')}。"
                     f" 角色文件：{role_file}。"
@@ -493,14 +494,27 @@ def bundle_dispatch(report_dir: Path, payload_result: dict[str, object]) -> dict
         stem = f"{order:02d}-{role_id}"
         payload_path = bundle_root / f"{stem}.payload.json"
         prompt_path = bundle_root / f"{stem}.prompt.md"
-        save_json(payload_path, payload)
-        write_text(prompt_path, render_dispatch_prompt(payload))
+        raw_prompt = render_dispatch_prompt(payload)
+        write_text(prompt_path, raw_prompt)
+        final_prompt_path = bundle_root / f"{stem}.final_prompt.md"
+        final_prompt = build_runtime_prompt(
+            payload,
+            raw_prompt,
+            language="zh",
+            include_json_response_rules=False,
+        )
+        write_text(final_prompt_path, final_prompt)
+        baked_payload = dict(payload)
+        baked_payload["prebaked"] = True
+        baked_payload["finalPromptFile"] = str(final_prompt_path)
+        save_json(payload_path, baked_payload)
         manifest["roles"].append(
             {
                 "roleId": role_id,
                 "order": order,
                 "payloadFile": payload_path.name,
                 "promptFile": prompt_path.name,
+                "finalPromptFile": final_prompt_path.name,
             }
         )
 
@@ -607,7 +621,7 @@ def current_approval_gate(
 
 def append_stage_log(report_dir: Path, entry: dict[str, object]) -> None:
     stage_log_path = report_dir / "stage-transition-log.json"
-    with STATE_LOCK:
+    with StateLock(stage_log_path):
         stage_log = load_json(stage_log_path, [], label="stage transition log")
         if not isinstance(stage_log, list):
             stage_log = []

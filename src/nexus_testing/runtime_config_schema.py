@@ -183,7 +183,11 @@ def validate_runtime_config(config: object) -> dict[str, object]:
         role_name = str(role_id).strip()
         if not role_name:
             raise ValueError("runtime config.roles must use non-empty role ids")
-        normalized_roles[role_name] = validate_runtime_spec(spec, field=f"runtime config.roles[{role_name}]")
+        normalized_roles[role_name] = validate_runtime_spec(
+            spec,
+            field=f"runtime config.roles[{role_name}]",
+            require_command=False,  # Role overrides inherit default.command when omitted
+        )
     if normalized_roles:
         normalized["roles"] = normalized_roles
 

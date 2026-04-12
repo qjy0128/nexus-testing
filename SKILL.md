@@ -1,4 +1,4 @@
-﻿---
+---
 name: nexus-testing
 description: Nexus AI 测试体系入口。根据用户目标自动分流到 Skill、网页+接口、安卓、MCP 四类流程，并按统一阶段产出结构化测试文档。
 ---
@@ -47,6 +47,8 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 默认模式。执行阶段零到阶段七，产出完整测试文档与最终结论。
 
 **轻量模式**：当被测对象规模较小时，自动合并部分阶段。具体触发条件和变更规则见 `DEFINITIONS.md` 第六节-C。轻量模式必须在环境就绪报告中显式声明。
+
+**极简模式**：用户传入 `minimal` / `lite` / `quick` 参数，或被测对象满足"单文件 Skill、无外部依赖、无安全敏感操作、CAP ≤ 3"的全部条件时，启用 3 阶段极简流水线（快速扫描 → 核心测试 → 报告整合）。详见 `DEFINITIONS.md` 第六节-D。极简模式须在报告中注明覆盖维度受限。若运行中发现安全敏感操作或超过 3 个 CAP，立即升级为标准模式。
 
 ### 评审模式
 
@@ -130,43 +132,12 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 
 Flow A 额外要求：
 
-- 识别 Node / npm、Python、外部插件、系统命令依赖
-- 使用 `scripts/generate_flow_a_stage1.py --target <repo-or-skill> --output-dir <report-dir>` 优先生成阶段一三件套；其内部先调用 `scripts/extract_product_fingerprint.py` 抽取事实指纹，再写规格
-- 使用 `scripts/generate_stage_subagent_plan.py --flow <skill|web-api|android|mcp> --mode <standard|b> --output-file <report-dir>/STAGE-SUBAGENT-PLAN.json` 在阶段零生成机器可读调度计划
-- 使用 `src/nexus_testing/role_metadata.py` 作为 role frontmatter / 兼容章节的统一解析层；新增 role metadata 时优先扩展这个模块，而不是继续把 schema 细节堆进 `nexus_stage_executor.py`
-- 使用 `src/nexus_testing/dispatch_payload_schema.py` 作为 dispatch payload / DISPATCH manifest 的统一校验层；新增 payload 字段时先扩展这个模块，再修改 `nexus_stage_executor.py`、`nexus_dispatch_runner.py` 和 `nexus_runtime_bridge.py`
-- 使用 `src/nexus_testing/runtime_config_schema.py` 作为 runtime-config 的统一校验层；新增 runtime 字段时先扩展这个模块，再修改 `generate_runtime_bridge_config.py` 和 `nexus_runtime_bridge.py`
-- 使用 `scripts/nexus_stage_executor.py init --report-dir <report-dir> --flow <skill|web-api|android|mcp> --mode <standard|b>` 初始化阶段执行状态
-- 使用 `scripts/nexus_stage_executor.py next --report-dir <report-dir>` 判断当前应启动哪个阶段角色、是否等待批准、或是否进入完成态
-- 使用 `scripts/nexus_stage_executor.py dispatch --report-dir <report-dir>` 为当前阶段生成每个 subagent 的启动载荷
-- 使用 `scripts/nexus_stage_executor.py bundle-dispatch --report-dir <report-dir>` 将当前阶段启动载荷写成可直接消费的 prompt bundle
-- 使用 `scripts/nexus_dispatch_runner.py prepare --report-dir <report-dir>` 将当前 dispatch bundle 转成运行清单
-- 使用 `scripts/nexus_dispatch_runner.py start-role|complete-role|fail-role|advance --report-dir <report-dir> ...` 跟踪角色运行状态；`advance` 在当前阶段角色全部完成后会自动补写 `stage-complete` 并推进阶段
-- 使用 `scripts/generate_runtime_bridge_config.py --preset <mock|claude> --output-file <runtime.json> ...` 生成可直接给 runtime bridge 使用的宿主运行配置
-- 使用 `scripts/generate_runtime_bridge_config.py --preset openclaw --output-file <runtime.json> --openclaw-command openclaw --channel telegram --skill-path <repo-root>` 生成更符合本 Skill 主目标的 OpenClaw runtime 配置
-- 使用 `scripts/nexus_openclaw_role_runtime.py --payload-file <payload.json> --prompt-file <prompt.md> --openclaw-command openclaw` 将单个阶段角色交给 OpenClaw CLI 执行
-- 使用 `scripts/run_openclaw_stage_demo.py start --report-dir <report-dir> --runtime-config runtime-config.openclaw.json` 从阶段零开始跑 OpenClaw 端到端调度演练，并在首个审批门停下
-- 使用 `scripts/run_openclaw_stage_demo.py approve --report-dir <report-dir> --stage-id <stage-id> --runtime-config runtime-config.openclaw.json --continue-run` 记录批准后继续推进到下一个审批门
-- 使用 `scripts/nexus_claude_role_runtime.py --payload-file <payload.json> --prompt-file <prompt.md> --claude-command claude` 将单个阶段角色交给 Claude CLI 非交互执行
-- 使用 `scripts/nexus_runtime_bridge.py run-once --report-dir <report-dir> --runtime-config <runtime.json>` 将当前阶段 dispatch bundle 真正交给宿主 runtime 执行
-- 使用 `scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config <runtime.json>` 连续执行多个阶段，直到遇到审批门、No-Go、执行失败或完成
-- 当 `skill-tester` 因真实执行环境缺失进入 `takeover-required` 时，优先使用 `scripts/run_flow_a_takeover_execution.py --report-dir <report-dir>` 在 host 环境自动接管剩余 blocked/pending case；该路径默认消费 `CASE-EXECUTION-PLAN.json` 里的 `executionHints.hostTakeover`
-- role metadata 统一优先从 frontmatter 读取：结构校验使用 `output_validation` / `minimum_output` / `minimum_output_aliases`，接管策略使用 `takeover_enabled` / `takeover_statuses` / `takeover_patterns` / `takeover_on_process_failure`；旧章节写法只作为兼容回退；`src/nexus_testing/role_metadata.py` 会在解析阶段直接校验 schema，发现非法 key/type/组合时应直接修 role 文档，不要把坏配置继续传到 runtime
-- dispatch payload 和 `DISPATCH/.../manifest.json` 统一由 `src/nexus_testing/dispatch_payload_schema.py` 校验；若字段缺失、类型不对、角色顺序冲突或 `minimumOutputAliases` / `mainAgentTakeoverPolicy` 结构非法，应在 dispatch 阶段直接失败，不要等到外部 runtime 才暴露
-- `runtime-config` 统一由 `src/nexus_testing/runtime_config_schema.py` 校验；若 default/roles/fallback 缺命令、超时非法、环境变量结构错误或 takeover policy 结构不完整，应在生成或加载配置时直接失败
-- `runtime-config` 至少提供 `default.command`，支持按角色覆盖；命令模板可使用 `{payload_file}`、`{prompt_file}`、`{report_dir}`、`{stage_id}`、`{role_id}` 等变量；外部 runtime 若 stdout 返回 `{"resultFile":"...", "note":"..."}`，bridge 会自动回写 `RUNS` 状态
-- OpenClaw preset 通过 `nexus_openclaw_role_runtime.py` 调 `openclaw invoke`，更贴近这个 Skill 的原生使用方式；若 OpenClaw 结果 JSON 未直接给出主交付物，适配器会按当前阶段缺失交付物自动探测
-- `run_openclaw_stage_demo.py` 是推荐的 OpenClaw 演练入口，会把初始化、运行到审批门、记录批准和继续推进串成一条可复用命令链
-- Claude preset 默认通过 `nexus_claude_role_runtime.py` 调 `claude --print`，并用 JSON Schema 约束返回 `resultFile/note`；先用 `--dry-run` 检查 prompt 和命令，再接入真实执行
-- 使用 `scripts/generate_flow_a_test_design.py --fingerprint <PRODUCT-FINGERPRINT.json> --spec <SPEC.md> --consistency-review <SPEC-CONSISTENCY-REVIEW.md> --output-dir <report-dir> --language <request-language>` 生成多表面 `TEST-DESIGN.md` 与 `SURFACE-EXECUTION-PLAN.json`
-- `CASE-EXECUTION-PLAN.json` 中的 `executionHints` 现在除 message/mode 外，还会补充 `hostTakeover.enabled/strategy/urls/providerAliases/strictReal`，供阶段五主 agent takeover 自动消费
-- 使用 `scripts/generate_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --output-dir <report-dir>` 生成阶段五 `SKILL-SURFACE-WORKLIST.md` 与 `SURFACE-COVERAGE.json`
-- 使用 `scripts/run_flow_a_skill_execution.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-path <repo-or-skill> --session-id <id> --sandbox-root <sandbox-root> --output-dir <report-dir> --language <request-language>` 让 `skill-tester` 按 surface 顺序执行；当前 `skill/bin` 可给真实执行结论，`package/plugin-manifest` 为结构化校验，`openclaw-extension` 优先通过 `testing.json` 的 `openclawExtensionRuntimeHarness` 验证真实 OpenClaw runtime / subagent 行为，其次才是 `openclawExtensionHarness`；若无 harness 但 live runtime 可用，runner 也必须先做 live probe，并把 `runtime-probed=true` 记入结果；`mcp` 可通过 stdio JSON-RPC harness 验证协议交互，只有 probe 证据时才记为 `incomplete`
-- 阶段五完成后，用 `scripts/validate_flow_a_skill_results.py --surface-plan <SURFACE-EXECUTION-PLAN.json> --skill-results <TEST-EXECUTION/skill-results.md>` 校验 surface 覆盖是否完整
-- 判断是否需要 `sandbox-create.sh`、`sandbox-exec.sh` 等沙箱脚本
-- 阶段一先生成 `PRODUCT-FINGERPRINT.json`，再生成 `SPEC.md`
-- 阶段一必须完成 `SPEC-CONSISTENCY-REVIEW.md`；未通过不得进入阶段二
-- OpenClaw 自身可用性默认由运行时保证，不作为本 Skill 的检测项
+- **产物生成**：用 `generate_flow_a_stage1.py` 生成阶段一三件套；用 `generate_stage_subagent_plan.py` 生成 `STAGE-SUBAGENT-PLAN.json`；用 `generate_flow_a_test_design.py` 生成测试设计；用 `generate_flow_a_skill_execution.py` 生成阶段五 worklist
+- **执行编排**：`nexus_stage_executor.py init/next/dispatch/bundle-dispatch` → `nexus_dispatch_runner.py prepare/start-role/complete-role/fail-role/advance` → `nexus_runtime_bridge.py run-once/run-until-gate`（runtime-config 文件由 `generate_runtime_bridge_config.py --preset openclaw|claude|mock` 生成）
+- **宿主运行时**：OpenClaw preset 用 `nexus_openclaw_role_runtime.py`；Claude preset 用 `nexus_claude_role_runtime.py`；演练入口用 `run_openclaw_stage_demo.py start/approve`
+- **统一校验层**：dispatch payload 修改先扩展 `dispatch_payload_schema.py`；runtime config 修改先扩展 `runtime_config_schema.py`；role metadata 修改先扩展 `role_metadata.py`
+- **接管路径**：`skill-tester` 进入 `takeover-required` 时用 `run_flow_a_takeover_execution.py`；用 `run_flow_a_skill_execution.py` 执行阶段五；完成后用 `validate_flow_a_skill_results.py` 校验覆盖完整性；`openclaw-extension` 优先通过 `testing.json` 的 `openclawExtensionRuntimeHarness` 验证真实 OpenClaw runtime 行为，有 live runtime 时先做 live probe
+- **详细脚本参数与运行示例**见 `docs/references/reference-operational-procedures.md`
 
 ## 六、阶段五执行模型
 
@@ -191,107 +162,18 @@ Flow A 额外要求：
 
 批准实现细节、拒绝计数、阶段回退入口、无响应处理统一引用 `docs/references/reference-approval-mechanism.md`。
 
-## 八、沟通约束
+## 八、沟通约束（摘要）
 
-只保留必要规则：
-
-- 每阶段独立发送交付物和简要摘要
 - 交付物生成后立即主动发送，不等待用户追问
-- 所有交付物的描述性内容必须使用用户**发起测试请求的语言**；代码、命令、路径、协议名保持原样
-- 需要批准时明确要求“批准 / 拒绝”
-- 缺输入或 blocker 时，用最短清单向用户提问
-- 不用模糊措辞代替阶段状态
+- 所有交付物的描述性内容必须使用用户**发起测试请求的语言**；代码、命令、路径保持原样
+- 需要批准时明确要求"批准 / 拒绝"
 
-Telegram / OpenClaw 文件发送硬约束：
-
-- 发送交付物时必须显式提供 `caption`
-- 无交互按钮时也必须显式提供 `buttons: []`，不得省略
-- `caption` 至少包含文件摘要和下一步
-- 报告文件先写入 `memory/nexus-reports/...`，再通过 `python scripts/prepare_report_delivery.py --report-file <memory-report-file>` 镜像到工作区 `files/...`
-- `message(action: "send", ...)` 的 `filePath` 必须使用相对工作区的 `files/...` 路径；`memory/...` 只用于归档，不直接用于发送
-- 首次发送失败时，必须重试 `files/...` 中转路径；若平台仍拒绝，需在同轮消息里明确告知报告所在的工作区路径
-
-文件发送示例（Telegram / OpenClaw）：
+Telegram / OpenClaw 文件发送示例：
 
 ```text
 message(action: "send", filePath: "files/nexus-reports/{date}-{test-type}-{flow}/SPEC.md", caption: "阶段一需求规格已生成，已整理核心需求与验收点。下一步：进入阶段二质量评估。", buttons: [])
 ```
 
-推荐输出骨架：
+执行约束（核心）：**静态分析只能作为补充审查**，不得输出 `PASS`/`PARTIAL PASS`/覆盖率，只能输出 `blocked`/`incomplete`/`待真实执行复核`。
 
-```text
-第 X 阶段完成
-参与角色：...
-交付物：...
-关键结论：...
-下一步：...
-```
-
-## 九、执行原则
-
-> 读文档不等于测试，静态分析不等于验证。
-
-阶段五每条关键用例都必须记录：
-
-- 执行动作
-- 实际输入
-- 实际输出
-- 判定
-
-静态分析只能作为补充审查：
-
-- 不得输出 `PASS` / `PARTIAL PASS`
-- 不得输出功能覆盖率、API 覆盖率、规则覆盖率
-- 只能输出 `blocked` / `incomplete` / `待真实执行复核`
-
-环境不足时使用降级阶梯：
-
-```text
-真实执行
-  ↓
-沙箱执行
-  ↓
-构造模拟
-  ↓
-部分执行
-  ↓
-静态分析（最后手段，必须显式标注）
-```
-
-执行率阈值、Go/No-Go 规则、残余风险表达统一以 `DEFINITIONS.md` 为准。
-
-## 十、快速开始
-
-1. 将仓库作为 OpenClaw Skill 项目打开，入口使用本文件。
-2. 提供待测对象：Skill 路径、URL/API、APK 或 MCP Server 信息。
-3. 从阶段零开始执行，不跳过环境检查。
-4. 阶段二和阶段四获批后，再继续后续阶段。
-
-## 十一、参考文档
-
-| 文件 | 用途 |
-|------|------|
-| `DEFINITIONS.md` | 阶段、角色、目录、超时、门禁单一事实源 |
-| `docs/references/reference-report-format.md` | 报告格式与占位符规范 |
-| `docs/references/reference-approval-mechanism.md` | 批准、拒绝、无响应与 No-Go 规则 |
-| `docs/references/reference-sandbox-spec.md` | 沙箱目录、生命周期与安全边界 |
-| `docs/references/reference-security-scan.md` | 安全扫描维度与判定规则 |
-| `docs/references/reference-security-blacklist.md` | 安全黑名单与禁用模式 |
-| `docs/references/reference-external-case-sourcing.md` | 外部测试用例获取方法 |
-| `docs/references/reference-test-case-templates.md` | 用例模板与反模式清单 |
-| `docs/references/reference-skill-tier-requirements.md` | Skill 分层要求与层级判定 |
-| `docs/references/reference-skill-review-framework.md` | Skill 文档与结构审查框架 |
-| `docs/references/reference-agent-evaluation-methodology.md` | Agent/Skill 测试方法论 |
-| `docs/references/reference-flow-skill.md` | Flow A 详细模板 |
-| `docs/references/reference-flow-web-api.md` | Flow B 详细模板 |
-| `docs/references/reference-flow-android.md` | Flow C 详细模板 |
-| `docs/references/reference-flow-mcp.md` | Flow D 详细模板 |
-| `docs/references/reference-expected-outputs.md` | 各阶段预期输出清单 |
-| `docs/references/reference-output-verification-examples.md` | 输出验证示例 |
-| `docs/references/reference-production-readiness.md` | 测试完成后的生产就绪检查项 |
-| `docs/references/reference-recovery.md` | 测试中断后的恢复与续跑机制 |
-
-维护约束：
-
-- 任何修改入口、流程、角色、参考文档、校验器或执行语义时，必须同步更新 `README.md` 和 `CHANGELOG.md`
-
+> 完整沟通约束、执行原则、快速开始指引及参考文档索引见 `docs/references/reference-operational-procedures.md`。

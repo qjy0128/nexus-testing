@@ -39,17 +39,25 @@ def main(argv: list[str] | None = None) -> int:
 
     invoke = sub.add_parser("invoke")
     invoke.add_argument("--skill", required=True)
-    invoke.add_argument("--message", required=True)
+    # Accepts both --message (legacy) and --message-file (preferred)
+    msg_group = invoke.add_mutually_exclusive_group(required=True)
+    msg_group.add_argument("--message")
+    msg_group.add_argument("--message-file")
     invoke.add_argument("--channel", required=True)
     invoke.add_argument("--output", required=True)
     invoke.add_argument("--result", required=True)
     args = parser.parse_args(argv)
 
+    if args.message_file:
+        message_content = Path(args.message_file).read_text(encoding="utf-8")
+    else:
+        message_content = args.message or ""
+
     output_path = Path(args.output)
     result_path = Path(args.result)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(f"# Mock OpenClaw Output\n\n{args.message}\n", encoding="utf-8")
+    output_path.write_text(f"# Mock OpenClaw Output\n\n{message_content[:200]}\n", encoding="utf-8")
 
     report_dir = os.environ.get("NEXUS_REPORT_DIR")
     role_id = os.environ.get("NEXUS_ROLE_ID", "unknown-role")

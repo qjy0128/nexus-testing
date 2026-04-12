@@ -207,6 +207,13 @@ def validate_dispatch_payload(payload: object, *, field: str = "dispatch payload
     best_for = _string_list(payload.get("bestFor", []), f"{field}.bestFor")
     launch_prompt = _non_empty_string(payload.get("launchPrompt"), f"{field}.launchPrompt")
 
+    definition_excerpt_value = payload.get("definitionExcerpt")
+    if definition_excerpt_value is not None and not isinstance(definition_excerpt_value, str):
+        raise ValueError(f"{field}.definitionExcerpt must be a string when present")
+    definition_excerpt: str | None = (
+        definition_excerpt_value.strip() if isinstance(definition_excerpt_value, str) else None
+    )
+
     return {
         "roleId": role_id,
         "roleFile": role_file,
@@ -243,6 +250,7 @@ def validate_dispatch_payload(payload: object, *, field: str = "dispatch payload
         "description": description,
         "bestFor": best_for,
         "launchPrompt": launch_prompt,
+        "definitionExcerpt": definition_excerpt,
     }
 
 

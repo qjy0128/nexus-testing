@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-testing"
-version = "0.9.46"
+version = "0.9.49"
 description = "Nexus Testing Framework"
 readme = "README.md"
 requires-python = ">=3.11"

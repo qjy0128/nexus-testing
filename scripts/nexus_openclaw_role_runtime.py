@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from nexus_testing.json_utils import load_json
@@ -42,7 +43,12 @@ def detect_new_artifact(report_dir: Path, patterns: list[object], before: set[st
     return candidates[0] if candidates else None
 
 
-def build_command(args: argparse.Namespace, prompt: str, output_file: Path, result_file: Path) -> list[str]:
+def build_command(
+    args: argparse.Namespace,
+    message_file: Path,
+    output_file: Path,
+    result_file: Path,
+) -> list[str]:
     command = [args.openclaw_command]
     if args.openclaw_args:
         command.extend(args.openclaw_args)
@@ -51,8 +57,8 @@ def build_command(args: argparse.Namespace, prompt: str, output_file: Path, resu
             "invoke",
             "--skill",
             str(resolve_path(args.skill_path)),
-            "--message",
-            prompt,
+            "--message-file",
+            str(message_file),
             "--channel",
             args.channel,
             "--output",
@@ -84,113 +90,143 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(payload, dict):
         raise SystemExit("ERROR: payload must be a JSON object")
     prompt_text = read_text(resolve_path(args.prompt_file))
-    prompt = build_runtime_prompt(payload, prompt_text, language="zh", include_json_response_rules=False)
+
+    # If payload already carries a pre-baked final prompt, use it directly.
+    if payload.get("prebaked") and payload.get("finalPromptFile"):
+        final_prompt_path = Path(str(payload["finalPromptFile"]))
+        if final_prompt_path.exists():
+            prompt = read_text(final_prompt_path)
+        else:
+            prompt = build_runtime_prompt(payload, prompt_text, language="zh", include_json_response_rules=False)
+    else:
+        prompt = build_runtime_prompt(payload, prompt_text, language="zh", include_json_response_rules=False)
 
     payload_file = resolve_path(args.payload_file)
     runtime_dir = payload_file.parent
     output_file = runtime_dir / f"{payload_file.stem}.openclaw-output.md"
     result_file = runtime_dir / f"{payload_file.stem}.openclaw-result.json"
 
-    command = build_command(args, prompt, output_file, result_file)
-    if args.dry_run:
+    # Write prompt to a temp file to avoid CLI argument length limits.
+    tmp_message_file: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix=".message.txt",
+            prefix="nexus-openclaw-",
+            delete=False,
+        ) as tmp:
+            tmp.write(prompt)
+            tmp_message_file = Path(tmp.name)
+
+        command = build_command(args, tmp_message_file, output_file, result_file)
+        if args.dry_run:
+            print(
+                json.dumps(
+                    {
+                        "cwd": str(resolve_path(args.skill_path)),
+                        "command": command,
+                        "messageFile": str(tmp_message_file),
+                        "prompt": prompt,
+                        "outputFile": str(output_file),
+                        "resultFile": str(result_file),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+
+        report_dir = resolve_path(str(payload["reportDir"]))
+        before = render_existing_artifacts(report_dir, list(payload.get("missingDeliverables", [])))
+        env = dict(os.environ)
+        env.update(
+            {
+                "NEXUS_REPORT_DIR": str(report_dir),
+                "NEXUS_ROLE_ID": str(payload["roleId"]),
+                "NEXUS_STAGE_ID": str(payload["stageId"]),
+                "NEXUS_STAGE_LABEL": str(payload["stageLabel"]),
+                "NEXUS_MISSING_DELIVERABLES": json.dumps(payload.get("missingDeliverables", []), ensure_ascii=False),
+            }
+        )
+
+        proc = subprocess.run(
+            command,
+            cwd=str(resolve_path(args.skill_path)),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if proc.returncode != 0:
+            raise SystemExit(
+                f"ERROR: openclaw runtime failed with exit {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+            )
+
+        structured_result = None
+        if result_file.exists():
+            try:
+                structured_result = json.loads(result_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                structured_result = None
+
+        result_path = None
+        note = "openclaw invoke completed"
+        status = None
+        needs_takeover = False
+        blockers: list[str] = []
+        consumed_artifact_paths: list[str] = []
+        produced_artifact_paths: list[str] = []
+        execution_method = None
+        if isinstance(structured_result, dict):
+            if structured_result.get("resultFile"):
+                result_path = str(structured_result["resultFile"])
+            if structured_result.get("note"):
+                note = str(structured_result["note"])
+            if structured_result.get("status"):
+                status = str(structured_result["status"])
+            needs_takeover = bool(structured_result.get("needsMainAgentTakeover", False))
+            if structured_result.get("executionMethod"):
+                execution_method = str(structured_result["executionMethod"])
+            raw_consumed = structured_result.get("consumedArtifactPaths", [])
+            if isinstance(raw_consumed, list):
+                consumed_artifact_paths = [str(item) for item in raw_consumed if str(item).strip()]
+            raw_produced = structured_result.get("producedArtifactPaths", [])
+            if isinstance(raw_produced, list):
+                produced_artifact_paths = [str(item) for item in raw_produced if str(item).strip()]
+            raw_blockers = structured_result.get("blockers", [])
+            if isinstance(raw_blockers, list):
+                blockers = [str(item) for item in raw_blockers if str(item).strip()]
+
+        if not result_path:
+            result_path = detect_new_artifact(report_dir, list(payload.get("missingDeliverables", [])), before)
+        if not result_path and output_file.exists():
+            result_path = str(output_file)
+
         print(
             json.dumps(
                 {
-                    "cwd": str(resolve_path(args.skill_path)),
-                    "command": command,
-                    "prompt": prompt,
-                    "outputFile": str(output_file),
-                    "resultFile": str(result_file),
+                    "resultFile": result_path,
+                    "note": note,
+                    "status": status,
+                    "needsMainAgentTakeover": needs_takeover,
+                    "blockers": blockers,
+                    "consumedArtifactPaths": consumed_artifact_paths,
+                    "producedArtifactPaths": produced_artifact_paths,
+                    "executionMethod": execution_method,
                 },
                 ensure_ascii=False,
-                indent=2,
             )
         )
         return 0
 
-    report_dir = resolve_path(str(payload["reportDir"]))
-    before = render_existing_artifacts(report_dir, list(payload.get("missingDeliverables", [])))
-    env = dict(os.environ)
-    env.update(
-        {
-            "NEXUS_REPORT_DIR": str(report_dir),
-            "NEXUS_ROLE_ID": str(payload["roleId"]),
-            "NEXUS_STAGE_ID": str(payload["stageId"]),
-            "NEXUS_STAGE_LABEL": str(payload["stageLabel"]),
-            "NEXUS_MISSING_DELIVERABLES": json.dumps(payload.get("missingDeliverables", []), ensure_ascii=False),
-        }
-    )
-
-    proc = subprocess.run(
-        command,
-        cwd=str(resolve_path(args.skill_path)),
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if proc.returncode != 0:
-        raise SystemExit(
-            f"ERROR: openclaw runtime failed with exit {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
-        )
-
-    structured_result = None
-    if result_file.exists():
-        try:
-            structured_result = json.loads(result_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            structured_result = None
-
-    result_path = None
-    note = "openclaw invoke completed"
-    status = None
-    needs_takeover = False
-    blockers: list[str] = []
-    consumed_artifact_paths: list[str] = []
-    produced_artifact_paths: list[str] = []
-    execution_method = None
-    if isinstance(structured_result, dict):
-        if structured_result.get("resultFile"):
-            result_path = str(structured_result["resultFile"])
-        if structured_result.get("note"):
-            note = str(structured_result["note"])
-        if structured_result.get("status"):
-            status = str(structured_result["status"])
-        needs_takeover = bool(structured_result.get("needsMainAgentTakeover", False))
-        if structured_result.get("executionMethod"):
-            execution_method = str(structured_result["executionMethod"])
-        raw_consumed = structured_result.get("consumedArtifactPaths", [])
-        if isinstance(raw_consumed, list):
-            consumed_artifact_paths = [str(item) for item in raw_consumed if str(item).strip()]
-        raw_produced = structured_result.get("producedArtifactPaths", [])
-        if isinstance(raw_produced, list):
-            produced_artifact_paths = [str(item) for item in raw_produced if str(item).strip()]
-        raw_blockers = structured_result.get("blockers", [])
-        if isinstance(raw_blockers, list):
-            blockers = [str(item) for item in raw_blockers if str(item).strip()]
-
-    if not result_path:
-        result_path = detect_new_artifact(report_dir, list(payload.get("missingDeliverables", [])), before)
-    if not result_path and output_file.exists():
-        result_path = str(output_file)
-
-    print(
-        json.dumps(
-            {
-                "resultFile": result_path,
-                "note": note,
-                "status": status,
-                "needsMainAgentTakeover": needs_takeover,
-                "blockers": blockers,
-                "consumedArtifactPaths": consumed_artifact_paths,
-                "producedArtifactPaths": produced_artifact_paths,
-                "executionMethod": execution_method,
-            },
-            ensure_ascii=False,
-        )
-    )
-    return 0
+    finally:
+        if tmp_message_file is not None and tmp_message_file.exists():
+            try:
+                tmp_message_file.unlink()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

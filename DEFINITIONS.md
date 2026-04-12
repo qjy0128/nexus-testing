@@ -6,6 +6,7 @@
 
 ---
 
+<!-- section:stages -->
 ## 一、阶段定义（8 阶段，编号零~七）
 
 | 阶段编号 | 阶段名称 | 执行者 | 输出文件 | 需批准 | 可打回 |
@@ -23,6 +24,7 @@
 
 ---
 
+<!-- section:artifact-flow -->
 ## 二、阶段间上下文传递（唯一路径）
 
 ```
@@ -38,6 +40,7 @@
 
 ---
 
+<!-- section:report-dir -->
 ## 三、报告目录结构
 
 所有报告输出到：`memory/nexus-reports/{date}-{test-type}-{flow}/`
@@ -98,6 +101,7 @@
 
 ---
 
+<!-- section:flow-config -->
 ## 四、Flow 配置（并行角色定义）
 
 | Flow | 测试类型 | 并行角色（阶段五） | 数量 | evidence-collector |
@@ -144,6 +148,7 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 
 ---
 
+<!-- section:timeouts -->
 ## 五、超时配置（统一值）
 
 | 场景 | 超时值 | 说明 |
@@ -157,6 +162,7 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 
 ---
 
+<!-- section:role-classification -->
 ## 六、角色分类体系
 
 每个角色按职责分为三种类型，影响调度策略：
@@ -268,6 +274,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:doc-priority -->
 ## 六-B、文档优先级规则
 
 当多个文档对同一问题的描述出现冲突时，按以下优先级处理：
@@ -284,6 +291,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:lightweight-mode -->
 ## 六-C、轻量模式
 
 当被测对象规模较小时，自动合并部分阶段以降低流程开销：
@@ -310,6 +318,40 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:minimal-mode -->
+## 六-D、极简模式（Minimal Mode）
+
+极简模式是一条 3 阶段流水线，专为单文件、无外部依赖、无安全敏感操作的简单 Skill 设计。通过 `--mode minimal` 触发。
+
+### 触发条件（满足**全部**条件才建议使用）
+
+| 条件 | 要求 |
+|------|------|
+| 目标类型 | Skill 文件（Flow A） |
+| 单文件结构 | Skill 由单一 SKILL.md 组成，无多文件工具集 |
+| 无外部依赖 | 不调用外部 API、无数据库访问、无文件系统写入 |
+| 无安全敏感操作 | 不涉及认证/授权/用户输入注入 |
+| 测试范围小 | 能力地图 ≤ 3 个 CAP-ID |
+| 用户明确指定 | 显式传入 `minimal` / `lite` / `quick` 模式参数 |
+
+### 极简模式 3 阶段流水线
+
+| 阶段 | 阶段 ID | 名称 | 角色 | 交付物 |
+|------|---------|------|------|--------|
+| M阶段一 | `minimal-stage-1` | 快速扫描 | environment-checker → requirement-analyst | `PRODUCT-FINGERPRINT.json`, `SPEC.md` |
+| M阶段二 | `minimal-stage-2` | 核心测试 | skill-tester（Flow A）/ 对应 tester | `TEST-EXECUTION/minimal-test-result.md` |
+| M阶段三 | `minimal-stage-3` | 报告整合 | report-integrator | `FINAL-TEST-REPORT.md` |
+
+### 极简模式限制
+
+- 跳过质量评估（阶段二）和用例评审门禁（阶段四）
+- 跳过安全测试、兼容性测试、缺陷分析等专项角色
+- 测试报告须注明 `测试模式：极简 | 覆盖维度受限`
+- 若运行中发现安全敏感操作或超过 3 个 CAP，主 Agent 应升级为标准模式并重新调度
+
+---
+
+<!-- section:role-io -->
 ## 六-D、角色输入/输出约定（阶段角色 subagent）
 
 | 角色 | 读取文件 | 输出文件 | Flow |
@@ -327,6 +369,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:token-budget -->
 ## 七、Token 预算规则（统一值）
 
 ### 黑盒优先原则
@@ -368,6 +411,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:channel-degradation -->
 ## 八、渠道降级规则（统一描述）
 
 主入口统一引用，**不允许**在各 Flow/Role 中重复手写渠道规则。
@@ -383,6 +427,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:approval-rejection -->
 ## 九、审批与打回规则（统一）
 
 | 规则 | 值 |
@@ -440,6 +485,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:execution-verification -->
 ## 十、执行验证标准（反偷懒机制）
 
 > **核心规则：读文档 ≠ 测试。静态分析 ≠ 验证。检查配置 ≠ 执行。**
@@ -499,6 +545,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:incremental-retest -->
 ## 十一、增量复测流程
 
 当缺陷修复后需要复测时，支持增量复测而非全量重跑。
@@ -534,6 +581,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:regression-suites -->
 ## 十二、回归套件分层定义
 
 | 套件类型 | 时长 | 频率 | 覆盖范围 | 通过标准 |
@@ -576,6 +624,7 @@ PRODUCT-QUALITY-REVIEW.md
 
 ---
 
+<!-- section:dynamic-testing -->
 ## 十三、AI 动态测试增强
 
 ### 核心原则
@@ -640,6 +689,7 @@ test-designer 分析被测产品功能
 
 ---
 
+<!-- section:sandbox-env -->
 ## 十四、沙箱执行环境
 
 > **完整规格统一引用** `docs/references/reference-sandbox-spec.md`。以下为关键定义速查。
@@ -684,6 +734,7 @@ test-designer 分析被测产品功能
 
 ---
 
+<!-- section:external-cases -->
 ## 十五、外部测试用例获取
 
 > **完整规格统一引用** `docs/references/reference-external-case-sourcing.md`。以下为关键定义速查。
@@ -722,6 +773,7 @@ TEST-DESIGN.md 中引用的外部用例必须包含来源追溯表：
 
 ---
 
+<!-- section:skill-classification -->
 ## 十六、Skill 类型分类体系
 
 > **适用范围**：Flow A（Skill 测试）。阶段一需求解析师必须对被测 Skill 进行分类，分类结果写入 SPEC.md，后续所有阶段引用。
@@ -759,6 +811,7 @@ TEST-DESIGN.md 中引用的外部用例必须包含来源追溯表：
 
 ---
 
+<!-- section:test-dimension-matrix -->
 ## 十七、能力驱动测试维度矩阵
 
 > **适用范围**：Flow A（Skill 测试）。测试设计师（阶段三）必须根据 Skill 类型从此矩阵中选取必测维度，用例评估师（阶段四）根据此矩阵验证覆盖完整性。

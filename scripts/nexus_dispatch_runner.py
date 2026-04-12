@@ -10,7 +10,6 @@ bootstrap_paths()
 import argparse
 import json
 import sys
-import threading
 from pathlib import Path
 
 from nexus_stage_executor import (
@@ -27,8 +26,7 @@ from nexus_stage_executor import (
 from nexus_testing.dispatch_payload_schema import validate_dispatch_payload_list
 from nexus_testing.json_utils import load_json
 from nexus_testing.sandbox_skill_invoke.core import write_text
-
-STATE_LOCK = threading.RLock()
+from nexus_testing.state_lock import StateLock
 
 
 def save_json(path: Path, value: object) -> None:
@@ -125,7 +123,7 @@ def update_role_state(report_dir: Path, stage_id: str, role_id: str, updater) ->
     state_path = role_state_path(report_dir, stage_id, role_id)
     if not state_path.exists():
         raise SystemExit(f"ERROR: role state does not exist: {state_path}")
-    with STATE_LOCK:
+    with StateLock(state_path):
         state = load_json(state_path, {}, label=f"role state {state_path.name}")
         if not isinstance(state, dict):
             state = {}

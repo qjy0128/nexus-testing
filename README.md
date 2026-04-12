@@ -322,7 +322,7 @@ nexus-testing/
 │   ├── validate_flow_a_skill_results.py # 校验 skill-results 是否覆盖全部 surface
 │   └── fixtures/               # 元测试固件（pass/defect/extreme）
 ├── docs/
-│   ├── references/             # 18 个参考文档
+│   ├── references/             # 19 个参考文档
 │   └── *.md                    # 计划、评估和执行文档
 ├── archive/                    # 已归档的历史模板和 changelog
 ├── .github/workflows/          # CI
@@ -387,6 +387,7 @@ nexus-testing/
 | `docs/references/reference-skill-tier-requirements.md` | Skill 分层要求 |
 | `docs/references/reference-skill-review-framework.md` | Skill 评审框架 |
 | `docs/references/reference-agent-evaluation-methodology.md` | Agent 评估方法论 |
+| `docs/references/reference-operational-procedures.md` | 沟通约束、执行原则、快速开始指引 |
 
 ## 支持渠道
 
@@ -394,5 +395,5 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 
 ## 当前版本
 
-v0.9.46 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.49 — 详见 [CHANGELOG.md](CHANGELOG.md)
 

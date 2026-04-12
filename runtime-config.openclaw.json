@@ -18,5 +18,35 @@
     "cwd": "{workspace_root}",
     "timeoutSeconds": 900,
     "stallTimeoutSeconds": 300
+  },
+  "roles": {
+    "test-designer": {
+      "timeoutSeconds": 1200,
+      "stallTimeoutSeconds": 400
+    },
+    "skill-tester": {
+      "timeoutSeconds": 1800,
+      "stallTimeoutSeconds": 600
+    },
+    "security-tester": {
+      "timeoutSeconds": 1200,
+      "stallTimeoutSeconds": 400
+    },
+    "functional-tester": {
+      "timeoutSeconds": 1200,
+      "stallTimeoutSeconds": 400
+    },
+    "compatibility-tester": {
+      "timeoutSeconds": 1200,
+      "stallTimeoutSeconds": 400
+    },
+    "performance-tester": {
+      "timeoutSeconds": 1200,
+      "stallTimeoutSeconds": 400
+    },
+    "report-integrator": {
+      "timeoutSeconds": 1200,
+      "stallTimeoutSeconds": 400
+    }
   }
 }

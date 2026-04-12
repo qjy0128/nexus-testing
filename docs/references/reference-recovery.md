@@ -140,7 +140,54 @@
 
 ---
 
-## 八、不可恢复的情况
+## 八、OpenClaw CLI 会话恢复（run_openclaw_stage_demo.py）
+
+使用 `scripts/run_openclaw_stage_demo.py` 管理的测试会话，可用以下命令快速诊断和恢复。
+
+### 1. 诊断现有会话
+
+```bash
+python scripts/run_openclaw_stage_demo.py detect-existing \
+  --report-dir memory/nexus-reports/2026-04-12-skill-a/
+```
+
+输出字段说明：
+
+| 字段 | 含义 |
+|------|------|
+| `status` | `recoverable` / `awaiting-approval` / `session-complete` / `no-session` |
+| `lastCompletedStage` | 最近成功完成的阶段 ID |
+| `pendingStageId` | 当前未完成的阶段 ID |
+| `missingDeliverables` | 该阶段缺失的交付物列表 |
+| `recommendation` | 推荐的下一步命令 |
+
+### 2. 从断点恢复
+
+```bash
+# 自动从最后未完成阶段恢复
+python scripts/run_openclaw_stage_demo.py recover \
+  --report-dir memory/nexus-reports/2026-04-12-skill-a/
+
+# 强制从指定阶段重新开始
+python scripts/run_openclaw_stage_demo.py recover \
+  --report-dir memory/nexus-reports/2026-04-12-skill-a/ \
+  --from-stage stage-3
+```
+
+`--from-stage` 会在 `stage-transition-log.json` 中插入 `manual-recovery` 事件，让执行器重新派发指定阶段的 subagent，已完成阶段的交付物不会被删除。
+
+### 3. 典型恢复场景
+
+| 场景 | 命令 |
+|------|------|
+| OpenClaw crash / 超时后继续 | `recover --report-dir <dir>` |
+| 需要人工批准后继续 | `approve --stage-id <id> --continue-run` |
+| 强制重跑某阶段 | `recover --report-dir <dir> --from-stage <id>` |
+| 确认整体状态 | `detect-existing --report-dir <dir>` |
+
+---
+
+## 九、不可恢复的情况
 
 以下情况必须从头开始新测试流程：
 

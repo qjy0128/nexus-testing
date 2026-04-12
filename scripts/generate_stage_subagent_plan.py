@@ -306,6 +306,8 @@ def normalize_flow(value: str) -> str:
 
 def normalize_mode(flow_id: str, value: str) -> str:
     normalized = value.strip().lower()
+    if normalized in {"minimal", "lite", "quick"}:
+        return "minimal"
     if flow_id != "B":
         return "standard"
     if normalized in {"a", "standard", "default"}:
@@ -315,8 +317,49 @@ def normalize_mode(flow_id: str, value: str) -> str:
     raise ValueError(f"Unsupported mode for Flow B: {value}")
 
 
+def build_minimal_stages(flow_id: str) -> list[dict[str, object]]:
+    """3-stage lightweight pipeline for simple, dependency-free Skills."""
+    tester_role = {
+        "A": "skill-tester",
+        "B": "functional-tester",
+        "C": "functional-tester",
+        "D": "mcp-tester",
+    }[flow_id]
+    return [
+        serial_stage(
+            "minimal-stage-1",
+            "M阶段一",
+            "快速扫描",
+            ["environment-checker", "requirement-analyst"],
+            ["PRODUCT-FINGERPRINT.json", "SPEC.md"],
+            gate="confirm",
+        ),
+        serial_stage(
+            "minimal-stage-2",
+            "M阶段二",
+            "核心测试",
+            [tester_role],
+            ["TEST-EXECUTION/minimal-test-result.md"],
+            required_inputs=["PRODUCT-FINGERPRINT.json", "SPEC.md"],
+        ),
+        serial_stage(
+            "minimal-stage-3",
+            "M阶段三",
+            "报告整合",
+            ["report-integrator"],
+            ["FINAL-TEST-REPORT.md"],
+            required_inputs=["TEST-EXECUTION/minimal-test-result.md"],
+        ),
+    ]
+
+
 def build_plan(flow_id: str, mode: str) -> dict[str, object]:
-    stages = build_flow_b_mode_stages() if flow_id == "B" and mode == "b-mode" else build_standard_stages(flow_id)
+    if mode == "minimal":
+        stages = build_minimal_stages(flow_id)
+    elif flow_id == "B" and mode == "b-mode":
+        stages = build_flow_b_mode_stages()
+    else:
+        stages = build_standard_stages(flow_id)
     return {
         "version": 1,
         "flowId": flow_id,

@@ -27,7 +27,8 @@
     "docs/references/reference-flow-web-api.md",
     "docs/references/reference-flow-android.md",
     "docs/references/reference-flow-mcp.md",
-    "docs/references/reference-recovery.md"
+    "docs/references/reference-recovery.md",
+    "docs/references/reference-operational-procedures.md"
   ],
   "requiredGovernanceFiles": [
     ".gitignore",
@@ -82,6 +83,8 @@
   ],
   "requiredSrcPackageFiles": [
     "src/nexus_testing/__init__.py",
+    "src/nexus_testing/definitions_loader.py",
+    "src/nexus_testing/state_lock.py",
     "src/nexus_testing/frontmatter_utils.py",
     "src/nexus_testing/path_utils.py",
     "src/nexus_testing/json_utils.py",
