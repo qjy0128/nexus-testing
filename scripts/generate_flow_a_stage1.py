@@ -20,6 +20,15 @@ from nexus_testing.flow_a_localization import add_output_language_argument
 from nexus_testing.sandbox_skill_invoke.core import write_text
 
 
+def _normalize_product_type(raw: object) -> list[str]:
+    """将 productType 统一为字符串列表，防御 LLM 生成描述性字符串的情况。"""
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return [str(item) for item in raw]
+    return []
+
+
 def text(language: str, zh: str, en: str) -> str:
     return zh if language == "zh-CN" else en
 
@@ -58,8 +67,8 @@ def package_name_source(fingerprint: dict[str, object]) -> str:
 def render_fact_summary(fingerprint: dict[str, object], language: str) -> str:
     version = fingerprint.get("version", {})
     license_info = fingerprint.get("license", {})
-    package_name = str(fingerprint.get("packageName", "unknown"))
-    product_type = joined(list(fingerprint.get("productType", [])))
+    package_name = str(fingerprint.get("packageName") or fingerprint.get("productName", "unknown"))
+    product_type = joined(_normalize_product_type(fingerprint.get("productType")))
     runtime = joined(list(fingerprint.get("runtime", [])))
     return "\n".join(
         [
@@ -132,7 +141,7 @@ def render_runtime_requirements(fingerprint: dict[str, object], language: str) -
 
 
 def render_test_implications(fingerprint: dict[str, object], language: str) -> str:
-    product_types = set(str(item) for item in fingerprint.get("productType", []))
+    product_types = set(_normalize_product_type(fingerprint.get("productType")))
     implications: list[str] = []
     if "skill" in product_types:
         implications.append(
@@ -205,7 +214,7 @@ def render_open_questions(fingerprint: dict[str, object], language: str) -> str:
 
 
 def build_spec_markdown(target_root: Path, fingerprint: dict[str, object], language: str) -> str:
-    title = str(fingerprint.get("packageName", "unknown"))
+    title = str(fingerprint.get("packageName") or fingerprint.get("productName", "unknown"))
     if not title or title == "unknown":
         title = target_root.name
     lines = [
@@ -262,7 +271,7 @@ def evaluate_consistency(
     gaps: list[str] = []
     blockers: list[str] = []
 
-    product_type = list(fingerprint.get("productType", []))
+    product_type = _normalize_product_type(fingerprint.get("productType"))
     if product_type and product_type != ["unknown"]:
         verified.append(
             text(
@@ -334,7 +343,7 @@ def evaluate_consistency(
 
 def build_consistency_review(target_root: Path, fingerprint: dict[str, object], language: str) -> str:
     status, verified, gaps, blockers = evaluate_consistency(fingerprint, language)
-    title = str(fingerprint.get("packageName", "unknown"))
+    title = str(fingerprint.get("packageName") or fingerprint.get("productName", "unknown"))
     if not title or title == "unknown":
         title = target_root.name
 
@@ -345,7 +354,7 @@ def build_consistency_review(target_root: Path, fingerprint: dict[str, object], 
         "",
         text(language, "## 指纹摘要", "## Fingerprint Summary"),
         "",
-        f"- {text(language, 'product-type', 'product-type')}: {joined(list(fingerprint.get('productType', [])))}",
+        f"- {text(language, 'product-type', 'product-type')}: {joined(_normalize_product_type(fingerprint.get('productType')))}",
         f"- {text(language, 'runtime', 'runtime')}: {joined(list(fingerprint.get('runtime', [])))}",
         f"- {text(language, 'version', 'version')}: {fingerprint.get('version', {}).get('value', 'unknown')}",
         f"- {text(language, 'license', 'license')}: {fingerprint.get('license', {}).get('value', 'unknown')}",

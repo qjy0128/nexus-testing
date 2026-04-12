@@ -636,3 +636,20 @@ def validate_required_references() -> list[str]:
         issues.append("Missing CLAUDE.md (project AI collaboration guide)")
     return issues
 
+
+def validate_product_type_normalization() -> list[str]:
+    """Check that generate_flow_a_test_design.py and generate_flow_a_stage1.py
+    both contain the _normalize_product_type function, which guards against
+    LLM-generated PRODUCT-FINGERPRINT.json with productType as a string."""
+    issues: list[str] = []
+    for script in (
+        "scripts/generate_flow_a_test_design.py",
+        "scripts/generate_flow_a_stage1.py",
+    ):
+        content = read_text(ROOT / script)
+        if "_normalize_product_type" not in content:
+            issues.append(
+                f"{script} is missing _normalize_product_type (productType string→array guard)"
+            )
+    return issues
+

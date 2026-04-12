@@ -17,6 +17,20 @@ from nexus_testing.flow_a_localization import add_output_language_argument
 from nexus_testing.json_utils import load_json
 from nexus_testing.sandbox_skill_invoke.core import read_text, write_text
 
+
+def _normalize_product_type(raw: object) -> list[str]:
+    """将 productType 统一为字符串列表，防御 LLM 生成描述性字符串的情况。
+
+    extract_product_fingerprint.py 始终生成数组格式如 ["skill", "package"]，
+    但 LLM agent 可能生成描述性字符串如 "纯指令型 OpenClaw Skill"。
+    直接迭代字符串会逐字符拆分，导致下游所有判断失效。
+    """
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return [str(item) for item in raw]
+    return []
+
 SURFACE_RULES: dict[str, dict[str, object]] = {
     "skill": {
         "label": "Skill Entry",
@@ -144,7 +158,7 @@ def dedupe_surfaces(fingerprint: dict[str, object]) -> list[dict[str, object]]:
         seen.add(key)
         surfaces.append(dict(surface))
 
-    product_types = set(str(item) for item in fingerprint.get("productType", []))
+    product_types = set(_normalize_product_type(fingerprint.get("productType")))
     if "package" in product_types:
         synthetic = {
             "kind": "package",
@@ -190,6 +204,7 @@ def related_capabilities(
 ) -> list[dict[str, object]]:
     kind = str(surface.get("kind", "unknown"))
     path = str(surface.get("path") or "")
+    surface_name = str(surface.get("name") or "")
     matches: list[dict[str, object]] = []
     for capability in capabilities:
         source = capability.get("source", {})
@@ -202,6 +217,20 @@ def related_capabilities(
             matches.append(capability)
             continue
         if kind == "mcp" and cap_kind == "runtime-surface":
+            matches.append(capability)
+            continue
+        # Fallback: LLM-generated capabilities may lack source.path but have entry/path/name
+        cap_entry = str(capability.get("entry") or "")
+        cap_path = str(capability.get("path") or "")
+        if path and (path in cap_entry or path in cap_path):
+            matches.append(capability)
+            continue
+        if surface_name and surface_name in str(capability.get("name") or ""):
+            matches.append(capability)
+            continue
+        # If surface is SKILL.md and capability has no source but has tools/urls,
+        # treat it as belonging to the SKILL surface
+        if kind == "skill" and not source_path and (capability.get("tools") or capability.get("urls")):
             matches.append(capability)
     deduped: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -677,8 +706,8 @@ def build_execution_plan(
         "targetPath": fingerprint.get("targetPath"),
         "resolvedRootPath": fingerprint.get("resolvedRootPath"),
         "targetSkillPath": fingerprint.get("targetSkillPath"),
-        "packageName": fingerprint.get("packageName", "unknown"),
-        "productType": list(fingerprint.get("productType", [])),
+        "packageName": fingerprint.get("packageName") or fingerprint.get("productName", "unknown"),
+        "productType": _normalize_product_type(fingerprint.get("productType")),
         "parallelRoles": ["skill-tester", "security-tester"],
         "totalCaseCount": case_counter - 1,
         "designWarnings": inventory_warnings(surface_inventory, language),
@@ -710,8 +739,8 @@ def build_case_execution_plan(
         "targetPath": fingerprint.get("targetPath"),
         "resolvedRootPath": fingerprint.get("resolvedRootPath"),
         "targetSkillPath": fingerprint.get("targetSkillPath"),
-        "packageName": fingerprint.get("packageName", "unknown"),
-        "productType": list(fingerprint.get("productType", [])),
+        "packageName": fingerprint.get("packageName") or fingerprint.get("productName", "unknown"),
+        "productType": _normalize_product_type(fingerprint.get("productType")),
         "totalCaseCount": execution_plan.get("totalCaseCount", len(cases)),
         "parallelRoles": list(execution_plan.get("parallelRoles", [])),
         "coverageSummary": coverage_summary,

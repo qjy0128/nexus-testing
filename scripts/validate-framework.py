@@ -44,6 +44,7 @@ from nexus_testing.validate_contracts import (
     validate_openclaw_demo_contract,
     validate_openclaw_runtime_contract,
     validate_output_language_contract,
+    validate_product_type_normalization,
     validate_required_references,
     validate_role_definitions_ref,
     validate_role_version_tags,
@@ -781,6 +782,7 @@ def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str]
         ("security scanner fixtures", validate_security_scanner_fixtures()),
         ("flow role consistency", _validate_flow_role_consistency(REQUIRED_FLOW_FILES)),
         ("required references", validate_required_references()),
+        ("product type normalization", validate_product_type_normalization()),
     )
     return list(checks), shell_syntax_issues, shell_syntax_warnings, len(markdown_files)
 
