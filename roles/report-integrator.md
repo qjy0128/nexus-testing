@@ -26,6 +26,7 @@ minimum_output_aliases:
 - `TEST-EXECUTION/*.md`（由各 executor 角色产出）
 - `DEFECTS/evidence-collection.md`（由 evidence-collector 产出）
 - `DEFECTS/DEFECT-REPORT.md`（由 defect-analyst 产出）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - 用户（最终报告的直接消费者）

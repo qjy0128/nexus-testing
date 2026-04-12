@@ -366,6 +366,14 @@ def build_plan(flow_id: str, mode: str) -> dict[str, object]:
         "flowName": FLOW_NAMES[flow_id],
         "mode": mode,
         "generatedBy": "scripts/generate_stage_subagent_plan.py",
+        "executionCapability": {
+            "live": None,
+            "shimLive": None,
+            "trace": True,
+            "liveBlockReason": None,
+            "predictedBlockers": [],
+            "_note": "由 environment-checker 在阶段零结束时更新。live=OpenClaw CLI 可用；shimLive=Skill 提供 testing.json 或 test-entry.*；trace 始终为 true。test-designer 在阶段三读取此字段为 live-only 用例预标注环境限制。"
+        },
         "orchestrator": {
             "id": "main-agent",
             "type": "orchestrator",

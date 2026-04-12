@@ -460,6 +460,28 @@ def validate_embedded_js_lockfiles() -> list[str]:
     return issues
 
 
+def check_unregistered_scripts() -> list[str]:
+    """扫描 scripts/ 目录，返回未在 validation-manifest.json 中注册的 .py 和 .sh 文件的警告列表。"""
+    registered: set[str] = set(REQUIRED_PYTHON_SCRIPT_FILES) | set(REQUIRED_SHELL_SCRIPT_FILES)
+    scripts_dir = ROOT / "scripts"
+    if not scripts_dir.exists():
+        return []
+    warnings: list[str] = []
+    for f in sorted(scripts_dir.iterdir()):
+        if not f.is_file():
+            continue
+        if f.suffix not in (".py", ".sh"):
+            continue
+        if f.name.startswith("_"):
+            continue
+        rel_path = f"scripts/{f.name}"
+        if rel_path not in registered:
+            warnings.append(
+                f"WARNING: 未注册脚本文件 {rel_path}（请添加到 validation-manifest.json）"
+            )
+    return warnings
+
+
 def validate_flow_headers() -> list[str]:
     issues: list[str] = []
     for relative_path in REQUIRED_FLOW_FILES:
@@ -723,6 +745,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str], list[str], int]:
     markdown_files = iter_markdown_files()
     shell_syntax_issues, shell_syntax_warnings = validate_shell_script_syntax()
+    shell_syntax_warnings.extend(check_unregistered_scripts())
 
     checks = (
         ("required files", validate_required_files()),

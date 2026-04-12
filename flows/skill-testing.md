@@ -103,27 +103,22 @@
 阶段五开始前，主 agent 必须先基于 `SURFACE-EXECUTION-PLAN.json` 生成：
 - `TEST-EXECUTION/SKILL-SURFACE-WORKLIST.md`
 - `TEST-EXECUTION/SURFACE-COVERAGE.json`
-- 然后由 `skill-tester` 使用 `scripts/run_flow_a_skill_execution.py` 逐 surface 执行；runner 需要真实处理 `skill/bin`，对 `package/plugin-manifest` 输出结构化校验结果；`openclaw-extension` 优先走 `testing.json.openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若两者都没有但当前环境可用 OpenClaw runtime / subagent，则至少先做 live probe，再决定是否降为 `incomplete`
-- 若当前环境可用 OpenClaw runtime / subagent，则 `openclaw-extension` 相关用例不得仅写“缺少通用 runner”；要么提供 `openclawExtensionRuntimeHarness` 真正跑 runtime/subagent，要么留下 `runtime-probed=true` 的 live probe 证据
+- 然后由 `skill-tester` 使用 `scripts/run_flow_a_skill_execution.py` 逐 surface 执行；runner 需要真实处理 `skill/bin`，对 `package/plugin-manifest` 输出结构化校验结果
+- `openclaw-extension` 类型 Skill 的 `openclawExtensionRuntimeHarness` 优先级链、伴随规则文件完整性与 fallback 路径，见 `docs/references/reference-openclaw-extension-testing.md`
 
 #### Skill 执行门禁
 
+> 执行降级阶梯与合规要求（`live`/`shim-live`/`trace` 判定标准、`--strict-real` 要求、负向触发/上下文/渠道断言要求）
+> 见 `DEFINITIONS.md` 第十节「执行验证标准」，阶段五所有角色须严格遵循，不得自行重新定义。
+
+**Flow A 特有执行门禁：**
+
 - P0/P1 功能用例默认执行：`sandbox-skill-invoke --mode auto --strict-real`
 - 多轮对话用例默认执行：`sandbox-multi-turn --mode auto --strict-real`
-- `auto --strict-real` 在存在独立 verifier 时优先 `shim-live`，否则优先 `live`
-- 若走 `live --strict-real`，必须由 OpenClaw CLI 原生回传 `nexus-live-telemetry/v1`；没有协议或协议字段不完整时直接 blocker。
-- 若走 `shim-live --strict-real`，必须提供独立的 `--verification-manifest`；路径必须位于 Skill 目录外，且在可识别仓库根时不能与 Skill 同仓库。没有 verifier 时不得返回成功。
-- 只有 `live` / `shim-live` 可以写“通过”
 - `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的 surface 顺序逐条记录
 - 阶段五结束后必须运行 `scripts/validate_flow_a_skill_results.py`，缺任何 surface 视为执行不完整
 - 若 subagent runtime 因 OpenClaw Gateway、`mcp__web_reader__webReader`、真实执行环境缺失等原因无法完成测试，宿主 runtime 应先尝试该角色的 fallback runtime；仍失败时必须产出 `takeover-required` 工单，交由主 agent 在当前 host session 接管
 - 对纯指令型 Skill，主 agent 接管优先走框架内置的 host takeover executor，而不是要求被测仓库预先提供 `testing.json`；只有通用 host takeover 无法表达的私有运行时行为，才回退到 skill 私有 harness
-- `trace` 只能写“静态追踪已完成，未完成真实执行”
-- 负向触发必须显式得到 `triggerMatched=false`
-- 上下文保持必须显式得到 `contextReferences`
-- 渠道通过必须显式得到 `deliveryStatus` 和送达证据
-- 若阶段五只完成静态分析，不得给出 `PASS` / `PARTIAL PASS` / 功能覆盖率
-- 静态分析只能产出 `blocked-no-real-exec`、`incomplete-static-review` 或“待真实执行复核”
 
 #### 沙箱准备
 

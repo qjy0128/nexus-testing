@@ -28,7 +28,8 @@
     "docs/references/reference-flow-android.md",
     "docs/references/reference-flow-mcp.md",
     "docs/references/reference-recovery.md",
-    "docs/references/reference-operational-procedures.md"
+    "docs/references/reference-operational-procedures.md",
+    "docs/references/reference-openclaw-extension-testing.md"
   ],
   "requiredGovernanceFiles": [
     ".gitignore",

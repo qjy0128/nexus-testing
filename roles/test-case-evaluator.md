@@ -19,6 +19,7 @@ best_for:
 - `SPEC-CONSISTENCY-REVIEW.md`（由 spec-consistency-validator 产出）
 - `TEST-DESIGN.md`（由 test-designer 产出）
 - `SURFACE-EXECUTION-PLAN.json`（由 test-designer 产出）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - 主 agent（根据评估结果决定是否批准进入阶段五）

@@ -174,6 +174,6 @@ Telegram / OpenClaw 文件发送示例：
 message(action: "send", filePath: "files/nexus-reports/{date}-{test-type}-{flow}/SPEC.md", caption: "阶段一需求规格已生成，已整理核心需求与验收点。下一步：进入阶段二质量评估。", buttons: [])
 ```
 
-执行约束（核心）：**静态分析只能作为补充审查**，不得输出 `PASS`/`PARTIAL PASS`/覆盖率，只能输出 `blocked`/`incomplete`/`待真实执行复核`。
+> 执行约束（核心）：见 `DEFINITIONS.md` 第十节「执行验证标准」。静态分析只能作为补充审查，只能标注 `blocked`/`incomplete`/`待真实执行复核`，不得输出 `PASS`/`PARTIAL PASS`/覆盖率。
 
 > 完整沟通约束、执行原则、快速开始指引及参考文档索引见 `docs/references/reference-operational-procedures.md`。

@@ -29,6 +29,8 @@
 
 ```
 阶段零 → STAGE-SUBAGENT-PLAN.json
+         （Flow A：阶段零结束后，environment-checker 将执行能力探测结果写入 executionCapability 字段；
+           阶段三 test-designer 读取此字段，为 live-only 用例预标注环境限制）
 阶段一 → PRODUCT-FINGERPRINT.json + SPEC.md + SPEC-CONSISTENCY-REVIEW.md
 阶段二 → PRODUCT-QUALITY-REVIEW.md
 阶段三 → TEST-DESIGN.md + SURFACE-EXECUTION-PLAN.json
@@ -153,12 +155,12 @@ Flow B 支持 A 模式（文档完整）和 B 模式（文档不全/无文档）
 
 | 场景 | 超时值 | 说明 |
 |------|--------|------|
-| subagent 单次超时 | **15 分钟（900 秒）** | 任何 subagent 运行超过此值则触发超时处理 |
+| subagent 单次超时（通用默认值） | **15 分钟（900 秒）** | 角色级超时未配置时的默认值；`runtime-config.openclaw.json` 中角色级 `timeoutSeconds` 优先级高于此值 |
 | subagent 启动重试 | 最多 3 次，间隔 5 秒 | gateway closed 时触发 |
 | subagent 超时后重试 | 1 次，等 30 秒后重启 | 超时处理规则 |
 | 无响应自动继续 | 30 分钟（催 3 次，每 10 分钟一次） | 批准/拒绝环节 |
 | 微信降级重试 | 3 次，间隔 5 秒，总超时 30 秒 | 第一条消息发送失败 |
-| 阶段五并行总时长 | **15 分钟**（= 900 秒） | 所有 subagent 须在此窗口内完成 |
+| 阶段五并行总时长 | **取并行角色中最大 timeout** | 等于所有并行角色 `timeoutSeconds` 的最大值；Flow A 当前最大为 skill-tester 的 1800 秒（30 分钟） |
 
 ---
 

@@ -34,6 +34,7 @@ takeover_on_process_failure: false
 - `TEST-DESIGN.md`（由 test-designer 产出）
 - `SURFACE-EXECUTION-PLAN.json`（由 test-designer 产出）
 - Skill 源码（用户提供的路径）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - `evidence-collector`（收集执行证据）
@@ -64,17 +65,17 @@ takeover_on_process_failure: false
 
 ## 强制边界
 
+> 执行降级阶梯、`--strict-real` 要求、`trace`/`live`/`shim-live` 判定标准、负向触发/上下文/渠道断言要求，
+> 统一引用 `DEFINITIONS.md` 第十节「执行验证标准」。本节仅保留本角色特有约束。
+
+**本角色特有约束（不在 DEFINITIONS.md 第十节中）：**
+
 - 安装必须发生在隔离测试目录，不污染主环境。
 - 安装前先过安全扫描；命中阻断项时拒绝安装。
 - 测试结束后清理安装目录和临时状态。
 - 遇到 blocker 时保留已执行结果、未执行范围和建议动作。
-- **P0/P1 能力用例、渠道通过结论、多轮对话结论必须使用 `--strict-real`。**
-- **`live --strict-real` 必须拿到 OpenClaw CLI 原生回传的 `nexus-live-telemetry/v1`；没有协议或协议字段不完整时必须报 blocker。**
-- **`shim-live --strict-real` 必须提供独立的 `--verification-manifest`；该文件必须位于 Skill 目录外，且在可识别仓库根时不能与 Skill 同仓库。没有 verifier 时不得返回成功。**
-- **`trace` 只能作为补充分析，不能写成“功能通过”或计入真实执行率。**
-- **负向触发测试必须拿到显式 `triggerMatched=false`；`unknown` 不能算通过。**
-- **上下文保持测试必须有结构化证据（如 `contextReferences`）；关键词猜测不算通过。**
-- **渠道测试必须有 `deliveryStatus` + 送达证据；本地渲染文件不能替代送达回执。**
+- 当用例要求真实执行而环境只能 `trace` 时，必须报 blocker：`无法完成真实执行`。
+- 同一 session 内重测时，必须确认当前运行的是最新 Skill 内容哈希副本，而不是旧安装副本。
 
 ## 必测范围
 
@@ -106,7 +107,8 @@ takeover_on_process_failure: false
 - 渠道适配或格式声明必须有真实输出证据，不能只看文档。
 - 负向触发、上下文保持、渠道送达优先通过 `sandbox-skill-invoke` / `sandbox-multi-turn` 的断言参数自动判定。
 - `skill-results.md` 必须按 `SKILL-SURFACE-WORKLIST.md` 的顺序逐条写出每个 `surface-id` 的执行记录。
-- Flow A 阶段五必须使用 `scripts/run_flow_a_skill_execution.py` 驱动执行，不能直接用 `web_fetch`、手写 `skill-results.md` 或其他临时路径替代；标准 runner 必须输出 `skill-results.meta.json` 作为 provenance 证据。当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据；`openclaw-extension` 优先走 `testing.json.openclawExtensionRuntimeHarness`，其次 `openclawExtensionHarness`，若两者都没有但 OpenClaw live runtime 可用，则先做 live probe，并把 `runtime-probed=true` 写入结果；`mcp` 继续验证协议交互，只有 probe-only 结果时才记为 `incomplete`。
+- Flow A 阶段五必须使用 `scripts/run_flow_a_skill_execution.py` 驱动执行，不能直接用 `web_fetch`、手写 `skill-results.md` 或其他临时路径替代；标准 runner 必须输出 `skill-results.meta.json` 作为 provenance 证据。当前 runner 需要真实执行 `skill/bin`，对 `package/plugin-manifest` 留下结构化校验证据；`mcp` 继续验证协议交互，只有 probe-only 结果时才记为 `incomplete`。
+- `openclaw-extension` 类型 Skill 的 `openclawExtensionRuntimeHarness` 优先级链、`runtime-probed=true` 写入要求与 fallback 路径，统一见 `docs/references/reference-openclaw-extension-testing.md`。
 - 执行结束后必须运行 `scripts/validate_flow_a_skill_results.py`；若缺任何 surface，当前轮执行视为不完整。
 
 ### 6. 特殊场景
@@ -126,13 +128,8 @@ takeover_on_process_failure: false
 
 ## 执行规则
 
-- `auto --strict-real` 在存在独立 verifier 时优先 `shim-live`；否则优先 `live`，缺少 OpenClaw CLI 时再尝试 `shim-live`。
-- `live --strict-real` 若没有 OpenClaw runtime telemetry protocol，必须直接报 blocker；不能把 stdout 文本或退出码当成已验证能力。
-- 只有 `live` / `shim-live` 可以支持“真实执行通过”结论。
-- `shim-live --strict-real` 若没有独立 verifier，必须直接判定失败；不能以自报遥测给通过。
-- Skill 若没有 OpenClaw CLI 可运行入口，也没有 `testing.json` 或 `scripts/test-entry.*` 适配器，只能得到 `trace` 或 blocker。
-- 当用例要求真实执行而环境只能 `trace` 时，必须报 blocker：`无法完成真实执行`。
-- 同一 session 内重测时，必须确认当前运行的是最新 Skill 内容哈希副本，而不是旧安装副本。
+> 执行模式选择（`auto`/`live`/`shim-live`/`trace`）的优先级逻辑、各模式合规要求与降级阶梯，
+> 统一引用 `DEFINITIONS.md` 第十节「执行验证标准」，不在此重复。
 
 ## 执行证明要求
 

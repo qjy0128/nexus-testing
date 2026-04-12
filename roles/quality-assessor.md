@@ -27,6 +27,7 @@ minimum_output_aliases:
 - `SPEC.md`（由 requirement-analyst 产出）
 - `SPEC-CONSISTENCY-REVIEW.md`（由 spec-consistency-validator 产出）
 - 待测对象入口信息（SKILL.md、URL、APK 等）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - `test-designer`（参考质量评估的风险和策略建议）

@@ -34,6 +34,7 @@ minimum_output_aliases:
 - `SPEC.md`（由 requirement-analyst 产出）
 - `SPEC-CONSISTENCY-REVIEW.md`（由 spec-consistency-validator 产出）
 - `PRODUCT-QUALITY-REVIEW.md`（由 quality-assessor 产出，提供风险和策略建议）
+- `STAGE-SUBAGENT-PLAN.json`（读取 `executionCapability` 字段，据此为 live-only 用例预标注环境限制）
 
 ## 下游消费者
 - `test-case-evaluator`（评估用例质量）
@@ -49,6 +50,11 @@ minimum_output_aliases:
 测试设计文档中的所有**描述性内容**必须使用用户发起测试请求的语言；若调用生成脚本，必须显式传 `--language <request-language>`。
 
 所有用例必须从 `PRODUCT-FINGERPRINT.json` 的真实入口和能力表面反推；未在事实指纹中出现的接口、子命令、HTTP 路由、运行模型不得写入测试设计。
+
+**【Flow A 专属】执行能力感知预标注**：设计开始前，读取 `STAGE-SUBAGENT-PLAN.json` 的 `executionCapability` 字段：
+- 若 `live=false`：所有标注最低执行级别为 `live --strict-real` 的 P0/P1 用例，须在 `TEST-DESIGN.md` 中追加标注 `⚠️ 环境受限：live 不可用，阶段五预计触发 blocker`
+- 若 `shimLive=false` 且 `live=false`：相关用例标注 `⚠️ 环境受限：仅 trace 可用，无法完成真实执行`
+- 预标注不降低用例本身的执行要求，仅让 skill-tester 在阶段五能快速定位预期 blocker，避免大面积意外降级
 
 ## 设计原则：边界优先（Edge-Case-First）
 

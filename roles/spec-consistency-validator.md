@@ -16,6 +16,7 @@ best_for:
 - `PRODUCT-FINGERPRINT.json`（由 requirement-analyst 产出）
 - `SPEC.md`（由 requirement-analyst 产出）
 - 被测仓库中的真实入口文件（如 `SKILL.md`、`package.json`、`README.md`、`openclaw.plugin.json`、`bin`、`scripts/*`）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - `quality-assessor`

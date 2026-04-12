@@ -16,6 +16,7 @@ best_for:
 - 用户描述（对话中的原始输入）
 - 截图、页面链接、PRD、公开文档
 - Skill 源码目录或 SKILL.md
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - `spec-consistency-validator`（校验规格是否真实来源于仓库事实）

@@ -13,6 +13,7 @@ best_for:
 
 ## 输入来源
 - `TEST-EXECUTION/*.md`（由各 executor 角色产出，依赖全部完成后才能启动）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - `defect-analyst`（基于审计结果分析缺陷）

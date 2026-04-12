@@ -16,6 +16,7 @@ best_for:
 ## 输入来源
 - `TEST-EXECUTION/*.md`（由各 executor 角色产出）
 - `DEFECTS/evidence-collection.md`（由 evidence-collector 产出）
+- `STAGE-SUBAGENT-PLAN.json`（可选：读取 `requiredArtifactPaths` 字段，校验上游文件已存在后再执行）
 
 ## 下游消费者
 - `report-integrator`（汇总最终报告）
