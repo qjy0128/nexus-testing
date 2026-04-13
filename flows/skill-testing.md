@@ -24,7 +24,8 @@
   - `live`：OpenClaw CLI 可用。
   - `shim-live`：Skill 提供 `testing.json` 或 `scripts/test-entry.*`。
   - `trace`：仅剩静态追踪，**不能支撑功能通过结论**。
-- 若当前测试运行时本身就是 OpenClaw / 可拉起 subagent，则不得仅因通用 runner 未接线就写“OpenClaw runtime unavailable”；必须先做实际探测，或通过 `testing.json` 的显式 harness 验证真实运行时行为。
+- 若当前测试运行时本身就是 OpenClaw / 可拉起 subagent，则不得仅因通用 runner 未接线就写”OpenClaw runtime unavailable”；必须先做实际探测，或通过 `testing.json` 的显式 harness 验证真实运行时行为。
+- 若环境检查确认 subagent 不可用，主 agent 按 `DEFINITIONS.md` Subagent 降级规则执行，交付物首行标记 `[subagent-unavailable: main-agent-executed]`。
 
 **需用户确认后才能进入阶段一。**
 

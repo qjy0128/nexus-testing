@@ -395,5 +395,5 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 
 ## 当前版本
 
-v0.9.49 — 详见 [CHANGELOG.md](CHANGELOG.md)
+v0.9.50 — 详见 [CHANGELOG.md](CHANGELOG.md)
 

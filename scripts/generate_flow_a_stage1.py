@@ -151,6 +151,14 @@ def render_test_implications(fingerprint: dict[str, object], language: str) -> s
                 "- Cover SKILL routing, argument-hint behavior, subcommands, and deliverable-send behavior.",
             )
         )
+    if bool(fingerprint.get("instructionOnly")):
+        implications.append(
+            text(
+                language,
+                "- 覆盖纯指令型 Skill 的所有声明能力，验证每个能力描述可被触发并产生预期输出。",
+                "- Cover all declared capabilities of the instruction-only Skill, verifying each can be triggered and produces expected output.",
+            )
+        )
     if "cli" in product_types:
         implications.append(
             text(
@@ -290,6 +298,10 @@ def evaluate_consistency(
         verified.append(
             text(language, f"已识别运行时：{joined(runtime)}", f"Runtime identified: {joined(runtime)}")
         )
+    elif runtime == ["instruction"]:
+        verified.append(
+            text(language, "已识别为纯指令型 Skill。", "Identified as instruction-only Skill.")
+        )
     else:
         blockers.append(text(language, "未识别出可靠的运行时。", "No reliable runtime was identified."))
 
@@ -306,12 +318,21 @@ def evaluate_consistency(
         blockers.append(text(language, "未发现真实入口表面。", "No real entry surfaces were discovered."))
 
     capabilities = list(fingerprint.get("capabilitySurfaces", []))
+    instruction_only = bool(fingerprint.get("instructionOnly"))
     if capabilities:
         verified.append(
             text(
                 language,
                 f"发现 {len(capabilities)} 个能力表面。",
                 f"Discovered {len(capabilities)} capability surfaces.",
+            )
+        )
+    elif instruction_only:
+        gaps.append(
+            text(
+                language,
+                "纯指令型 Skill 未提取到能力表面，建议人工补充。",
+                "Instruction-only Skill extracted no capability surfaces; manual supplementation recommended.",
             )
         )
     else:

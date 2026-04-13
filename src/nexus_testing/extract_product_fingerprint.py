@@ -527,7 +527,15 @@ def detect_runtime(root: Path) -> tuple[list[str], list[dict[str, object]]]:
         evidence.append({"path": "Cargo.toml", "key": "package"})
 
     if not runtimes:
-        runtimes.append("unknown")
+        # Check for instruction-only Skills (SKILL.md with no code runtime markers)
+        skill_files = list(root.rglob("SKILL.md"))
+        if skill_files and not any(
+            (root / m).exists() for m in ("package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml")
+        ):
+            runtimes.append("instruction")
+            evidence.append({"path": relative_to_root(skill_files[0], root), "key": "instruction-runtime"})
+        else:
+            runtimes.append("unknown")
 
     return sorted(dict.fromkeys(runtimes)), evidence
 
@@ -586,6 +594,95 @@ def discover_skill_files(root: Path, *, skill_scope: Path | None = None) -> list
     return sorted(skill_files)
 
 
+_CAPABILITY_SECTION_RE = re.compile(
+    r"^##\s+(?:Execution\s+)?(?:Capabilit(?:y|ies)|能力|功能|执行能力)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_HEADING_RE = re.compile(r"^##\s+", re.MULTILINE)
+_NUMBERED_BOLD_RE = re.compile(r"^\s*\d+[.)]\s+\*\*(.+?)\*\*")
+_NUMBERED_PLAIN_RE = re.compile(r"^\s*\d+[.)]\s+(.+?)(?:\s*[—–:-]\s+|\s*$)")
+_BULLET_BOLD_RE = re.compile(r"^\s*[-*+]\s+\*\*(.+?)\*\*")
+
+
+def _extract_instruction_capabilities(
+    text: str, skill_path: Path, root: Path
+) -> list[dict[str, object]]:
+    """Extract capabilities from instruction-only SKILL.md sections.
+
+    Uses structural markdown patterns (headings, numbered/bold lists),
+    not hardcoded keyword dictionaries. Works for any instruction-only Skill.
+    """
+    capabilities: list[dict[str, object]] = []
+
+    # Find capability-declaring sections
+    section_starts = [m.start() for m in _CAPABILITY_SECTION_RE.finditer(text)]
+    if not section_starts:
+        return capabilities
+
+    for idx, start in enumerate(section_starts):
+        # Determine section boundaries (next ## heading or EOF)
+        after_start = text.index("\n", start) + 1 if "\n" in text[start:] else len(text)
+        next_heading = _HEADING_RE.search(text, after_start)
+        section_end = next_heading.start() if next_heading else len(text)
+        section_text = text[after_start:section_end]
+
+        # Extract capability names from numbered bold items: 1. **Name**: desc
+        for line_match in _NUMBERED_BOLD_RE.finditer(section_text):
+            name = line_match.group(1).strip().rstrip(":")
+            if name:
+                line_num = text[: start + line_match.start()].count("\n") + 1
+                capabilities.append({
+                    "name": name,
+                    "kind": "instruction-capability",
+                    "source": {
+                        "path": relative_to_root(skill_path, root),
+                        "line": line_num,
+                        "key": "instruction-capability",
+                    },
+                })
+
+        # If no numbered-bold items found, try plain numbered items: 1. Name - desc
+        if not any(_NUMBERED_BOLD_RE.search(section_text)):
+            for line_match in _NUMBERED_PLAIN_RE.finditer(section_text):
+                name = line_match.group(1).strip().rstrip(":")
+                if name and len(name) > 1:
+                    line_num = text[: start + line_match.start()].count("\n") + 1
+                    capabilities.append({
+                        "name": name,
+                        "kind": "instruction-capability",
+                        "source": {
+                            "path": relative_to_root(skill_path, root),
+                            "line": line_num,
+                            "key": "instruction-capability",
+                        },
+                    })
+
+        # Also check bullet bold items: - **Name**: desc
+        for line_match in _BULLET_BOLD_RE.finditer(section_text):
+            name = line_match.group(1).strip().rstrip(":")
+            if name:
+                line_num = text[: start + line_match.start()].count("\n") + 1
+                capabilities.append({
+                    "name": name,
+                    "kind": "instruction-capability",
+                    "source": {
+                        "path": relative_to_root(skill_path, root),
+                        "line": line_num,
+                        "key": "instruction-capability",
+                    },
+                })
+
+    # Deduplicate by name
+    seen: set[str] = set()
+    deduped: list[dict[str, object]] = []
+    for cap in capabilities:
+        key = str(cap.get("name", ""))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(cap)
+    return deduped
+
+
 def extract_capabilities_from_skill(skill_path: Path, root: Path) -> list[dict[str, object]]:
     text = read_text(skill_path)
     capabilities: dict[tuple[str, str], dict[str, object]] = {}
@@ -633,6 +730,13 @@ def extract_capabilities_from_skill(skill_path: Path, root: Path) -> list[dict[s
             kind="declared-capability",
             source=make_text_evidence(skill_path, root, stripped, "capability-bullet"),
         )
+
+    # Instruction-only Skill fallback: extract from capability-declaring sections
+    if not capabilities:
+        for cap in _extract_instruction_capabilities(text, skill_path, root):
+            entry_key = (str(cap["name"]), relative_to_root(skill_path, root))
+            if entry_key not in capabilities:
+                capabilities[entry_key] = cap
 
     frontmatter = parse_frontmatter(text) or {}
     argument_hint = frontmatter.get("argument-hint")
@@ -788,6 +892,11 @@ def extract_product_fingerprint(
         seen_evidence.add(key)
         deduped_evidence.append(item)
 
+    is_instruction_only = (
+        runtime == ["instruction"]
+        and any(cap.get("kind") == "instruction-capability" for cap in deduped_capabilities)
+    )
+
     return {
         "targetPath": str(requested_path or root),
         "resolvedRootPath": str(root),
@@ -801,6 +910,7 @@ def extract_product_fingerprint(
         "entrySurfaces": deduped_entry_surfaces,
         "capabilitySurfaces": deduped_capabilities,
         "evidence": deduped_evidence,
+        "instructionOnly": is_instruction_only,
     }
 
 

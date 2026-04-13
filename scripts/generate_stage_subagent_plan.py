@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from nexus_testing.sandbox_skill_invoke.core import write_text
+from nexus_testing.sandbox_skill_invoke.core import read_text, write_text
 
 FLOW_ALIASES = {
     "a": "A",
@@ -304,9 +304,11 @@ def normalize_flow(value: str) -> str:
     return normalized
 
 
-def normalize_mode(flow_id: str, value: str) -> str:
+def normalize_mode(flow_id: str, value: str, *, instruction_only: bool = False) -> str:
     normalized = value.strip().lower()
     if normalized in {"minimal", "lite", "quick"}:
+        return "minimal"
+    if instruction_only and flow_id == "A":
         return "minimal"
     if flow_id != "B":
         return "standard"
@@ -395,11 +397,22 @@ def main() -> int:
     parser.add_argument("--flow", required=True, help="Flow id or alias: A/B/C/D, skill, web-api, android, mcp")
     parser.add_argument("--mode", default="standard", help="Flow mode. Flow B supports: standard / b")
     parser.add_argument("--output-file", required=True, help="Path to STAGE-SUBAGENT-PLAN.json")
+    parser.add_argument("--fingerprint", default=None, help="Optional path to PRODUCT-FINGERPRINT.json for instruction-only detection")
     args = parser.parse_args()
+
+    instruction_only = False
+    if args.fingerprint:
+        fp_path = Path(args.fingerprint).resolve()
+        if fp_path.exists():
+            try:
+                fp_data = json.loads(read_text(fp_path))
+                instruction_only = bool(fp_data.get("instructionOnly"))
+            except (json.JSONDecodeError, OSError):
+                pass
 
     try:
         flow_id = normalize_flow(args.flow)
-        mode = normalize_mode(flow_id, args.mode)
+        mode = normalize_mode(flow_id, args.mode, instruction_only=instruction_only)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2

@@ -335,6 +335,7 @@ PRODUCT-QUALITY-REVIEW.md
 | 无安全敏感操作 | 不涉及认证/授权/用户输入注入 |
 | 测试范围小 | 能力地图 ≤ 3 个 CAP-ID |
 | 用户明确指定 | 显式传入 `minimal` / `lite` / `quick` 模式参数 |
+| 纯指令型 Skill（自动） | 运行时为 `instruction` 且无代码文件，自动触发极简模式，不受 CAP 数量限制 |
 
 ### 极简模式 3 阶段流水线
 
@@ -368,6 +369,18 @@ PRODUCT-QUALITY-REVIEW.md
 | mcp-tester | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、MCP Server | `TEST-EXECUTION/mcp-results.md` | D |
 | reality-checker | `PRODUCT-FINGERPRINT.json`、`SPEC.md`、`TEST-DESIGN.md`、目标系统 | `TEST-EXECUTION/reality-results.md` | C/D |
 | evidence-collector | 监听 `TEST-EXECUTION/` 目录 | `DEFECTS/evidence-collection.md` | 全部 |
+
+### Subagent 降级规则
+
+当 subagent 因平台限制、启动超时、runtime 环境不支持等原因无法执行时，主 agent 可启用降级路径：
+
+| 规则 | 说明 |
+|------|------|
+| 降级触发条件 | subagent 启动失败、超时后重试仍失败、runtime 环境不支持 subagent |
+| 降级动作 | 主 agent 按角色输出规范直接生成交付物 |
+| 降级标记 | 交付物首行添加 `[subagent-unavailable: main-agent-executed]` |
+| 降级限制 | 不得跳过质量门禁；不得绕过批准流程；不得合并多阶段输出 |
+| 审计要求 | `stage-transition-log.json` 中记录降级原因和执行者 |
 
 ---
 

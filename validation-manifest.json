@@ -80,7 +80,8 @@
     "scripts/fixtures/mock_browser_dump.py",
     "scripts/fixtures/mock_role_runtime.py",
     "scripts/extract_product_fingerprint.py",
-    "scripts/prepare_report_delivery.py"
+    "scripts/prepare_report_delivery.py",
+    "scripts/prevalidate_skill_results.py"
   ],
   "requiredSrcPackageFiles": [
     "src/nexus_testing/__init__.py",

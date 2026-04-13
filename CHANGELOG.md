@@ -1,3 +1,16 @@
+### v0.9.50（2026-04-13）
+**纯指令型 Skill 解析修复 + Subagent 降级路径 + 预检工具**
+
+- 修复：`src/nexus_testing/extract_product_fingerprint.py`，新增 `_extract_instruction_capabilities()` 从 `## Execution Capability` 等 section 提取能力（编号加粗/编号纯文本/加粗列表），`detect_runtime()` 对无代码文件的 Skill 返回 `instruction` 而非 `unknown`，`extract_product_fingerprint()` 新增 `instructionOnly` 标记
+- 修复：`scripts/generate_flow_a_stage1.py`，`evaluate_consistency()` 对 `instruction` runtime 不再 blocker，`render_test_implications()` 增加 instruction-only 测试建议
+- 修复：`scripts/generate_flow_a_test_design.py`，`SURFACE_RULES["skill"].focus` 增加 `instruction-capability`
+- 更新：`scripts/generate_stage_subagent_plan.py`，`normalize_mode()` 新增 `instruction_only` 参数，纯指令型 Skill 自动走极简模式；`main()` 新增 `--fingerprint` 参数
+- 更新：`DEFINITIONS.md`，极简模式触发条件表新增"纯指令型 Skill"自动触发行；新增 Subagent 降级规则表
+- 更新：`SKILL.md`，极简模式段落增加纯指令型自动检测说明；新增 subagent 不可用降级路径
+- 更新：`flows/skill-testing.md`，阶段零增加降级路径引用
+- 新增：`scripts/prevalidate_skill_results.py`，轻量级 skill-results.md 预检工具（必填字段、占位符、状态值、surface/case ID 一致性）
+- 更新：`validation-manifest.json`，注册 `prevalidate_skill_results.py`
+
 ### v0.9.49（2026-04-12）
 **极简模式：3 阶段轻量测试流水线**
 

@@ -35,7 +35,7 @@ SURFACE_RULES: dict[str, dict[str, object]] = {
     "skill": {
         "label": "Skill Entry",
         "minimum_mode": "shim-live",
-        "focus": ["routing", "argument-hint", "subcommand", "delivery"],
+        "focus": ["routing", "argument-hint", "subcommand", "delivery", "instruction-capability"],
         "security_focus": ["prompt-injection", "unsafe-tooling", "delivery-bypass"],
     },
     "bin": {
