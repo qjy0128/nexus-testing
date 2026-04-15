@@ -11,7 +11,6 @@ import argparse
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import time
@@ -36,10 +35,10 @@ from nexus_testing.sandbox_skill_invoke.core import (
     read_text,
     resolve_cwd_within_skill,
     resolve_skill_path,
-    run_shell,
+    run_command,
+    run_command_sequence,
     sanitize_name,
     session_relative,
-    shell_quote_path,
     snapshot_skill_source,
     write_text,
 )
@@ -187,20 +186,30 @@ def main() -> int:
         kv("CHANNEL_RENDER_FILE", channel_render_file); kv("SEQ", seq)
         return 2
 
+    def adapter_install_steps() -> list[object]:
+        commands = adapter.get("install_commands")
+        if isinstance(commands, list):
+            return [command for command in commands if command]
+        legacy_command = adapter.get("install_command")
+        if legacy_command:
+            return [legacy_command]
+        return []
+
     if args.strict_real and selected_mode == "trace":
         return blocked("blocked-no-real-exec", "Neither OpenClaw live runtime nor shim adapter is available")
 
     kv("SESSION_ID", args.session_id); kv("SKILL_NAME", skill_name_safe); kv("INSTALL_STATUS", install_status)
 
     if selected_mode == "dry-run":
-        if adapter.get("available") and adapter.get("install_command"):
+        install_steps = adapter_install_steps()
+        if adapter.get("available") and install_steps:
             install_stdout_file = logs_dir / f"{timestamp}-install.stdout.log"
             install_stderr_file = logs_dir / f"{timestamp}-install.stderr.log"
             try:
                 install_cwd = resolve_cwd_within_skill(skill_target, str(adapter.get("install_cwd", ".")))
                 env = os.environ.copy()
                 env.update({"NEXUS_SESSION_ID": args.session_id, "NEXUS_MESSAGE": args.message or "", "NEXUS_CHANNEL": args.channel, "NEXUS_SKILL_PATH": str(skill_target), "NEXUS_WORKSPACE_DIR": str(workspace_dir), "NEXUS_OUTPUT_FILE": str(output_file), "NEXUS_RESULT_JSON_FILE": str(result_json_file), "NEXUS_HISTORY_FILE": str(history_file or ""), "NEXUS_ARTIFACTS_DIR": str(artifacts_dir), "NEXUS_STRICT_REAL": bool_text(args.strict_real)})
-                install_proc = run_shell(str(adapter["install_command"]), install_cwd, max(args.timeout, 120), env)
+                install_proc = run_command_sequence(install_steps, install_cwd, max(args.timeout, 120), env)
                 write_text(install_stdout_file, install_proc.stdout); write_text(install_stderr_file, install_proc.stderr)
                 if install_proc.returncode != 0:
                     return blocked("blocked-install-failed", "dependency installation failed during dry-run")
@@ -303,12 +312,13 @@ def main() -> int:
             "NEXUS_ARTIFACTS_DIR": str(artifacts_dir),
             "NEXUS_STRICT_REAL": bool_text(args.strict_real),
         })
-        if adapter.get("install_command"):
+        install_steps = adapter_install_steps()
+        if install_steps:
             install_stdout_file = logs_dir / f"{timestamp}-install.stdout.log"
             install_stderr_file = logs_dir / f"{timestamp}-install.stderr.log"
             try:
                 install_cwd = resolve_cwd_within_skill(skill_target, str(adapter.get("install_cwd", ".")))
-                install_proc = run_shell(str(adapter["install_command"]), install_cwd, max(args.timeout, 120), env)
+                install_proc = run_command_sequence(install_steps, install_cwd, max(args.timeout, 120), env)
                 write_text(install_stdout_file, install_proc.stdout)
                 write_text(install_stderr_file, install_proc.stderr)
                 if install_proc.returncode != 0:
@@ -325,7 +335,7 @@ def main() -> int:
         adapter_start = time.time()
         try:
             invoke_cwd = resolve_cwd_within_skill(skill_target, str(adapter.get("invoke_cwd", ".")))
-            invoke_proc = run_shell(str(adapter["invoke_command"]), invoke_cwd, args.timeout, env)
+            invoke_proc = run_command(adapter["invoke_command"], invoke_cwd, args.timeout, env)
             adapter_duration_ms = int((time.time() - adapter_start) * 1000)
             write_text(invoke_stdout_file, invoke_proc.stdout)
             write_text(invoke_stderr_file, invoke_proc.stderr)
@@ -354,9 +364,11 @@ def main() -> int:
                 verifier_start = time.time()
                 verifier_cwd = verifier_manifest["cwd"]
                 verifier_timeout = verifier_manifest.get("timeout_seconds") or args.timeout
-                verifier_proc = run_shell(
-                    str(verifier_manifest["command"]),
-                    verifier_cwd, verifier_timeout, verifier_env,
+                verifier_proc = run_command(
+                    verifier_manifest["command"],
+                    verifier_cwd,
+                    verifier_timeout,
+                    verifier_env,
                 )
                 verifier_duration_ms = int((time.time() - verifier_start) * 1000)
                 write_text(verifier_stdout_file, verifier_proc.stdout)
@@ -466,8 +478,21 @@ def main() -> int:
         })
         live_start = time.time()
         try:
-            live_cmd = f"{shell_quote_path(openclaw)} invoke --skill {shell_quote_path(str(skill_target))} --message {shlex.quote(args.message or '')} --channel {args.channel} --output {shell_quote_path(str(output_file))} --result {shell_quote_path(str(live_result_file))}"
-            live_proc = run_shell(live_cmd, skill_target, args.timeout, live_env)
+            live_cmd = [
+                openclaw,
+                "invoke",
+                "--skill",
+                str(skill_target),
+                "--message",
+                args.message or "",
+                "--channel",
+                args.channel,
+                "--output",
+                str(output_file),
+                "--result",
+                str(live_result_file),
+            ]
+            live_proc = run_command(live_cmd, skill_target, args.timeout, live_env)
             live_duration_ms = int((time.time() - live_start) * 1000)
             write_text(live_stdout_file, live_proc.stdout)
             write_text(live_stderr_file, live_proc.stderr)

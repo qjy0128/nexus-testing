@@ -29,6 +29,9 @@ from nexus_testing.sandbox_skill_invoke.core import (
     find_bash_executable as _core_find_bash_executable,
 )
 from nexus_testing.sandbox_skill_invoke.core import (
+    is_supported_bash as _core_is_supported_bash,
+)
+from nexus_testing.sandbox_skill_invoke.core import (
     read_text as _core_read_text,
 )
 from nexus_testing.validate_contracts import (
@@ -659,6 +662,19 @@ def find_runnable_bash() -> tuple[str | None, str | None]:
     return None, "bash not found; skipped shell syntax validation"
 
 
+def find_requested_bash(requested_bash: str | None) -> tuple[str | None, str | None]:
+    if not requested_bash:
+        return find_runnable_bash()
+
+    normalized = str(Path(requested_bash).expanduser())
+    candidate = Path(normalized)
+    if not candidate.exists():
+        return None, f"requested bash path does not exist: {normalized}"
+    if not _core_is_supported_bash(normalized):
+        return None, f"requested bash path is not runnable in the current process: {normalized}"
+    return normalized, None
+
+
 def bash_visible_path(path: Path) -> str:
     if not sys.platform.startswith("win"):
         return str(path)
@@ -701,12 +717,23 @@ def resolve_bash_script_path(bash: str, path: Path) -> str | None:
     return None
 
 
-def validate_shell_script_syntax() -> tuple[list[str], list[str]]:
+def validate_shell_script_syntax(
+    *,
+    shell_syntax_mode: str = "auto",
+    bash_path: str | None = None,
+) -> tuple[list[str], list[str]]:
     issues: list[str] = []
     warnings: list[str] = []
-    bash, warning = find_runnable_bash()
+    if shell_syntax_mode == "skip":
+        return issues, warnings
+
+    bash, warning = find_requested_bash(bash_path)
     if bash is None:
-        warnings.append(warning or "bash not found; skipped shell syntax validation")
+        message = warning or "bash not found; skipped shell syntax validation"
+        if shell_syntax_mode == "require":
+            issues.append(message)
+        else:
+            warnings.append(message)
         return issues, warnings
 
     for relative_path in REQUIRED_SHELL_SCRIPT_FILES:
@@ -715,9 +742,11 @@ def validate_shell_script_syntax() -> tuple[list[str], list[str]]:
             continue
         bash_path = resolve_bash_script_path(bash, path)
         if bash_path is None:
-            warnings.append(
-                "bash is present but cannot access workspace shell scripts; skipped shell syntax validation"
-            )
+            message = "bash is present but cannot access workspace shell scripts; skipped shell syntax validation"
+            if shell_syntax_mode == "require":
+                issues.append(message)
+            else:
+                warnings.append(message)
             return issues, warnings
         result = subprocess.run(
             [bash, "-n", bash_path],
@@ -740,12 +769,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit machine-readable JSON output.",
     )
+    parser.add_argument(
+        "--shell-syntax",
+        choices=("auto", "skip", "require"),
+        default="auto",
+        help=(
+            "Control bash -n validation. "
+            "'auto' warns when bash is unavailable, "
+            "'skip' disables shell syntax validation, "
+            "'require' turns unavailable/unrunnable bash into a hard failure."
+        ),
+    )
+    parser.add_argument(
+        "--bash-path",
+        help=(
+            "Optional explicit bash.exe path for shell syntax validation. "
+            "Useful when PATH resolves to the wrong bash or when rerunning outside the sandbox."
+        ),
+    )
     return parser.parse_args(argv)
 
 
-def collect_validation_results() -> tuple[list[tuple[str, list[str]]], list[str], list[str], int]:
+def collect_validation_results(
+    args: argparse.Namespace,
+) -> tuple[list[tuple[str, list[str]]], list[str], list[str], int]:
     markdown_files = iter_markdown_files()
-    shell_syntax_issues, shell_syntax_warnings = validate_shell_script_syntax()
+    shell_syntax_issues, shell_syntax_warnings = validate_shell_script_syntax(
+        shell_syntax_mode=args.shell_syntax,
+        bash_path=args.bash_path,
+    )
     shell_syntax_warnings.extend(check_unregistered_scripts())
 
     checks = (
@@ -825,7 +877,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parse_args(argv)
     checks, shell_syntax_issues, shell_syntax_warnings, markdown_count = (
-        collect_validation_results()
+        collect_validation_results(args)
     )
     if args.json:
         return emit_json(

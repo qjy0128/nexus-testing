@@ -1,17 +1,17 @@
 ---
 name: nexus-testing
-description: Nexus AI 测试体系入口。根据用户目标自动分流到 Skill、网页+接口、安卓、MCP 四类流程，并按统一阶段产出结构化测试文档。
+description: Nexus AI 测试编排入口，面向 OpenClaw 优先运行时。根据用户目标分流到 Skill、网页+接口、安卓、MCP 四类流程，并支持评审已有测试报告/阶段交付物、按 report-dir 继续/批准/恢复多阶段测试会话，统一产出结构化测试文档。
 ---
 
 # Nexus Testing Orchestrator
 
 > 主要目标平台：**OpenClaw**。这套 Skill 默认按 OpenClaw 的调用与运行时约束设计；Claude CLI 等其他 runtime 适配只作为宿主桥接或调试备用，不改变主目标。
 
-测试体系主入口。负责识别测试类型、选择工作模式、执行阶段门禁，并调度对应 Flow。
+测试体系主入口。负责识别测试类型、选择工作模式、执行阶段门禁、处理评审模式与恢复/批准链路，并调度对应 Flow。
 
 ## Description
 
-Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别测试对象类型，并按统一阶段驱动需求解析、测试设计、执行、缺陷分析和最终报告。
+Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别测试对象类型，或进入已有报告/交付物的评审模式，并按统一阶段驱动需求解析、测试设计、执行、缺陷分析、恢复推进和最终报告。
 
 ## Usage
 
@@ -24,6 +24,8 @@ Nexus Testing 是一个多 Flow 测试编排入口。它根据用户输入识别
 - `测试这个 Skill：D:/workspace/my-skill`
 - `帮我测一下这个网页和接口`
 - `Review 这个 FINAL-TEST-REPORT.md 有没有问题`
+- `继续这个 report-dir 的测试会话`
+- `批准 stage-2 并继续执行`
 
 ## 一、路由规则
 

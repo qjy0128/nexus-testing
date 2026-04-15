@@ -1,6 +1,5 @@
 {
   "name": "openclaw-role-runtime",
-  "_comment": "角色级 timeoutSeconds 覆盖 DEFINITIONS.md 第五节的通用默认值 900 秒。阶段五并行总时长取各并行角色中最大 timeout 值（当前 Flow A 最大为 skill-tester 的 1800 秒）。",
   "default": {
     "command": [
       "{python_executable}",

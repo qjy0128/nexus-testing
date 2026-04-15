@@ -35,6 +35,7 @@ SKILL_SOURCE_IGNORED_PARTS = {
     "coverage",
 }
 FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+CommandSpec = str | list[str]
 
 
 @dataclass(frozen=True)
@@ -233,6 +234,64 @@ def run_shell(command: str, cwd: Path, timeout: int, env: dict[str, str]) -> sub
         print(f"STDOUT: {proc.stdout}", file=sys.stderr)
         print(f"STDERR: {proc.stderr}", file=sys.stderr)
     return proc
+
+
+def run_command(
+    command: CommandSpec,
+    cwd: Path,
+    timeout: int,
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    if isinstance(command, str):
+        return run_shell(command, cwd, timeout, env)
+
+    argv = [str(part) for part in command]
+    if not argv or not argv[0].strip():
+        raise ValueError("command is empty")
+
+    proc = subprocess.run(
+        argv,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        env=env,
+    )
+    if proc.returncode != 0:
+        print(f"run_command failed: {shlex.join(argv)}", file=sys.stderr)
+        print(f"STDOUT: {proc.stdout}", file=sys.stderr)
+        print(f"STDERR: {proc.stderr}", file=sys.stderr)
+    return proc
+
+
+def run_command_sequence(
+    commands: list[CommandSpec],
+    cwd: Path,
+    timeout: int,
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    if not commands:
+        raise ValueError("command sequence is empty")
+
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    last_proc: subprocess.CompletedProcess[str] | None = None
+    for command in commands:
+        last_proc = run_command(command, cwd, timeout, env)
+        stdout_parts.append(last_proc.stdout)
+        stderr_parts.append(last_proc.stderr)
+        if last_proc.returncode != 0:
+            break
+
+    assert last_proc is not None
+    return subprocess.CompletedProcess(
+        args=last_proc.args,
+        returncode=last_proc.returncode,
+        stdout="".join(stdout_parts),
+        stderr="".join(stderr_parts),
+    )
 
 
 def resolve_skill_path(raw_path: str) -> tuple[Path, Path]:

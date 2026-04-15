@@ -15,6 +15,36 @@ from nexus_testing.runtime_config_schema import validate_runtime_config
 from nexus_testing.sandbox_skill_invoke.core import write_text
 
 ROOT = Path(__file__).resolve().parents[1]
+OPENCLAW_ROLE_OVERRIDES = {
+    "test-designer": {
+        "timeoutSeconds": 1200,
+        "stallTimeoutSeconds": 400,
+    },
+    "skill-tester": {
+        "timeoutSeconds": 1800,
+        "stallTimeoutSeconds": 600,
+    },
+    "security-tester": {
+        "timeoutSeconds": 1200,
+        "stallTimeoutSeconds": 400,
+    },
+    "functional-tester": {
+        "timeoutSeconds": 1200,
+        "stallTimeoutSeconds": 400,
+    },
+    "compatibility-tester": {
+        "timeoutSeconds": 1200,
+        "stallTimeoutSeconds": 400,
+    },
+    "performance-tester": {
+        "timeoutSeconds": 1200,
+        "stallTimeoutSeconds": 400,
+    },
+    "report-integrator": {
+        "timeoutSeconds": 1200,
+        "stallTimeoutSeconds": 400,
+    },
+}
 
 
 def mock_config() -> dict[str, object]:
@@ -62,6 +92,10 @@ def openclaw_config(
             "cwd": "{workspace_root}",
             "timeoutSeconds": 900,
             "stallTimeoutSeconds": stall_timeout_seconds,
+        },
+        "roles": {
+            role_id: dict(spec)
+            for role_id, spec in OPENCLAW_ROLE_OVERRIDES.items()
         },
     }
 

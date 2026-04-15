@@ -6,12 +6,25 @@ import json
 from pathlib import Path
 
 from nexus_testing.sandbox_skill_invoke.core import (
+    CommandSpec,
     PROJECT_DIR,
     detect_repo_root,
     path_within,
     read_text,
     resolve_cwd_within_root,
 )
+
+
+def _normalize_command(command: object) -> CommandSpec:
+    if isinstance(command, (list, tuple)):
+        return [str(part) for part in command]
+    return str(command).strip()
+
+
+def _command_is_empty(command: CommandSpec) -> bool:
+    if isinstance(command, str):
+        return not command
+    return not command or not str(command[0]).strip()
 
 
 def load_verifier_manifest(raw_path: str | None, skill_root: Path) -> dict[str, object]:
@@ -66,8 +79,8 @@ def load_verifier_manifest(raw_path: str | None, skill_root: Path) -> dict[str, 
     else:
         verify = {}
 
-    command = str(verify.get("command", "")).strip()
-    if not command:
+    command = _normalize_command(verify.get("command", ""))
+    if _command_is_empty(command):
         return {
             "available": False,
             "error": "verification manifest is missing verify.command",

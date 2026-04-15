@@ -9,7 +9,6 @@ bootstrap_paths()
 
 import json
 import os
-import shlex
 import shutil
 import stat
 import subprocess
@@ -20,7 +19,6 @@ from test_helpers import (
     assert_contains,
     assert_equal,
     create_session,
-    find_runnable_bash,
     make_temp_root,
     parse_kv_output,
     write_text,
@@ -126,8 +124,6 @@ def build_mock_skill(base_dir: Path, outside_evidence: Path, separate_repo: bool
         ),
     )
 
-    python_cmd = shlex.quote(Path(sys.executable).as_posix())
-    verifier_cmd = f"{python_cmd} verify.py"
     write_text(
         verifier_dir / "verify.py",
         "\n".join(
@@ -164,7 +160,7 @@ def build_mock_skill(base_dir: Path, outside_evidence: Path, separate_repo: bool
         json.dumps(
             {
                 "verify": {
-                    "command": verifier_cmd,
+                    "command": [sys.executable, "verify.py"],
                     "cwd": ".",
                     "timeoutSeconds": 30,
                 }
@@ -180,9 +176,9 @@ def build_mock_skill(base_dir: Path, outside_evidence: Path, separate_repo: bool
 
 def build_mock_openclaw_without_telemetry(bin_dir: Path) -> Path:
     bin_dir.mkdir(parents=True, exist_ok=True)
-    driver = bin_dir / "mock_openclaw_driver.py"
+    wrapper = bin_dir / "openclaw"
     write_text(
-        driver,
+        wrapper,
         "\n".join(
             [
                 "#!/usr/bin/env python3",
@@ -194,12 +190,6 @@ def build_mock_openclaw_without_telemetry(bin_dir: Path) -> Path:
             ]
         ),
     )
-    wrapper = bin_dir / "openclaw"
-    write_text(
-        wrapper,
-        "#!/usr/bin/env bash\n"
-        f"\"{sys.executable}\" \"{driver}\" \"$@\"\n",
-    )
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
 
     if os.name == "nt":
@@ -207,7 +197,7 @@ def build_mock_openclaw_without_telemetry(bin_dir: Path) -> Path:
         write_text(
             cmd_wrapper,
             "@echo off\r\n"
-            f"\"{sys.executable}\" \"{driver}\" %*\r\n",
+            f"\"{sys.executable}\" \"{wrapper}\" %*\r\n",
         )
     return wrapper
 
@@ -226,10 +216,6 @@ def run_process(args: list[str], env: dict[str, str] | None = None) -> tuple[sub
 
 
 def main() -> int:
-    if not find_runnable_bash():
-        print("Skip: Flow A strict smoke tests require runnable bash")
-        return 0
-
     temp_root = make_temp_root("nexus-flow-a-strict-")
     try:
         sandbox_root = temp_root / "sandbox"

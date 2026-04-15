@@ -380,7 +380,7 @@ def build_runner_fixture(base_dir: Path) -> tuple[Path, Path]:
         json.dumps(
             {
                 "verify": {
-                    "command": f"{Path(sys.executable).as_posix()} verify.py",
+                    "command": [sys.executable, "verify.py"],
                     "cwd": ".",
                     "timeoutSeconds": 30,
                 }

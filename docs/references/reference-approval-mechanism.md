@@ -81,6 +81,7 @@
 - `sent_at`：发起批准请求时间
 - `user_response`：`approved`、`rejected`、`wait` 或 `auto-continue`
 - `response_at`：收到有效响应的时间
+- 实现层可额外写入 `waiting_since`、`reminder_count`、`last_reminder_at`、`reminder_history`，用于无响应催复与自动继续，不影响基础兼容性
 
 ---
 
@@ -151,6 +152,11 @@
 - 更新 `approval-records.json` 为 `user_response: "auto-continue"`
 - 明确告知用户“因无响应已自动继续”
 - 在后续报告中保留该自动推进记录
+
+CLI 对账约束：
+
+- `nexus_stage_executor.py process-approval-timeout` 负责把当前审批门对账到结构化状态：10/20 分钟补记 `approval-reminder`，30 分钟写入 `auto-continue`
+- `run_openclaw_stage_demo.py` 的 `start` / `continue` / `recover` / `detect-existing` 应在读取当前 gate 前先做一次 timeout 对账，避免 session 重启后丢失无响应推进
 
 ---
 

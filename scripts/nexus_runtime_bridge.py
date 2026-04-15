@@ -29,7 +29,14 @@ from nexus_dispatch_runner import (
     start_role,
     takeover_role,
 )
-from nexus_stage_executor import append_stage_log, now_text, read_executor_state, resolve_path
+from nexus_stage_executor import (
+    append_stage_log,
+    next_action,
+    now_text,
+    process_approval_timeout,
+    read_executor_state,
+    resolve_path,
+)
 
 from nexus_testing.delivery.models import DeliveryRequest
 from nexus_testing.delivery.relay import mirror_report
@@ -1045,6 +1052,15 @@ def auto_deliver_final_report(report_dir: Path, settings: dict[str, object]) -> 
 
 
 def run_stage_once(report_dir: Path, config: dict[str, object], settings: dict[str, object]) -> dict[str, object]:
+    timeout_result = process_approval_timeout(report_dir)
+    if str(timeout_result.get("status")) in {"approval-request-pending", "resolved", "reminder-recorded", "waiting"}:
+        plan, approvals, rejections, stage_log = read_executor_state(report_dir)
+        action = next_action(report_dir, plan, approvals, rejections, stage_log)
+        if str(action.get("status")) == "await-approval":
+            result = dict(action)
+            result["timeoutAction"] = timeout_result
+            return result
+
     bundle = prepare_bundle(report_dir)
     status = str(bundle.get("status"))
     if status not in {"run-stage", "run-post-stage"}:
@@ -1091,8 +1107,8 @@ def run_stage_once(report_dir: Path, config: dict[str, object], settings: dict[s
     advance_result = advance(report_dir)
     delivery_result = None
     if isinstance(advance_result, dict):
-        next_action = advance_result.get("nextAction", {})
-        if isinstance(next_action, dict) and str(next_action.get("status")) == "complete":
+        next_step = advance_result.get("nextAction", {})
+        if isinstance(next_step, dict) and str(next_step.get("status")) == "complete":
             delivery_result = auto_deliver_final_report(report_dir, settings)
     return {
         "status": "stage-run-finished",

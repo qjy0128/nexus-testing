@@ -38,6 +38,39 @@ def save_json(path: Path, value: object) -> None:
     write_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
+APPROVAL_REMINDER_THRESHOLDS_MINUTES = (10, 20, 30)
+
+
+def parse_time_text(value: str) -> float:
+    try:
+        return time.mktime(time.strptime(value, "%Y-%m-%d %H:%M:%S"))
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: invalid timestamp: {value}") from exc
+
+
+def approval_wait_started_at(record: dict[str, object]) -> str | None:
+    waiting_since = str(record.get("waiting_since") or "").strip()
+    if waiting_since:
+        return waiting_since
+    sent_at = str(record.get("sent_at") or "").strip()
+    return sent_at or None
+
+
+def approval_reminder_count(record: dict[str, object]) -> int:
+    try:
+        return max(0, int(record.get("reminder_count", 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def next_reminder_minutes(reminder_count: int) -> int | None:
+    if reminder_count < 0:
+        reminder_count = 0
+    if reminder_count >= len(APPROVAL_REMINDER_THRESHOLDS_MINUTES):
+        return None
+    return APPROVAL_REMINDER_THRESHOLDS_MINUTES[reminder_count]
+
+
 def build_delivery_config(
     *,
     backend: str | None,
@@ -655,15 +688,20 @@ def record_approval_request(report_dir: Path, stage_id: str, transport: str, int
         )
     if not isinstance(approvals, dict):
         approvals = {}
+    requested_at = now_text()
     approvals[stage_key(stage_id)] = {
         "transport": transport,
         "interaction_id": interaction_id,
-        "sent_at": now_text(),
+        "sent_at": requested_at,
         "user_response": None,
         "response_at": None,
         "stageLabel": gate.get("label"),
         "stageName": gate.get("name"),
         "artifactValidation": gate.get("artifactValidation", {}),
+        "waiting_since": requested_at,
+        "reminder_count": 0,
+        "last_reminder_at": None,
+        "reminder_history": [],
     }
     save_json(report_dir / "approval-records.json", approvals)
     append_stage_log(
@@ -691,6 +729,9 @@ def record_approval_request(report_dir: Path, stage_id: str, transport: str, int
 def record_approval_response(report_dir: Path, stage_id: str, response: str, reason: str | None) -> dict[str, object]:
     if response not in {"approved", "rejected", "wait", "auto-continue"}:
         raise SystemExit(f"ERROR: unsupported response: {response}")
+    normalized_reason = (reason or "").strip()
+    if response == "rejected" and len(normalized_reason) < 10:
+        raise SystemExit("ERROR: rejection reason must be at least 10 characters")
 
     plan, approvals, rejections, stage_log = read_executor_state(report_dir)
     gate = current_approval_gate(report_dir, plan, approvals, rejections, stage_log)
@@ -713,6 +754,12 @@ def record_approval_response(report_dir: Path, stage_id: str, response: str, rea
         )
     record["user_response"] = response
     record["response_at"] = now_text()
+    if response == "wait":
+        record["waiting_since"] = record["response_at"]
+        record["reminder_count"] = 0
+        record["last_reminder_at"] = None
+    elif response in {"approved", "rejected", "auto-continue"}:
+        record["waiting_since"] = None
     approvals[stage_key(stage_id)] = record
     save_json(report_dir / "approval-records.json", approvals)
 
@@ -726,7 +773,7 @@ def record_approval_response(report_dir: Path, stage_id: str, response: str, rea
                 "stage": stage_id,
                 "count": count,
                 "last_rejection": now_text(),
-                "last_reason": reason or "",
+                "last_reason": normalized_reason,
             }
         )
         rejections[stage_key(stage_id)] = rejection
@@ -744,7 +791,7 @@ def record_approval_response(report_dir: Path, stage_id: str, response: str, rea
             "approval_required": True,
             "gate_check_passed": response in {"approved", "auto-continue"},
             "event": f"approval-{response}",
-            "reason": reason,
+            "reason": normalized_reason or None,
         },
     )
     return {
@@ -752,6 +799,141 @@ def record_approval_response(report_dir: Path, stage_id: str, response: str, rea
         "event": f"approval-{response}",
         "stageId": stage_id,
         "artifactValidation": gate.get("artifactValidation", {}),
+    }
+
+
+def process_approval_timeout(report_dir: Path) -> dict[str, object]:
+    plan, approvals, rejections, stage_log = read_executor_state(report_dir)
+    action = next_action(report_dir, plan, approvals, rejections, stage_log)
+    if str(action.get("status")) != "await-approval":
+        return {"status": "idle"}
+
+    stage_id = str(action.get("stageId"))
+    record = approvals.get(stage_key(stage_id))
+    if not isinstance(record, dict) or not str(record.get("sent_at") or "").strip():
+        return {
+            "status": "approval-request-pending",
+            "stageId": stage_id,
+            "stageLabel": action.get("label"),
+            "stageName": action.get("name"),
+        }
+
+    response = str(record.get("user_response") or "").strip().lower()
+    if response in {"approved", "rejected", "auto-continue"}:
+        return {
+            "status": "resolved",
+            "stageId": stage_id,
+            "response": response,
+        }
+
+    base_time_text = approval_wait_started_at(record)
+    if not base_time_text:
+        return {
+            "status": "approval-request-pending",
+            "stageId": stage_id,
+            "stageLabel": action.get("label"),
+            "stageName": action.get("name"),
+        }
+
+    elapsed_seconds = max(0, int(time.time() - parse_time_text(base_time_text)))
+    due_reminders = 0
+    for index, minutes in enumerate(APPROVAL_REMINDER_THRESHOLDS_MINUTES, start=1):
+        if elapsed_seconds >= minutes * 60:
+            due_reminders = index
+
+    reminder_count = approval_reminder_count(record)
+    if due_reminders <= reminder_count:
+        return {
+            "status": "waiting",
+            "stageId": stage_id,
+            "elapsedSeconds": elapsed_seconds,
+            "reminderCount": reminder_count,
+            "nextReminderMinutes": next_reminder_minutes(reminder_count),
+        }
+
+    approval_path = report_dir / "approval-records.json"
+    reminder_events: list[dict[str, object]] = []
+    with StateLock(approval_path):
+        approvals = load_json(approval_path, {}, label="approval records")
+        if not isinstance(approvals, dict):
+            approvals = {}
+        record = approvals.get(stage_key(stage_id), {})
+        if not isinstance(record, dict) or not str(record.get("sent_at") or "").strip():
+            return {
+                "status": "approval-request-pending",
+                "stageId": stage_id,
+                "stageLabel": action.get("label"),
+                "stageName": action.get("name"),
+            }
+
+        reminder_count = approval_reminder_count(record)
+        response = str(record.get("user_response") or "").strip().lower()
+        if response in {"approved", "rejected", "auto-continue"}:
+            return {
+                "status": "resolved",
+                "stageId": stage_id,
+                "response": response,
+            }
+
+        reminder_history = record.get("reminder_history")
+        if not isinstance(reminder_history, list):
+            reminder_history = []
+
+        record_timestamp = now_text()
+        for index in range(reminder_count + 1, min(due_reminders, len(APPROVAL_REMINDER_THRESHOLDS_MINUTES)) + 1):
+            minutes = APPROVAL_REMINDER_THRESHOLDS_MINUTES[index - 1]
+            reminder_entry = {
+                "index": index,
+                "timestamp": record_timestamp,
+                "elapsedMinutes": minutes,
+            }
+            reminder_history.append(reminder_entry)
+            reminder_events.append(reminder_entry)
+
+        if reminder_events:
+            record["reminder_history"] = reminder_history
+            record["reminder_count"] = approval_reminder_count(record) + len(reminder_events)
+            record["last_reminder_at"] = record_timestamp
+            approvals[stage_key(stage_id)] = record
+            save_json(approval_path, approvals)
+
+    for reminder_entry in reminder_events:
+        append_stage_log(
+            report_dir,
+            {
+                "from_stage": stage_id,
+                "to_stage": stage_id,
+                "timestamp": str(reminder_entry["timestamp"]),
+                "deliverable_file": None,
+                "approval_required": True,
+                "gate_check_passed": False,
+                "event": "approval-reminder",
+                "reminder_index": reminder_entry["index"],
+                "elapsed_minutes": reminder_entry["elapsedMinutes"],
+            },
+        )
+
+    if due_reminders >= len(APPROVAL_REMINDER_THRESHOLDS_MINUTES):
+        auto_reason = "approval timeout after 30 minutes without response"
+        auto_event = record_approval_response(report_dir, stage_id, "auto-continue", auto_reason)
+        return {
+            "status": "auto-continued",
+            "stageId": stage_id,
+            "elapsedSeconds": elapsed_seconds,
+            "reminderCount": len(APPROVAL_REMINDER_THRESHOLDS_MINUTES),
+            "reminderEvents": reminder_events,
+            "responseEvent": auto_event,
+        }
+
+    final_reminder_count = reminder_count + len(reminder_events)
+    status = "reminder-recorded" if reminder_events else "waiting"
+    return {
+        "status": status,
+        "stageId": stage_id,
+        "elapsedSeconds": elapsed_seconds,
+        "reminderCount": final_reminder_count,
+        "nextReminderMinutes": next_reminder_minutes(final_reminder_count),
+        "reminderEvents": reminder_events,
     }
 
 
@@ -801,6 +983,9 @@ def build_parser() -> argparse.ArgumentParser:
     resp_parser.add_argument("--stage-id", required=True)
     resp_parser.add_argument("--response", required=True)
     resp_parser.add_argument("--reason")
+
+    timeout_parser = sub.add_parser("process-approval-timeout", help="Record reminders or auto-continue for overdue approvals")
+    timeout_parser.add_argument("--report-dir", required=True)
     return parser
 
 
@@ -864,6 +1049,8 @@ def main(argv: list[str] | None = None) -> int:
         result = record_approval_request(report_dir, args.stage_id, args.transport, args.interaction_id)
     elif args.command == "record-approval-response":
         result = record_approval_response(report_dir, args.stage_id, args.response, args.reason)
+    elif args.command == "process-approval-timeout":
+        result = process_approval_timeout(report_dir)
     else:
         raise SystemExit(f"ERROR: unsupported command {args.command}")
 

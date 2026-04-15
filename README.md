@@ -145,6 +145,7 @@ Flow B 支持双模式：
 
 ```bash
 python scripts/validate-framework.py        # 结构 + 语法 + 行为级 smoke test 校验
+python scripts/validate-framework.py --shell-syntax require --bash-path "C:\Program Files\Git\usr\bin\bash.exe" # 显式要求用指定 Git Bash 执行 bash -n；适合在沙箱外或已授权的宿主环境里做完整校验
 python scripts/generate_stage_subagent_plan.py --flow <skill|web-api|android|mcp> --mode <standard|b> --output-file <report-dir>/STAGE-SUBAGENT-PLAN.json # 生成机器可读的阶段角色调度计划
 python scripts/nexus_stage_executor.py init --report-dir <report-dir> --flow <skill|web-api|android|mcp> --mode <standard|b> # 初始化阶段执行状态并生成调度计划
 python scripts/nexus_stage_executor.py next --report-dir <report-dir> # 读取调度计划、交付物和审批状态，给出下一步该启动的阶段角色
@@ -159,6 +160,7 @@ python scripts/nexus_dispatch_runner.py complete-role --report-dir <report-dir> 
 python scripts/nexus_dispatch_runner.py fail-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --note <reason> # 标记某个角色执行失败，供恢复/重试使用
 python scripts/nexus_dispatch_runner.py takeover-role --report-dir <report-dir> --stage-id <stage-id> --role-id <role-id> --note <reason> --takeover-file <handoff.json> # 标记该角色需要主 agent 接管
 python scripts/nexus_dispatch_runner.py advance --report-dir <report-dir> # 当当前 RUNS 里的角色都完成后，自动补写 stage-complete 并推进到下一步调度动作
+python scripts/nexus_stage_executor.py process-approval-timeout --report-dir <report-dir> # 对当前审批门补记 10/20 分钟催复，或在 30 分钟无响应时写入 auto-continue
 python scripts/generate_runtime_bridge_config.py --preset mock --output-file <runtime.json> # 生成 mock runtime-config
 python scripts/generate_runtime_bridge_config.py --preset openclaw --output-file <runtime.json> --openclaw-command openclaw --channel telegram --skill-path <repo-root> # 生成 OpenClaw CLI 运行配置
 python scripts/generate_runtime_bridge_config.py --preset claude --output-file <runtime.json> --claude-command claude --permission-mode bypassPermissions --allowed-tools Read Write Edit Bash # 生成 Claude CLI 运行配置
@@ -207,7 +209,7 @@ python tests/test_nexus_delivery.py          # delivery 闭环与执行策略 sm
 - 交付物发送契约是否要求 `files/...` 中转、同轮发送和请求语言一致性
 - 活跃角色文档中是否混入易漂移的内联版本号
 - 本地存在可用 `bash` 时，对全部沙箱脚本执行 `bash -n` 语法检查；不可用时输出警告
-- 若 `bash` 不可运行，可先执行 `python scripts/diagnose_bash_runtime.py` 查看候选路径、失败原因和修复建议
+- 若 `bash` 不可运行，可先执行 `python scripts/diagnose_bash_runtime.py` 查看候选路径、失败原因和修复建议；若 Git Bash 在宿主环境可用但当前沙箱不可用，可改用 `python scripts/validate-framework.py --shell-syntax require --bash-path "C:\Program Files\Git\usr\bin\bash.exe"` 在沙箱外或已授权环境里把 shell syntax 校验提升为硬门禁
 - Flow A runtime smoke tests（strict verifier、live telemetry、integration）
 
 CI 也会在 GitHub Actions 中自动执行上述校验和全部 smoke tests。
@@ -275,16 +277,18 @@ python scripts/generate_runtime_bridge_config.py --preset openclaw --output-file
 python scripts/nexus_runtime_bridge.py run-until-gate --report-dir <report-dir> --runtime-config runtime-config.openclaw.json
 ```
 
-`nexus_openclaw_role_runtime.py` 会调用 `openclaw invoke --skill <repo> --message <prompt> --channel <channel> --output <...> --result <...>`。如果 OpenClaw 结果 JSON 里没有直接给出 `resultFile`，适配器会回到报告目录里按当前阶段缺失交付物去探测新产物并回写给 runtime bridge。若结果里声明 `needsMainAgentTakeover=true`，bridge 会自动生成 takeover 工单。
+`nexus_openclaw_role_runtime.py` 会调用 `openclaw invoke --skill <repo> --message-file <prompt-file> --channel <channel> --output <...> --result <...>`。如果 OpenClaw 结果 JSON 里没有直接给出 `resultFile`，适配器会回到报告目录里按当前阶段缺失交付物去探测新产物并回写给 runtime bridge。若结果里声明 `needsMainAgentTakeover=true`，bridge 会自动生成 takeover 工单。
 
 如果要直接按 OpenClaw 主路径做端到端演练，可使用：
 
 ```bash
 python scripts/run_openclaw_stage_demo.py start --report-dir <report-dir> --runtime-config runtime-config.openclaw.json
 python scripts/run_openclaw_stage_demo.py approve --report-dir <report-dir> --stage-id stage-0 --runtime-config runtime-config.openclaw.json --continue-run
+python scripts/run_openclaw_stage_demo.py detect-existing --report-dir <report-dir>
+python scripts/run_openclaw_stage_demo.py recover --report-dir <report-dir> --runtime-config runtime-config.openclaw.json
 ```
 
-`run_openclaw_stage_demo.py` 会把初始化、运行到审批门、记录批准和继续推进串起来，适合验证 OpenClaw 宿主调度链路。
+`run_openclaw_stage_demo.py` 会把初始化、运行到审批门、记录批准、恢复继续串起来，适合验证 OpenClaw 宿主调度链路。到达审批门时会自动写入 `approval-records.json`，后续 `continue` / `recover` / `detect-existing` 会先对账逾期审批：10 分钟、20 分钟分别补记催复，30 分钟无响应则写入 `auto-continue` 并恢复推进。`detect-existing` 不依赖 `runtime-config`；`approve` 只有配合 `--continue-run` 时才会加载 `runtime-config`。
 
 ## 项目结构
 
@@ -396,4 +400,3 @@ Telegram、飞书、QQ、微信。微信和 QQ 使用”先文字后文件”的
 ## 当前版本
 
 v0.9.50 — 详见 [CHANGELOG.md](CHANGELOG.md)
-

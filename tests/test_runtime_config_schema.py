@@ -7,12 +7,17 @@ from _bootstrap import bootstrap_paths
 
 bootstrap_paths()
 
+import json
 import sys
+from pathlib import Path
 
 from generate_runtime_bridge_config import claude_config, mock_config, openclaw_config
 from test_helpers import assert_contains, assert_equal
 
 import nexus_testing.runtime_config_schema as runtime_config_schema
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+COMMITTED_OPENCLAW_CONFIG = PROJECT_DIR / "runtime-config.openclaw.json"
 
 
 def test_generated_presets_validate() -> None:
@@ -30,6 +35,17 @@ def test_generated_presets_validate() -> None:
     assert_equal("default" in claude, True, "claude default exists")
     assert_equal("default" in openclaw, True, "openclaw default exists")
     print("  [PASS] test_generated_presets_validate")
+
+
+def test_committed_openclaw_config_matches_generated_preset() -> None:
+    committed_payload = json.loads(COMMITTED_OPENCLAW_CONFIG.read_text(encoding="utf-8"))
+    committed = runtime_config_schema.validate_runtime_config(committed_payload)
+    generated = runtime_config_schema.validate_runtime_config(
+        openclaw_config("openclaw", "telegram", ".", 300)
+    )
+    assert_equal(committed, generated, "committed openclaw config matches generated preset")
+    assert_equal(committed["roles"]["skill-tester"]["timeoutSeconds"], 1800, "committed skill-tester timeout")
+    print("  [PASS] test_committed_openclaw_config_matches_generated_preset")
 
 
 def test_invalid_runtime_config_rejected() -> None:
@@ -96,6 +112,7 @@ def main() -> int:
     print("=" * 40)
     for test in (
         test_generated_presets_validate,
+        test_committed_openclaw_config_matches_generated_preset,
         test_invalid_runtime_config_rejected,
         test_invalid_runtime_role_policy_rejected,
     ):

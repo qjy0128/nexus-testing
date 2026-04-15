@@ -11,6 +11,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import nexus_stage_executor as executor_module
@@ -42,6 +43,20 @@ def run_proc(*args: str) -> subprocess.CompletedProcess[str]:
         encoding="utf-8",
         errors="replace",
     )
+
+
+def timestamp_minutes_ago(minutes: int) -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - minutes * 60))
+
+
+def update_approval_record(report_dir: Path, stage_id: str, **updates: object) -> dict[str, object]:
+    approvals = json.loads(read_text(report_dir / "approval-records.json"))
+    key = stage_id.replace("-", "_")
+    record = approvals.get(key, {})
+    record.update(updates)
+    approvals[key] = record
+    write_text(report_dir / "approval-records.json", json.dumps(approvals, ensure_ascii=False, indent=2) + "\n")
+    return record
 
 
 def test_init_and_next() -> None:
@@ -109,6 +124,148 @@ def test_rejection_tracking() -> None:
         rejections = json.loads(read_text(report_dir / "rejection-count.json"))
         assert_equal(rejections["stage_2"]["count"], 1, "rejection count")
         print("  [PASS] test_rejection_tracking")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_rejected_response_requires_reason() -> None:
+    temp_root = make_temp_root("stage-exec-reject-reason-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
+        write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
+        write_text(report_dir / "SPEC.md", "# Spec\n")
+        write_text(report_dir / "SPEC-CONSISTENCY-REVIEW.md", "# Review\n")
+        quality_meta = executor_module.parse_role_doc(PROJECT_DIR / "roles" / "quality-assessor.md")
+        quality_lines = ["# Product Quality Review", ""]
+        for heading in quality_meta["minimumOutput"]:
+            quality_lines.extend([f"## {heading}", "This section contains substantive review content for the approval gate.", ""])
+        write_text(report_dir / "PRODUCT-QUALITY-REVIEW.md", "\n".join(quality_lines))
+
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-2", "--transport", "text")
+        proc = run_proc(
+            "record-approval-response",
+            "--report-dir",
+            str(report_dir),
+            "--stage-id",
+            "stage-2",
+            "--response",
+            "rejected",
+            "--reason",
+            "too-short",
+        )
+        assert_equal(proc.returncode == 0, False, "short rejection reason should fail")
+        assert_equal("rejection reason must be at least 10 characters" in (proc.stderr + proc.stdout), True, "short rejection reason error")
+        print("  [PASS] test_rejected_response_requires_reason")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_three_rejections_yield_no_go() -> None:
+    temp_root = make_temp_root("stage-exec-no-go-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "approved")
+        write_text(report_dir / "PRODUCT-FINGERPRINT.json", "{}\n")
+        write_text(report_dir / "SPEC.md", "# Spec\n")
+        write_text(report_dir / "SPEC-CONSISTENCY-REVIEW.md", "# Review\n")
+        quality_meta = executor_module.parse_role_doc(PROJECT_DIR / "roles" / "quality-assessor.md")
+        quality_lines = ["# Product Quality Review", ""]
+        for heading in quality_meta["minimumOutput"]:
+            quality_lines.extend([f"## {heading}", "This section contains substantive review content for the approval gate.", ""])
+        write_text(report_dir / "PRODUCT-QUALITY-REVIEW.md", "\n".join(quality_lines))
+
+        for count in range(1, 4):
+            run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-2", "--transport", "text")
+            run_json(
+                "record-approval-response",
+                "--report-dir",
+                str(report_dir),
+                "--stage-id",
+                "stage-2",
+                "--response",
+                "rejected",
+                "--reason",
+                f"need-more-detail-{count}",
+            )
+
+        next_result = run_json("next", "--report-dir", str(report_dir))
+        assert_equal(next_result["status"], "no-go", "three rejections should trigger no-go")
+        assert_equal(next_result["stageId"], "stage-2", "no-go stage id")
+        print("  [PASS] test_three_rejections_yield_no_go")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_process_approval_timeout_records_reminder_once() -> None:
+    temp_root = make_temp_root("stage-exec-reminder-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        overdue = timestamp_minutes_ago(11)
+        update_approval_record(report_dir, "stage-0", sent_at=overdue, waiting_since=overdue)
+
+        first = run_json("process-approval-timeout", "--report-dir", str(report_dir))
+        assert_equal(first["status"], "reminder-recorded", "first reminder status")
+        assert_equal(first["reminderCount"], 1, "first reminder count")
+
+        second = run_json("process-approval-timeout", "--report-dir", str(report_dir))
+        assert_equal(second["status"], "waiting", "duplicate reminder should not be recorded")
+        approvals = json.loads(read_text(report_dir / "approval-records.json"))
+        assert_equal(approvals["stage_0"]["reminder_count"], 1, "stored reminder count")
+        stage_log = json.loads(read_text(report_dir / "stage-transition-log.json"))
+        reminders = [entry for entry in stage_log if isinstance(entry, dict) and entry.get("event") == "approval-reminder"]
+        assert_equal(len(reminders), 1, "single reminder event recorded")
+        print("  [PASS] test_process_approval_timeout_records_reminder_once")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_process_approval_timeout_auto_continues_after_30_minutes() -> None:
+    temp_root = make_temp_root("stage-exec-auto-continue-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        overdue = timestamp_minutes_ago(31)
+        update_approval_record(report_dir, "stage-0", sent_at=overdue, waiting_since=overdue)
+
+        timeout_result = run_json("process-approval-timeout", "--report-dir", str(report_dir))
+        assert_equal(timeout_result["status"], "auto-continued", "auto continue status")
+        approvals = json.loads(read_text(report_dir / "approval-records.json"))
+        assert_equal(approvals["stage_0"]["user_response"], "auto-continue", "stored auto continue response")
+        next_result = run_json("next", "--report-dir", str(report_dir))
+        assert_equal(next_result["status"], "run-stage", "auto-continue should reopen execution")
+        assert_equal(next_result["stageId"], "stage-1", "auto-continue next stage")
+        print("  [PASS] test_process_approval_timeout_auto_continues_after_30_minutes")
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_wait_response_resets_timeout_window() -> None:
+    temp_root = make_temp_root("stage-exec-wait-reset-")
+    try:
+        report_dir = temp_root / "reports"
+        run_json("init", "--report-dir", str(report_dir), "--flow", "skill")
+        run_json("mark-stage-complete", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--deliverable-file", "STAGE-SUBAGENT-PLAN.json")
+        run_json("record-approval-request", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--transport", "text")
+        update_approval_record(report_dir, "stage-0", sent_at=timestamp_minutes_ago(45), waiting_since=timestamp_minutes_ago(45))
+        run_json("record-approval-response", "--report-dir", str(report_dir), "--stage-id", "stage-0", "--response", "wait")
+
+        timeout_result = run_json("process-approval-timeout", "--report-dir", str(report_dir))
+        assert_equal(timeout_result["status"], "waiting", "wait response should reset timeout window")
+        approvals = json.loads(read_text(report_dir / "approval-records.json"))
+        assert_equal(approvals["stage_0"]["reminder_count"], 0, "wait response resets reminder count")
+        print("  [PASS] test_wait_response_resets_timeout_window")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -436,6 +593,11 @@ def main() -> int:
         test_init_and_next,
         test_stage_progression_with_approval,
         test_rejection_tracking,
+        test_rejected_response_requires_reason,
+        test_three_rejections_yield_no_go,
+        test_process_approval_timeout_records_reminder_once,
+        test_process_approval_timeout_auto_continues_after_30_minutes,
+        test_wait_response_resets_timeout_window,
         test_stage_cannot_enter_approval_when_artifact_validation_fails,
         test_stage_placeholder_only_sections_fail_artifact_validation,
         test_invalid_executor_json_state_reports_clear_error,

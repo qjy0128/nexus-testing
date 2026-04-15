@@ -13,7 +13,6 @@ bootstrap_paths()
 
 import json
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -31,11 +30,8 @@ from test_helpers import (
     create_session as _create_session,
 )
 
-from nexus_testing.sandbox_skill_invoke.core import find_bash_executable
-
 ROOT = Path(__file__).resolve().parents[1]
 INVOKE_SCRIPT = ROOT / "scripts" / "sandbox_skill_invoke.py"
-SANDBOX_EXEC_SCRIPT = ROOT / "scripts" / "sandbox-exec.sh"
 
 
 def create_session(sandbox_root: Path, session_id: str) -> Path:
@@ -166,6 +162,13 @@ def build_versioned_skill(base_dir: Path, version: str) -> Path:
     return skill_dir
 
 
+def build_auto_install_skill(base_dir: Path) -> Path:
+    """Create a skill that exercises auto-detected dependency installation."""
+    skill_dir = build_minimal_skill(base_dir, adapter_body=build_success_adapter())
+    write_text(skill_dir / "requirements.txt", "# intentionally empty\n")
+    return skill_dir
+
+
 def build_fail_adapter() -> str:
     """Return adapter script body that exits with code 1."""
     return "\n".join([
@@ -216,12 +219,10 @@ def build_verifier(base_dir: Path) -> Path:
         ]),
     )
 
-    python_cmd = shlex.quote(Path(sys.executable).as_posix())
-    verifier_cmd = f"{python_cmd} verify.py"
     write_text(
         verifier_dir / "verifier.json",
         json.dumps(
-            {"verify": {"command": verifier_cmd, "cwd": ".", "timeoutSeconds": 30}},
+            {"verify": {"command": [sys.executable, "verify.py"], "cwd": ".", "timeoutSeconds": 30}},
             ensure_ascii=False,
             indent=2,
         ) + "\n",
@@ -268,7 +269,6 @@ def main() -> int:
         sandbox_root = temp_root / "sandbox"
         sandbox_root.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
-        bash_available = find_bash_executable() is not None
 
         passed = 0
         failed = 0
@@ -321,91 +321,112 @@ def main() -> int:
             failed += 1
             print(f"[FAIL] 2: dry-run mode: {exc}")
 
-        if not bash_available:
-            skipped += 6
-            print("[SKIP] 3-5,7-9: shim-live integration checks require runnable bash")
-        else:
-            # ── Test 3: shim-live non-strict (no verifier needed) ──
-            create_session(sandbox_root, "e2e-shim-non-strict")
-            skill_shim = build_minimal_skill(temp_root / "t3", adapter_body=build_success_adapter())
-            proc, kv = run_invoke([
-                "--session-id", "e2e-shim-non-strict",
-                "--skill-path", str(skill_shim),
-                "--message", "shim non strict",
-                "--channel", "telegram",
-                "--mode", "shim-live",
-                "--sandbox-root", str(sandbox_root),
-            ], env)
-            try:
-                assert_equal(proc.returncode, 0, "shim-non-strict return code")
-                assert_equal(kv.get("SELECTED_MODE"), "shim-live", "shim-non-strict selected mode")
-                assert_equal(kv.get("EXECUTION_LEVEL"), "shim-live", "shim-non-strict execution level")
-                assert_equal(kv.get("REAL_EXECUTED"), "true", "shim-non-strict real executed")
-                assert_equal(kv.get("INVOKE_STATUS"), "success", "shim-non-strict status")
-                assert_equal(kv.get("TELEMETRY_TRUST"), "self-reported", "shim-non-strict telemetry trust")
-                assert_equal(kv.get("VERIFICATION_STATUS"), "not-configured", "shim-non-strict verification status")
-                output_file = Path(kv["OUTPUT_FILE"])
-                assert_contains(read_text(output_file), "Handled: shim non strict", "shim-non-strict output")
-                passed += 1
-                print("[PASS] 3: shim-live non-strict")
-            except AssertionError as exc:
-                failed += 1
-                print(f"[FAIL] 3: shim-live non-strict: {exc}")
+        create_session(sandbox_root, "e2e-auto-install-dry-run")
+        skill_auto_install = build_auto_install_skill(temp_root / "t2b")
+        proc, kv = run_invoke([
+            "--session-id", "e2e-auto-install-dry-run",
+            "--skill-path", str(skill_auto_install),
+            "--message", "auto install dry run",
+            "--channel", "telegram",
+            "--mode", "dry-run",
+            "--sandbox-root", str(sandbox_root),
+        ], env)
+        try:
+            assert_equal(proc.returncode, 0, "auto-install dry-run return code")
+            assert_equal(kv.get("SELECTED_MODE"), "dry-run", "auto-install dry-run selected mode")
+            assert_equal(kv.get("INVOKE_STATUS"), "dry-run-complete", "auto-install dry-run status")
+            assert_contains(
+                read_text(Path(kv["OUTPUT_FILE"])),
+                "Install Status: success",
+                "auto-install dry-run install status",
+            )
+            passed += 1
+            print("[PASS] 2b: dry-run auto-install uses direct argv execution")
+        except AssertionError as exc:
+            failed += 1
+            print(f"[FAIL] 2b: dry-run auto-install: {exc}")
 
-            # ── Test 4: shim-live adapter failure ──
-            create_session(sandbox_root, "e2e-adapter-fail")
-            skill_fail = build_minimal_skill(temp_root / "t4", adapter_body=build_fail_adapter())
-            proc, kv = run_invoke([
-                "--session-id", "e2e-adapter-fail",
-                "--skill-path", str(skill_fail),
-                "--message", "trigger adapter failure",
-                "--channel", "telegram",
-                "--mode", "shim-live",
-                "--sandbox-root", str(sandbox_root),
-            ], env)
-            try:
-                assert_equal(proc.returncode, 2, "adapter-fail return code")
-                assert_equal(kv.get("INVOKE_STATUS"), "blocked-invoke-failed", "adapter-fail status")
-                assert_contains(
-                    kv.get("BLOCKER_REASON", ""),
-                    "adapter exited with code 1",
-                    "adapter-fail blocker reason",
-                )
-                passed += 1
-                print("[PASS] 4: shim-live adapter failure")
-            except AssertionError as exc:
-                failed += 1
-                print(f"[FAIL] 4: shim-live adapter failure: {exc}")
+        # ── Test 3: shim-live non-strict (no verifier needed) ──
+        create_session(sandbox_root, "e2e-shim-non-strict")
+        skill_shim = build_minimal_skill(temp_root / "t3", adapter_body=build_success_adapter())
+        proc, kv = run_invoke([
+            "--session-id", "e2e-shim-non-strict",
+            "--skill-path", str(skill_shim),
+            "--message", "shim non strict",
+            "--channel", "telegram",
+            "--mode", "shim-live",
+            "--sandbox-root", str(sandbox_root),
+        ], env)
+        try:
+            assert_equal(proc.returncode, 0, "shim-non-strict return code")
+            assert_equal(kv.get("SELECTED_MODE"), "shim-live", "shim-non-strict selected mode")
+            assert_equal(kv.get("EXECUTION_LEVEL"), "shim-live", "shim-non-strict execution level")
+            assert_equal(kv.get("REAL_EXECUTED"), "true", "shim-non-strict real executed")
+            assert_equal(kv.get("INVOKE_STATUS"), "success", "shim-non-strict status")
+            assert_equal(kv.get("TELEMETRY_TRUST"), "self-reported", "shim-non-strict telemetry trust")
+            assert_equal(kv.get("VERIFICATION_STATUS"), "not-configured", "shim-non-strict verification status")
+            output_file = Path(kv["OUTPUT_FILE"])
+            assert_contains(read_text(output_file), "Handled: shim non strict", "shim-non-strict output")
+            passed += 1
+            print("[PASS] 3: shim-live non-strict")
+        except AssertionError as exc:
+            failed += 1
+            print(f"[FAIL] 3: shim-live non-strict: {exc}")
 
-            # ── Test 5: shim-live with verifier (full strict path) ──
-            create_session(sandbox_root, "e2e-with-verifier")
-            skill_verified = build_minimal_skill(temp_root / "t5", adapter_body=build_success_adapter())
-            verifier_manifest = build_verifier(temp_root / "t5-ext")
-            proc, kv = run_invoke([
-                "--session-id", "e2e-with-verifier",
-                "--skill-path", str(skill_verified),
-                "--message", "verify me",
-                "--channel", "telegram",
-                "--mode", "shim-live",
-                "--strict-real",
-                "--verification-manifest", str(verifier_manifest),
-                "--expect-trigger", "true",
-                "--require-tools", "echo_tool",
-                "--require-delivery-status", "delivered",
-                "--sandbox-root", str(sandbox_root),
-            ], env)
-            try:
-                assert_equal(proc.returncode, 0, "with-verifier return code")
-                assert_equal(kv.get("INVOKE_STATUS"), "success", "with-verifier status")
-                assert_equal(kv.get("TELEMETRY_TRUST"), "independent", "with-verifier telemetry trust")
-                assert_equal(kv.get("VERIFICATION_STATUS"), "passed", "with-verifier verification status")
-                assert_equal(kv.get("TRIGGER_MATCHED"), "true", "with-verifier trigger matched")
-                assert_equal(kv.get("ASSERTIONS_PASSED"), "true", "with-verifier assertions")
-                passed += 1
-                print("[PASS] 5: shim-live with verifier (strict)")
-            except AssertionError as exc:
-                failed += 1
-                print(f"[FAIL] 5: shim-live with verifier: {exc}")
+        # ── Test 4: shim-live adapter failure ──
+        create_session(sandbox_root, "e2e-adapter-fail")
+        skill_fail = build_minimal_skill(temp_root / "t4", adapter_body=build_fail_adapter())
+        proc, kv = run_invoke([
+            "--session-id", "e2e-adapter-fail",
+            "--skill-path", str(skill_fail),
+            "--message", "trigger adapter failure",
+            "--channel", "telegram",
+            "--mode", "shim-live",
+            "--sandbox-root", str(sandbox_root),
+        ], env)
+        try:
+            assert_equal(proc.returncode, 2, "adapter-fail return code")
+            assert_equal(kv.get("INVOKE_STATUS"), "blocked-invoke-failed", "adapter-fail status")
+            assert_contains(
+                kv.get("BLOCKER_REASON", ""),
+                "adapter exited with code 1",
+                "adapter-fail blocker reason",
+            )
+            passed += 1
+            print("[PASS] 4: shim-live adapter failure")
+        except AssertionError as exc:
+            failed += 1
+            print(f"[FAIL] 4: shim-live adapter failure: {exc}")
+
+        # ── Test 5: shim-live with verifier (full strict path) ──
+        create_session(sandbox_root, "e2e-with-verifier")
+        skill_verified = build_minimal_skill(temp_root / "t5", adapter_body=build_success_adapter())
+        verifier_manifest = build_verifier(temp_root / "t5-ext")
+        proc, kv = run_invoke([
+            "--session-id", "e2e-with-verifier",
+            "--skill-path", str(skill_verified),
+            "--message", "verify me",
+            "--channel", "telegram",
+            "--mode", "shim-live",
+            "--strict-real",
+            "--verification-manifest", str(verifier_manifest),
+            "--expect-trigger", "true",
+            "--require-tools", "echo_tool",
+            "--require-delivery-status", "delivered",
+            "--sandbox-root", str(sandbox_root),
+        ], env)
+        try:
+            assert_equal(proc.returncode, 0, "with-verifier return code")
+            assert_equal(kv.get("INVOKE_STATUS"), "success", "with-verifier status")
+            assert_equal(kv.get("TELEMETRY_TRUST"), "independent", "with-verifier telemetry trust")
+            assert_equal(kv.get("VERIFICATION_STATUS"), "passed", "with-verifier verification status")
+            assert_equal(kv.get("TRIGGER_MATCHED"), "true", "with-verifier trigger matched")
+            assert_equal(kv.get("ASSERTIONS_PASSED"), "true", "with-verifier assertions")
+            passed += 1
+            print("[PASS] 5: shim-live with verifier (strict)")
+        except AssertionError as exc:
+            failed += 1
+            print(f"[FAIL] 5: shim-live with verifier: {exc}")
 
         # ── Test 6: strict-real + trace mode → blocked ──
         create_session(sandbox_root, "e2e-strict-trace-blocked")
@@ -428,60 +449,59 @@ def main() -> int:
             failed += 1
             print(f"[FAIL] 6: strict-real + trace: {exc}")
 
-        if bash_available:
-            # ── Test 7: auto shim-live preference (adapter + verifier, no openclaw) ──
-            create_session(sandbox_root, "e2e-auto-shim-prefer")
-            skill_auto = build_minimal_skill(temp_root / "t7", adapter_body=build_success_adapter())
-            verifier_auto = build_verifier(temp_root / "t7-ext")
-            proc, kv = run_invoke([
-                "--session-id", "e2e-auto-shim-prefer",
-                "--skill-path", str(skill_auto),
-                "--message", "auto prefer shim",
-                "--channel", "telegram",
-                "--mode", "auto",
-                "--strict-real",
-                "--verification-manifest", str(verifier_auto),
-                "--sandbox-root", str(sandbox_root),
-            ], env)
-            try:
-                assert_equal(proc.returncode, 0, "auto-shim-prefer return code")
-                assert_equal(kv.get("SELECTED_MODE"), "shim-live", "auto-shim-prefer selected mode")
-                assert_equal(kv.get("INVOKE_STATUS"), "success", "auto-shim-prefer status")
-                assert_equal(kv.get("TELEMETRY_TRUST"), "independent", "auto-shim-prefer trust")
-                passed += 1
-                print("[PASS] 7: auto mode prefers shim-live (adapter + verifier)")
-            except AssertionError as exc:
-                failed += 1
-                print(f"[FAIL] 7: auto shim preference: {exc}")
+        # ── Test 7: auto shim-live preference (adapter + verifier, no openclaw) ──
+        create_session(sandbox_root, "e2e-auto-shim-prefer")
+        skill_auto = build_minimal_skill(temp_root / "t7", adapter_body=build_success_adapter())
+        verifier_auto = build_verifier(temp_root / "t7-ext")
+        proc, kv = run_invoke([
+            "--session-id", "e2e-auto-shim-prefer",
+            "--skill-path", str(skill_auto),
+            "--message", "auto prefer shim",
+            "--channel", "telegram",
+            "--mode", "auto",
+            "--strict-real",
+            "--verification-manifest", str(verifier_auto),
+            "--sandbox-root", str(sandbox_root),
+        ], env)
+        try:
+            assert_equal(proc.returncode, 0, "auto-shim-prefer return code")
+            assert_equal(kv.get("SELECTED_MODE"), "shim-live", "auto-shim-prefer selected mode")
+            assert_equal(kv.get("INVOKE_STATUS"), "success", "auto-shim-prefer status")
+            assert_equal(kv.get("TELEMETRY_TRUST"), "independent", "auto-shim-prefer trust")
+            passed += 1
+            print("[PASS] 7: auto mode prefers shim-live (adapter + verifier)")
+        except AssertionError as exc:
+            failed += 1
+            print(f"[FAIL] 7: auto shim preference: {exc}")
 
-            # ── Test 8: audit log structure verification ──
-            try:
-                session_dir = sandbox_root / "e2e-with-verifier"
-                exit_codes = json.loads(read_text(session_dir / "logs" / "exit-codes.json"))
-                assert_equal(len(exit_codes), 1, "audit entry count")
-                entry = exit_codes[0]
-                assert_equal(entry.get("executionLevel"), "shim-live", "audit execution level")
-                assert_equal(entry.get("realExecuted"), True, "audit real executed")
-                assert_equal(entry.get("status"), "success", "audit status")
-                assert_equal(entry.get("exitCode"), 0, "audit exit code")
-                assert "traceFile" in entry, "audit has trace file ref"
-                passed += 1
-                print("[PASS] 8: audit log structure")
-            except (AssertionError, json.JSONDecodeError, IndexError) as exc:
-                failed += 1
-                print(f"[FAIL] 8: audit log structure: {exc}")
+        # ── Test 8: audit log structure verification ──
+        try:
+            session_dir = sandbox_root / "e2e-with-verifier"
+            exit_codes = json.loads(read_text(session_dir / "logs" / "exit-codes.json"))
+            assert_equal(len(exit_codes), 1, "audit entry count")
+            entry = exit_codes[0]
+            assert_equal(entry.get("executionLevel"), "shim-live", "audit execution level")
+            assert_equal(entry.get("realExecuted"), True, "audit real executed")
+            assert_equal(entry.get("status"), "success", "audit status")
+            assert_equal(entry.get("exitCode"), 0, "audit exit code")
+            assert "traceFile" in entry, "audit has trace file ref"
+            passed += 1
+            print("[PASS] 8: audit log structure")
+        except (AssertionError, json.JSONDecodeError, IndexError) as exc:
+            failed += 1
+            print(f"[FAIL] 8: audit log structure: {exc}")
 
-            # ── Test 9: META.json counter increment ──
-            try:
-                session_dir = sandbox_root / "e2e-with-verifier"
-                meta = json.loads(read_text(session_dir / "META.json"))
-                assert_equal(meta.get("commandCount"), 1, "meta command count")
-                assert meta.get("totalDurationMs", 0) >= 0, "meta duration non-negative"
-                passed += 1
-                print("[PASS] 9: META.json counter increment")
-            except (AssertionError, json.JSONDecodeError) as exc:
-                failed += 1
-                print(f"[FAIL] 9: META.json counters: {exc}")
+        # ── Test 9: META.json counter increment ──
+        try:
+            session_dir = sandbox_root / "e2e-with-verifier"
+            meta = json.loads(read_text(session_dir / "META.json"))
+            assert_equal(meta.get("commandCount"), 1, "meta command count")
+            assert meta.get("totalDurationMs", 0) >= 0, "meta duration non-negative"
+            passed += 1
+            print("[PASS] 9: META.json counter increment")
+        except (AssertionError, json.JSONDecodeError) as exc:
+            failed += 1
+            print(f"[FAIL] 9: META.json counters: {exc}")
 
         # ── Test 10: included source changes must refresh cached install ──
         create_session(sandbox_root, "e2e-dist-refresh")

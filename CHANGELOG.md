@@ -1,6 +1,15 @@
 ### v0.9.50（2026-04-13）
 **纯指令型 Skill 解析修复 + Subagent 降级路径 + 预检工具**
 
+- 修复：`runtime-config.openclaw.json` 去掉不被 schema 接受的 `_comment` 根字段；`scripts/generate_runtime_bridge_config.py` 的 OpenClaw preset 现在内置与提交版一致的角色级超时覆盖，避免默认配置和生成模板漂移
+- 修复：`scripts/run_openclaw_stage_demo.py` 改为按子命令按需加载 runtime-config；`detect-existing` 不再被默认 runtime-config 绑死，`approve` 只有配合 `--continue-run` 时才会读取 runtime-config
+- 更新：`tests/test_runtime_config_schema.py`、`tests/test_generate_runtime_bridge_config.py`、`tests/test_run_openclaw_stage_demo.py`，补齐提交版 OpenClaw config 对齐与 runtime-free 子命令回归覆盖
+- 更新：`SKILL.md` 与 `README.md`，收敛 OpenClaw `--message-file` 契约，并补充评审/继续/批准/恢复场景的入口描述
+- 修复：`src/nexus_testing/sandbox_skill_invoke/{core,adapter,verifier}.py` 与 `scripts/sandbox_skill_invoke.py` 保留 `testing.json` / verifier manifest 的 argv 数组语义，list 命令改为直接执行；`tests/test_flow_a_surface_runner.py`、`tests/test_flow_a_integration.py`、`tests/test_flow_a_strict.py` 同步切到数组命令，避免 Windows 上因缺少可用 bash 把 shim-live 误判成 blocked
+- 修复：`src/nexus_testing/sandbox_skill_invoke/adapter.py` 的 auto-install 改为顺序执行 argv steps，`requirements.txt` / `package-lock.json` / `package.json` 自动安装链路不再依赖 bash；`tests/test_flow_a_integration.py` 新增空 `requirements.txt` 的 auto-install smoke；`validation-manifest.json` 补录 `scripts/flow_a_synthetic_data.py`、`scripts/validate-framework.py`，并把 `tests/test_flow_a_{integration,strict,surface_runner}.py` 升级为 critical runtime smoke tests
+- 更新：`scripts/validate-framework.py` 新增 `--shell-syntax {auto,skip,require}` 与 `--bash-path`；默认保持 warning 模式，已授权或沙箱外运行时可显式要求指定 Git Bash 执行 `bash -n` 并把不可运行 bash 升级为硬失败；`tests/test_validate_framework.py` 覆盖新 CLI 行为
+- 更新：`scripts/nexus_stage_executor.py` 新增 `process-approval-timeout`，审批记录现在会持久化 `waiting_since` / `reminder_count` / `reminder_history`；10/20 分钟会补记 `approval-reminder`，30 分钟无响应自动写入 `auto-continue`
+- 修复：`scripts/run_openclaw_stage_demo.py` 到达审批门时立即记录 approval request，`continue` / `recover` / `detect-existing` 会先对账逾期审批，再决定是否继续推进；`tests/test_nexus_stage_executor.py`、`tests/test_run_openclaw_stage_demo.py` 新增审批超时与自动继续回归
 - 修复：`src/nexus_testing/extract_product_fingerprint.py`，新增 `_extract_instruction_capabilities()` 从 `## Execution Capability` 等 section 提取能力（编号加粗/编号纯文本/加粗列表），`detect_runtime()` 对无代码文件的 Skill 返回 `instruction` 而非 `unknown`，`extract_product_fingerprint()` 新增 `instructionOnly` 标记
 - 修复：`scripts/generate_flow_a_stage1.py`，`evaluate_consistency()` 对 `instruction` runtime 不再 blocker，`render_test_implications()` 增加 instruction-only 测试建议
 - 修复：`scripts/generate_flow_a_test_design.py`，`SURFACE_RULES["skill"].focus` 增加 `instruction-capability`

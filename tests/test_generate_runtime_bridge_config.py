@@ -104,6 +104,8 @@ def test_generate_openclaw_config() -> None:
         command = payload["default"]["command"]
         assert_equal("nexus_openclaw_role_runtime.py" in " ".join(command), True, "openclaw adapter referenced")
         assert_equal(payload["default"]["stallTimeoutSeconds"], 300, "openclaw stall timeout")
+        assert_equal(payload["roles"]["skill-tester"]["timeoutSeconds"], 1800, "openclaw skill-tester timeout")
+        assert_equal(payload["roles"]["test-designer"]["stallTimeoutSeconds"], 400, "openclaw test-designer stall timeout")
         print("  [PASS] test_generate_openclaw_config")
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

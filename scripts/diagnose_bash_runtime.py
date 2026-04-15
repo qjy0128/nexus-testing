@@ -109,6 +109,10 @@ def build_suggestions(candidates: list[dict[str, object]], selected: str | None)
         suggestions.append(
             "Test one candidate manually with `\"<path-to-bash>\" --version` outside Codex and confirm it prints a normal Bash version string."
         )
+        suggestions.append(
+            "If Git Bash works outside Codex but fails here, the current sandboxed process cannot initialize MSYS. "
+            "Rerun `python scripts/validate-framework.py --shell-syntax require --bash-path \"<path-to-bash>\"` outside the sandbox or through an authorized elevated Codex run."
+        )
 
     if any(item.get("source") == "PATH" for item in candidates):
         suggestions.append(
